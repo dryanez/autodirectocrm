@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+credentials/
+*.pfx
+*.p12
+
+# Database
+data/*.db
+
+# Contract PDFs (generated at runtime)
+data/contratos/
+
+# Temp processing files
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Funnels scraped data (local only)
+Funnels/

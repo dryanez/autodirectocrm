@@ -1,0 +1,2 @@
+cd "/Users/felipeyanez/Desktop/Wiackowska Group Spa/Apps/SimplyAPI"
+find . -name "*.swift"

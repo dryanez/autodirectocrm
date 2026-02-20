@@ -1,0 +1,10 @@
+# SimplyAPI — Python Dependencies
+flask>=3.1.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+gunicorn>=21.2.0
+reportlab>=4.0.0
+endesive>=2.10.0
+PyPDF2>=3.0.0
+cryptography>=41.0.0
+flask-cors>=4.0.0

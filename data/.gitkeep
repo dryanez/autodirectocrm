@@ -1,0 +1,2 @@
+# This file ensures the data directory exists in git
+# The inventory.db SQLite database will be created here at runtime
