@@ -809,7 +809,7 @@ def send_inspeccion_email(appraisal_id):
         return jsonify({"error": str(e)}), 500
 
 
-
+@app.route("/api/calendar", methods=["GET"])
 def calendar_get():
     """
     Returns all appointments for a month, merged with local assignment data.
@@ -867,14 +867,30 @@ def calendar_get():
             "assigned_user": users_map.get(assigned_user_id) if assigned_user_id else None,
         })
 
-    # Also include appointments from local CRM (no supabase_id)
+    # Collect plates already present from Supabase appointments to avoid duplicates
+    supabase_plates = set()
+    for ev in result:
+        p = (ev.get("plate") or "").upper().strip()
+        d = ev.get("appointment_date") or ""
+        if p:
+            supabase_plates.add((p, d))
+
+    # Also include appointments from local CRM (no supabase_id, exclude funnels)
     with get_db() as conn:
         local_appts = conn.execute(
-            "SELECT * FROM crm_leads WHERE appointment_date BETWEEN ? AND ? AND (supabase_id IS NULL OR supabase_id='')",
+            "SELECT * FROM crm_leads WHERE appointment_date BETWEEN ? AND ? AND (supabase_id IS NULL OR supabase_id='') AND source NOT IN ('funnels') AND appointment_date IS NOT NULL",
             (date_from, date_to)
         ).fetchall()
     for la in local_appts:
         la_dict = row_to_dict(la)
+        # Skip entries with no actual appointment_date
+        if not la_dict.get("appointment_date"):
+            continue
+        # Skip if same plate+date already exists from Supabase appointments
+        p = (la_dict.get("plate") or "").upper().strip()
+        d = la_dict.get("appointment_date") or ""
+        if p and (p, d) in supabase_plates:
+            continue
         result.append({
             "id": "local-{}".format(la_dict["id"]),
             "first_name": la_dict.get("first_name"),
@@ -897,6 +913,37 @@ def calendar_get():
 
     # Also include consignaciones created directly via wizard (no supabase appointment)
     seen_consig_ids = {ev.get("consignacion_id") for ev in result if ev.get("consignacion_id")}
+    # Build a set of plate+date combos already in results to avoid duplicates
+    seen_plate_date = set()
+    for ev in result:
+        p = (ev.get("plate") or "").upper().strip()
+        d = ev.get("appointment_date") or ""
+        if p:
+            seen_plate_date.add((p, d))
+
+    # Try to link unlinked Supabase appointments to consignaciones by plate
+    with get_db() as conn:
+        all_consigs = conn.execute(
+            "SELECT * FROM consignaciones WHERE appointment_date BETWEEN ? AND ?",
+            (date_from, date_to)
+        ).fetchall()
+    consig_by_plate = {}
+    for c in all_consigs:
+        cd = row_to_dict(c)
+        p = (cd.get("plate") or "").upper().strip()
+        if p:
+            consig_by_plate[p] = cd
+
+    for ev in result:
+        if not ev.get("consignacion_id"):
+            p = (ev.get("plate") or "").upper().strip()
+            if p and p in consig_by_plate:
+                c = consig_by_plate[p]
+                ev["consignacion_id"] = c["id"]
+                ev["consignacion_status"] = c.get("status", "pendiente")
+                seen_consig_ids.add(c["id"])
+
+    # Add consignaciones not yet represented
     with get_db() as conn:
         direct_consigs = conn.execute(
             "SELECT * FROM consignaciones WHERE appointment_date BETWEEN ? AND ? AND (appointment_supabase_id IS NULL OR appointment_supabase_id='')",
@@ -905,7 +952,11 @@ def calendar_get():
     for dc in direct_consigs:
         dc_dict = row_to_dict(dc)
         if dc_dict["id"] in seen_consig_ids:
-            continue  # Already in results via supabase match
+            continue  # Already in results via supabase match or plate match
+        plate = (dc_dict.get("plate") or "").upper().strip()
+        date = dc_dict.get("appointment_date") or ""
+        if plate and (plate, date) in seen_plate_date:
+            continue  # Same plate+date already in calendar from Supabase appointment
         assigned_user_id = dc_dict.get("assigned_user_id")
         result.append({
             "id": "consig-{}".format(dc_dict["id"]),
