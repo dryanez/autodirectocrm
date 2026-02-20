@@ -10,7 +10,6 @@ Then open: http://127.0.0.1:5001
 import io
 import json
 import os
-import sqlite3
 import sys
 import time as _time
 from datetime import date, datetime
@@ -30,6 +29,11 @@ if env_file.exists():
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
+
+# ─── Database: Supabase instead of SQLite ────────────────────────────────────
+# db.py provides get_conn/get_db/get_crm_conn/row_to_dict that talk to Supabase
+# using the same .execute()/.fetchone()/.fetchall() interface as sqlite3.
+from db import get_conn, get_db, get_crm_conn, row_to_dict
 
 from execution.consignment_logic import calculate_commission
 from execution.validate_dte_schema import validate as validate_schema
@@ -152,144 +156,15 @@ DB_PATH = os.getenv("DB_PATH", str(ROOT / "data" / "inventory.db"))
 
 
 # ─── DB helpers ──────────────────────────────────────────────────────────────
-def get_conn():
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    # Ensure table exists
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS cars (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patente TEXT UNIQUE NOT NULL,
-            vin TEXT, brand TEXT NOT NULL, model TEXT NOT NULL,
-            year INTEGER, color TEXT,
-            owner_name TEXT NOT NULL, owner_rut TEXT NOT NULL,
-            owner_email TEXT, owner_phone TEXT,
-            owner_price INTEGER NOT NULL, selling_price INTEGER NOT NULL,
-            commission_pct REAL DEFAULT 0.10,
-            status TEXT DEFAULT 'available',
-            notes TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    return conn
+# get_conn, get_db, get_crm_conn, row_to_dict are imported from db.py (Supabase)
+# The functions below are kept only for the CREATE TABLE schema reference.
+
+def _legacy_init_schema():
+    """Schema reference only — tables are created in Supabase via setup_crm.sql"""
+    pass
 
 
-def row_to_dict(row):
-    return dict(row)
-
-
-# ─── Calendar / Users / Consignaciones Schema ─────────────────────────────────
-def init_calendar_tables(conn):
-    """Create users and consignaciones tables."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            role TEXT DEFAULT 'agent',
-            color TEXT DEFAULT '#3b82f6',
-            active INTEGER DEFAULT 1,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    # Seed a default admin if empty
-    exists = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if exists == 0:
-        conn.execute("""
-            INSERT INTO users (name, email, role, color)
-            VALUES ('Admin', 'admin@autodirecto.cl', 'admin', '#8b5cf6')
-        """)
-    # Consignaciones table (Part 1 auto-created from appointment, Part 2 in field)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS consignaciones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            -- Linking
-            appointment_supabase_id TEXT UNIQUE,
-            car_id INTEGER,
-            -- Part 1: Contact (auto-filled from appointment)
-            owner_first_name TEXT,
-            owner_last_name TEXT,
-            owner_full_name TEXT,
-            owner_rut TEXT,
-            owner_phone TEXT,
-            owner_country_code TEXT DEFAULT '+56',
-            owner_email TEXT,
-            owner_region TEXT,
-            owner_commune TEXT,
-            owner_address TEXT,
-            -- Part 1: Vehicle basics (from plate lookup)
-            plate TEXT,
-            car_make TEXT,
-            car_model TEXT,
-            car_year INTEGER,
-            mileage INTEGER,
-            version TEXT,
-            -- Part 2: Field inspection (filled on-site)
-            color TEXT,
-            vin TEXT,
-            owner_price INTEGER,
-            selling_price INTEGER,
-            commission_pct REAL DEFAULT 0.10,
-            condition_notes TEXT,
-            km_verified INTEGER,
-            inspection_photos TEXT DEFAULT '[]',
-            -- Appointment info
-            appointment_date TEXT,
-            appointment_time TEXT,
-            assigned_user_id INTEGER,
-            -- Status
-            status TEXT DEFAULT 'pendiente',
-            -- pendiente | parte1_completa | parte2_completa | en_venta | vendida
-            part1_completed_at TEXT,
-            part2_completed_at TEXT,
-            notes TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (assigned_user_id) REFERENCES users(id),
-            FOREIGN KEY (car_id) REFERENCES cars(id)
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_consig_plate ON consignaciones(plate)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_consig_date ON consignaciones(appointment_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_consig_user ON consignaciones(assigned_user_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_consig_status ON consignaciones(status)")
-    # Add appraisal link columns if they don't exist (migration)
-    try:
-        conn.execute("ALTER TABLE consignaciones ADD COLUMN appraisal_supabase_id TEXT")
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE consignaciones ADD COLUMN listing_id TEXT")
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE consignaciones ADD COLUMN contract_pdf TEXT")
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE consignaciones ADD COLUMN contract_signed_at TEXT")
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN sucursal TEXT DEFAULT 'Vitacura'")
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN password TEXT DEFAULT 'admin1234'")
-    except Exception:
-        pass
-    conn.commit()
-
-
-def get_db():
-    """Get DB connection with all tables initialized."""
-    conn = get_conn()
-    init_crm_tables(conn)
-    init_calendar_tables(conn)
-    return conn
+# Schema managed via setup_crm.sql in Supabase
 
 
 # ─── API: Users ───────────────────────────────────────────────────────────────
@@ -316,7 +191,7 @@ def create_user():
             user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
             return jsonify(row_to_dict(row)), 201
-        except sqlite3.IntegrityError:
+        except Exception:
             return jsonify({"error": "Email already exists"}), 409
 
 
@@ -1688,12 +1563,16 @@ def _sign_pdf_with_certificate(pdf_bytes, reason="Contrato de Consignación", lo
     from cryptography.hazmat.primitives.serialization import pkcs12
     from datetime import timezone
 
-    # Load certificate
-    pfx_path = os.path.join(os.path.dirname(__file__), "firma_18842443-0 (3).pfx")
+    # Load certificate — from base64 env var (Vercel) or local file (dev)
     pfx_pass = os.getenv("CERT_PASSWORD", "Todayisagoodday01").encode()
-
-    with open(pfx_path, "rb") as f:
-        pfx_data = f.read()
+    cert_b64 = os.getenv("CERT_PFX_BASE64")
+    if cert_b64:
+        import base64
+        pfx_data = base64.b64decode(cert_b64)
+    else:
+        pfx_path = os.path.join(os.path.dirname(__file__), "firma_18842443-0 (3).pfx")
+        with open(pfx_path, "rb") as f:
+            pfx_data = f.read()
 
     private_key, certificate, chain = pkcs12.load_key_and_certificates(pfx_data, pfx_pass)
 
@@ -1937,82 +1816,6 @@ def download_contract(cid):
 
 
 
-def init_crm_tables(conn):
-    """Create CRM tables if they don't exist."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS crm_leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            -- Contact
-            first_name TEXT,
-            last_name TEXT,
-            full_name TEXT,
-            rut TEXT,
-            email TEXT,
-            phone TEXT,
-            country_code TEXT DEFAULT '+56',
-            -- Location
-            region TEXT,
-            commune TEXT,
-            address TEXT,
-            -- Vehicle
-            plate TEXT,
-            car_make TEXT,
-            car_model TEXT,
-            car_year INTEGER,
-            mileage INTEGER,
-            version TEXT,
-            -- Appointment
-            appointment_date TEXT,
-            appointment_time TEXT,
-            -- Pipeline
-            stage TEXT DEFAULT 'nuevo',
-            priority TEXT DEFAULT 'medium',
-            assigned_to TEXT,
-            -- Source tracking
-            source TEXT DEFAULT 'manual',
-            source_id TEXT,
-            supabase_id TEXT UNIQUE,
-            funnel_url TEXT,
-            -- Valuation
-            estimated_value INTEGER,
-            listing_price INTEGER,
-            -- Notes
-            notes TEXT,
-            tags TEXT DEFAULT '[]',
-            -- Activity
-            last_contact_at TEXT,
-            next_followup_at TEXT,
-            -- Timestamps
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS crm_activities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            created_by TEXT DEFAULT 'system',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (lead_id) REFERENCES crm_leads(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(stage)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_crm_leads_source ON crm_leads(source)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_crm_leads_plate ON crm_leads(plate)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_crm_activities_lead ON crm_activities(lead_id)")
-    conn.commit()
-
-
-def get_crm_conn():
-    conn = get_conn()
-    init_crm_tables(conn)
-    init_calendar_tables(conn)
-    return conn
-
-
 CRM_STAGES = ['nuevo', 'contactado', 'agendado', 'inspeccionado', 'en_venta', 'vendido', 'descartado']
 CRM_STAGE_LABELS = {
     'nuevo': 'Nuevo',
@@ -2087,7 +1890,7 @@ def crm_create_lead():
             conn.commit()
             row = conn.execute("SELECT * FROM crm_leads WHERE id=?", (lead_id,)).fetchone()
             return jsonify(row_to_dict(row)), 201
-        except sqlite3.IntegrityError as e:
+        except Exception as e:
             return jsonify({"error": str(e)}), 409
 
 
@@ -2473,7 +2276,7 @@ def add_car():
             conn.commit()
             car_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"ok": True, "id": car_id}), 201
-        except sqlite3.IntegrityError:
+        except Exception:
             return jsonify({"error": f"Ya existe un auto con patente '{data['patente'].upper()}'"}), 409
 
 
