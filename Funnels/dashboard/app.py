@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, request
-import pandas as pd
+import csv
 import json
 import os
 import sys
@@ -164,9 +164,9 @@ def load_all_listings():
     # 3. CSV fallback
     if LEADS_CSV.exists():
         try:
-            df = pd.read_csv(LEADS_CSV)
-            df = df.where(pd.notnull(df), None)
-            rows = df.to_dict(orient="records")
+            with open(LEADS_CSV, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = [{k: (v if v != '' else None) for k, v in row.items()} for row in reader]
             listings = [normalize_csv_row(r) for r in rows]
             print(f"[data] Loaded {len(listings)} listings from CSV")
             return listings
