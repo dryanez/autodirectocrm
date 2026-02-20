@@ -1899,13 +1899,16 @@ def generate_contract(cid):
     except Exception as e:
         print("[contrato] signing error (returning unsigned):", e)
 
-    # Save to disk
-    contratos_dir = os.path.join(os.path.dirname(__file__), "data", "contratos")
-    os.makedirs(contratos_dir, exist_ok=True)
+    # Save to disk (best-effort; Vercel has read-only filesystem except /tmp)
     filename = "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
-    filepath = os.path.join(contratos_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(pdf_bytes)
+    try:
+        contratos_dir = os.path.join("/tmp", "contratos")
+        os.makedirs(contratos_dir, exist_ok=True)
+        filepath = os.path.join(contratos_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(pdf_bytes)
+    except Exception as e:
+        print("[contrato] save error (non-fatal):", e)
 
     # Update consignacion with contract path
     now = datetime.now().isoformat()
@@ -1941,7 +1944,8 @@ def sign_contract_client(cid):
     consig = row_to_dict(row)
 
     # Get existing contract or generate new one
-    contratos_dir = os.path.join(os.path.dirname(__file__), "data", "contratos")
+    contratos_dir = os.path.join("/tmp", "contratos")
+    os.makedirs(contratos_dir, exist_ok=True)
     filename = consig.get("contract_pdf") or "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
     filepath = os.path.join(contratos_dir, filename)
 
@@ -2012,19 +2016,47 @@ def sign_contract_client(cid):
 
 @app.route("/api/consignaciones/<int:cid>/contrato/descargar", methods=["GET"])
 def download_contract(cid):
-    """Download the latest contract PDF (signed or unsigned)."""
+    """Download the latest contract PDF (signed or unsigned).
+    If the cached file is gone (Vercel ephemeral /tmp), regenerate it.
+    """
     with get_db() as conn:
-        row = conn.execute("SELECT contract_pdf FROM consignaciones WHERE id=?", (cid,)).fetchone()
-    if not row or not row["contract_pdf"]:
-        return jsonify({"error": "No hay contrato generado"}), 404
+        row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    consig = row_to_dict(row)
 
-    contratos_dir = os.path.join(os.path.dirname(__file__), "data", "contratos")
-    filepath = os.path.join(contratos_dir, row["contract_pdf"])
-    if not os.path.exists(filepath):
-        return jsonify({"error": "Archivo no encontrado"}), 404
+    contratos_dir = os.path.join("/tmp", "contratos")
+    filename = consig.get("contract_pdf")
+    filepath = os.path.join(contratos_dir, filename) if filename else None
 
-    return send_file(filepath, mimetype="application/pdf", as_attachment=False,
-                     download_name=row["contract_pdf"])
+    if filepath and os.path.exists(filepath):
+        return send_file(filepath, mimetype="application/pdf", as_attachment=False,
+                         download_name=filename)
+
+    # File not cached — regenerate
+    appraisal = None
+    if consig.get("appraisal_supabase_id"):
+        try:
+            supa_url, headers = _supa_headers()
+            r = __import__('requests').get(
+                "{}/rest/v1/appraisals?id=eq.{}".format(supa_url, consig["appraisal_supabase_id"]),
+                headers=headers, timeout=8
+            )
+            if r.status_code == 200:
+                rdata = r.json()
+                if rdata:
+                    appraisal = rdata[0]
+        except:
+            pass
+    pdf_bytes = _build_contract_pdf(consig, appraisal)
+    try:
+        pdf_bytes = _sign_pdf_with_certificate(pdf_bytes, reason="Contrato de Consignación — {}".format(consig.get("plate","")))
+    except Exception as e:
+        print("[contrato] signing error:", e)
+
+    dl_name = filename or "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=False, download_name=dl_name)
 
 
 
