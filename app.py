@@ -895,6 +895,42 @@ def calendar_get():
             "assigned_user": None,
         })
 
+    # Also include consignaciones created directly via wizard (no supabase appointment)
+    seen_consig_ids = {ev.get("consignacion_id") for ev in result if ev.get("consignacion_id")}
+    with get_db() as conn:
+        direct_consigs = conn.execute(
+            "SELECT * FROM consignaciones WHERE appointment_date BETWEEN ? AND ? AND (appointment_supabase_id IS NULL OR appointment_supabase_id='')",
+            (date_from, date_to)
+        ).fetchall()
+    for dc in direct_consigs:
+        dc_dict = row_to_dict(dc)
+        if dc_dict["id"] in seen_consig_ids:
+            continue  # Already in results via supabase match
+        assigned_user_id = dc_dict.get("assigned_user_id")
+        result.append({
+            "id": "consig-{}".format(dc_dict["id"]),
+            "first_name": dc_dict.get("owner_first_name"),
+            "last_name": dc_dict.get("owner_last_name"),
+            "full_name": dc_dict.get("owner_full_name"),
+            "phone": dc_dict.get("owner_phone"),
+            "email": dc_dict.get("owner_email"),
+            "rut": dc_dict.get("owner_rut"),
+            "plate": dc_dict.get("plate"),
+            "car_make": dc_dict.get("car_make"),
+            "car_model": dc_dict.get("car_model"),
+            "car_year": dc_dict.get("car_year"),
+            "mileage": dc_dict.get("mileage"),
+            "version": dc_dict.get("version"),
+            "appointment_date": dc_dict.get("appointment_date"),
+            "appointment_time": dc_dict.get("appointment_time"),
+            "status": dc_dict.get("status", "pendiente"),
+            "source": "wizard",
+            "consignacion_id": dc_dict["id"],
+            "consignacion_status": dc_dict.get("status", "pendiente"),
+            "assigned_user_id": assigned_user_id,
+            "assigned_user": users_map.get(assigned_user_id) if assigned_user_id else None,
+        })
+
     # Enrich each appointment with Funnels match suggestions
     with get_db() as conn:
         for ev in result:
@@ -1086,12 +1122,20 @@ def get_consignaciones():
 def get_consignacion(cid):
     with get_db() as conn:
         row = conn.execute(
-            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE c.id=?",
+            "SELECT * FROM consignaciones WHERE id=?",
             (cid,)
         ).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
-    return jsonify(row_to_dict(row))
+    result = row_to_dict(row)
+    # Add assigned user name if assigned
+    if result.get("assigned_user_id"):
+        with get_db() as conn:
+            user = conn.execute("SELECT * FROM crm_users WHERE id=?", (result["assigned_user_id"],)).fetchone()
+            result["assigned_user_name"] = row_to_dict(user).get("name") if user else None
+    else:
+        result["assigned_user_name"] = None
+    return jsonify(result)
 
 
 @app.route("/api/consignaciones/<int:cid>", methods=["PATCH"])
