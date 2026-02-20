@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS cars (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── Users (CRM agents) ──────────────────────────────────────
-CREATE TABLE IF NOT EXISTS users (
+-- ─── CRM Users (agents) ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS crm_users (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Seed default admin
-INSERT INTO users (name, email, role, color, password)
+INSERT INTO crm_users (name, email, role, color, password)
 VALUES ('Admin', 'admin@autodirecto.cl', 'admin', '#8b5cf6', 'admin')
 ON CONFLICT (email) DO NOTHING;
 
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS consignaciones (
   -- Appointment
   appointment_date TEXT,
   appointment_time TEXT,
-  assigned_user_id INTEGER REFERENCES users(id),
+  assigned_user_id INTEGER REFERENCES crm_users(id),
   -- Status
   status TEXT DEFAULT 'pendiente',
   part1_completed_at TEXT,
@@ -157,14 +157,14 @@ CREATE INDEX IF NOT EXISTS idx_crm_activities_lead ON crm_activities(lead_id);
 -- Service role key bypasses RLS, so these tables are accessible from SimplyAPI.
 -- Enable RLS to block public/anon access:
 ALTER TABLE cars ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE consignaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_activities ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (SimplyAPI uses service role key)
 CREATE POLICY "Service role full access" ON cars USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON users USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON crm_users USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON consignaciones USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_leads USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_activities USING (true) WITH CHECK (true);

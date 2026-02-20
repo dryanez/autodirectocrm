@@ -171,7 +171,7 @@ def _legacy_init_schema():
 @app.route("/api/users", methods=["GET"])
 def get_users():
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM users WHERE active=1 ORDER BY name").fetchall()
+        rows = conn.execute("SELECT * FROM crm_users WHERE active=1 ORDER BY name").fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
 
@@ -183,13 +183,13 @@ def create_user():
     with get_db() as conn:
         try:
             conn.execute(
-                "INSERT INTO users (name, email, role, color, sucursal, password) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO crm_users (name, email, role, color, sucursal, password) VALUES (?, ?, ?, ?, ?, ?)",
                 (data["name"], data["email"], data.get("role", "agent"), data.get("color", "#3b82f6"),
                  data.get("sucursal", "Vitacura"), data.get("password", "admin1234"))
             )
             conn.commit()
             user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            row = conn.execute("SELECT * FROM crm_users WHERE id=?", (user_id,)).fetchone()
             return jsonify(row_to_dict(row)), 201
         except Exception:
             return jsonify({"error": "Email already exists"}), 409
@@ -204,7 +204,7 @@ def update_user(user_id):
         return jsonify({"error": "No valid fields"}), 400
     set_clause = ", ".join("{}=?".format(k) for k in updates)
     with get_db() as conn:
-        conn.execute("UPDATE users SET {} WHERE id=?".format(set_clause), list(updates.values()) + [user_id])
+        conn.execute("UPDATE crm_users SET {} WHERE id=?".format(set_clause), list(updates.values()) + [user_id])
         conn.commit()
     return jsonify({"ok": True})
 
@@ -212,7 +212,7 @@ def update_user(user_id):
 @app.route("/api/users/<int:user_id>", methods=["DELETE"])
 def delete_user(user_id):
     with get_db() as conn:
-        conn.execute("UPDATE users SET active=0 WHERE id=?", (user_id,))
+        conn.execute("UPDATE crm_users SET active=0 WHERE id=?", (user_id,))
         conn.commit()
     return jsonify({"ok": True})
 
@@ -227,7 +227,7 @@ def auth_login():
         return jsonify({"error": "Email y contraseña requeridos"}), 400
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM users WHERE email=? AND active=1", (email,)
+            "SELECT * FROM crm_users WHERE email=? AND active=1", (email,)
         ).fetchone()
     if not row:
         return jsonify({"error": "Credenciales inválidas"}), 401
@@ -792,7 +792,7 @@ def calendar_get():
         ).fetchall()
         consig_by_supabase_id = {r["appointment_supabase_id"]: row_to_dict(r) for r in consig_rows if r["appointment_supabase_id"]}
 
-        users_map = {r["id"]: row_to_dict(r) for r in conn.execute("SELECT * FROM users").fetchall()}
+        users_map = {r["id"]: row_to_dict(r) for r in conn.execute("SELECT * FROM crm_users").fetchall()}
 
     result = []
     for appt in appointments:
@@ -955,7 +955,7 @@ def calendar_assign():
 def get_consignaciones():
     status = request.args.get("status")
     with get_db() as conn:
-        q = "SELECT c.*, u.name as assigned_user_name, u.color as assigned_user_color FROM consignaciones c LEFT JOIN users u ON c.assigned_user_id=u.id WHERE 1=1"
+        q = "SELECT c.*, u.name as assigned_user_name, u.color as assigned_user_color FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE 1=1"
         params = []
         if status:
             q += " AND c.status=?"
@@ -969,7 +969,7 @@ def get_consignaciones():
 def get_consignacion(cid):
     with get_db() as conn:
         row = conn.execute(
-            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN users u ON c.assigned_user_id=u.id WHERE c.id=?",
+            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE c.id=?",
             (cid,)
         ).fetchone()
     if not row:
@@ -1003,7 +1003,7 @@ def update_consignacion(cid):
         conn.execute("UPDATE consignaciones SET {} WHERE id=?".format(set_clause), list(updates.values()) + [cid])
         conn.commit()
         row = conn.execute(
-            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN users u ON c.assigned_user_id=u.id WHERE c.id=?",
+            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE c.id=?",
             (cid,)
         ).fetchone()
 
