@@ -1537,28 +1537,28 @@ def _build_contract_pdf(consig, appraisal=None):
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
-                            topMargin=1.5*cm, bottomMargin=2*cm,
-                            leftMargin=2*cm, rightMargin=2*cm)
+                            topMargin=1.2*cm, bottomMargin=1.2*cm,
+                            leftMargin=1.8*cm, rightMargin=1.8*cm)
 
     # Company info from env
     company_name = os.getenv("EMPRESA_RAZON_SOCIAL", "Wiackowska Group Spa")
     company_rut  = os.getenv("EMPRESA_RUT", "78355717-7")
     company_giro = os.getenv("EMPRESA_GIRO", "Compraventa de Vehículos Usados")
-    company_dir  = os.getenv("EMPRESA_DIRECCION", "Av. Providencia 123")
-    company_com  = os.getenv("EMPRESA_COMUNA", "Providencia")
-    company_city = os.getenv("EMPRESA_CIUDAD", "Santiago")
+    company_dir  = os.getenv("EMPRESA_DIRECCION", "Av. Montemar 1055")
+    company_com  = os.getenv("EMPRESA_COMUNA", "Concón")
+    company_city = os.getenv("EMPRESA_CIUDAD", "Valparaíso")
     signer_name  = "Felipe Horacio Yáñez Fernández"
 
-    # Styles
+    # Styles — compact to fit everything on one page
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle('Title2', parent=styles['Title'], fontSize=16, spaceAfter=4, textColor=colors.HexColor('#1a1a2e')))
-    styles.add(ParagraphStyle('CompanyName', fontSize=20, fontName='Helvetica-Bold', textColor=colors.HexColor('#1a1a2e'), alignment=TA_LEFT, spaceAfter=2))
-    styles.add(ParagraphStyle('CompanyInfo', fontSize=8, textColor=colors.HexColor('#666666'), alignment=TA_LEFT, spaceAfter=1))
-    styles.add(ParagraphStyle('SectionTitle', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#1a1a2e'), spaceBefore=12, spaceAfter=6))
-    styles.add(ParagraphStyle('BodyJustify', parent=styles['Normal'], fontSize=9, leading=13, alignment=TA_JUSTIFY, textColor=colors.HexColor('#333333')))
-    styles.add(ParagraphStyle('SmallGray', fontSize=7, textColor=colors.HexColor('#999999'), alignment=TA_CENTER))
-    styles.add(ParagraphStyle('SignLabel', fontSize=8, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=4))
-    styles.add(ParagraphStyle('DateRight', fontSize=9, textColor=colors.HexColor('#333333'), alignment=TA_RIGHT))
+    styles.add(ParagraphStyle('Title2', parent=styles['Title'], fontSize=13, spaceAfter=2, spaceBefore=0, textColor=colors.HexColor('#1a1a2e')))
+    styles.add(ParagraphStyle('CompanyName', fontSize=14, fontName='Helvetica-Bold', textColor=colors.HexColor('#1a1a2e'), alignment=TA_LEFT, spaceAfter=1))
+    styles.add(ParagraphStyle('CompanyInfo', fontSize=7, textColor=colors.HexColor('#666666'), alignment=TA_LEFT, spaceAfter=1))
+    styles.add(ParagraphStyle('SectionTitle', fontSize=9, fontName='Helvetica-Bold', textColor=colors.HexColor('#1a1a2e'), spaceBefore=6, spaceAfter=3))
+    styles.add(ParagraphStyle('BodyJustify', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_JUSTIFY, textColor=colors.HexColor('#333333')))
+    styles.add(ParagraphStyle('SmallGray', fontSize=6, textColor=colors.HexColor('#999999'), alignment=TA_CENTER))
+    styles.add(ParagraphStyle('SignLabel', fontSize=7, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=2))
+    styles.add(ParagraphStyle('DateRight', fontSize=8, textColor=colors.HexColor('#333333'), alignment=TA_RIGHT))
 
     # Date
     from datetime import datetime as dt
@@ -1615,14 +1615,15 @@ def _build_contract_pdf(consig, appraisal=None):
 
     # ─── HEADER ───
     story.append(Paragraph(company_name, styles['CompanyName']))
-    story.append(Paragraph("RUT: {} · {} · {}".format(company_rut, company_giro, company_dir + ", " + company_com + ", " + company_city), styles['CompanyInfo']))
-    story.append(Spacer(1, 4))
-    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1a1a2e'), spaceAfter=6))
+    story.append(Paragraph("RUT: {} · {}".format(company_rut, company_giro), styles['CompanyInfo']))
+    story.append(Paragraph("{}, {}, {}".format(company_dir, company_com, company_city), styles['CompanyInfo']))
+    story.append(Spacer(1, 2))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1a1a2e'), spaceAfter=4))
 
     # Title + Date
     story.append(Paragraph("CONTRATO DE CONSIGNACIÓN", styles['Title2']))
     story.append(Paragraph(date_str, styles['DateRight']))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # ─── INTRO ───
     intro = (
@@ -1633,7 +1634,7 @@ def _build_contract_pdf(consig, appraisal=None):
     ).format(company_name, company_rut, company_dir, company_com, company_city,
              owner_name, owner_rut, owner_dir or "—")
     story.append(Paragraph(intro, styles['BodyJustify']))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # ─── DETALLES DEL CLIENTE ───
     story.append(Paragraph("DETALLES DEL CLIENTE", styles['SectionTitle']))
@@ -1642,37 +1643,37 @@ def _build_contract_pdf(consig, appraisal=None):
         ["Dirección", owner_dir or "—", "Teléfono", owner_phone],
         ["Email", owner_email or "—", "", ""],
     ]
-    ct = Table(client_data, colWidths=[60, 170, 60, 170])
+    ct = Table(client_data, colWidths=[55, 175, 55, 175])
     ct.setStyle(TableStyle([
         ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
         ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (2,0), (2,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (1,0), (1,-1), colors.HexColor('#1a1a2e')),
         ('TEXTCOLOR', (3,0), (3,-1), colors.HexColor('#1a1a2e')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
         ('LINEBELOW', (0,0), (-1,-2), 0.5, colors.HexColor('#e0e0e0')),
     ]))
     story.append(ct)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # ─── OBLIGACIONES ───
     story.append(Paragraph("OBLIGACIONES", styles['SectionTitle']))
     obligations = (
-        'Serán obligaciones del consignador o comitente las que se describen a continuación:<br/><br/>'
+        'Serán obligaciones del consignador o comitente las que se describen a continuación:<br/>'
         '• Pagar los gastos de publicación y edición del vehículo, monto que corresponde a '
         '<b>$50.000</b>, en caso de retirar el auto dentro de los primeros 30 días de la fecha de publicación.<br/>'
         '• Pagar el precio cobrado por el consignatario para la gestión de la venta del vehículo '
         '(comisión del <b>{:.0%}</b>).<br/>'
         '• Entregar el vehículo dado en consignación para su venta con toda la documentación '
         'requerida por la legislación vigente.<br/>'
-        '• Entregar el vehículo en perfectas condiciones mecánicas de uso, para ser puesto a la venta.<br/><br/>'
+        '• Entregar el vehículo en perfectas condiciones mecánicas de uso, para ser puesto a la venta.<br/>'
         'Por parte de <b>{}</b> será obligación realizar todas las gestiones necesarias para la venta del vehículo.'
     ).format(float(comision), company_name)
     story.append(Paragraph(obligations, styles['BodyJustify']))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # ─── DETALLES DEL VEHÍCULO ───
     story.append(Paragraph("DETALLES DEL VEHÍCULO", styles['SectionTitle']))
@@ -1686,28 +1687,28 @@ def _build_contract_pdf(consig, appraisal=None):
         ["Kilometraje", "{:,.0f}".format(int(car_km or 0)).replace(",","."), "Seguro Oblig.", soap],
         ["Dueños", str(num_duenos) if num_duenos else "—", "Copia Llaves", str(num_llaves) if num_llaves else "—"],
     ]
-    vt = Table(veh_data, colWidths=[70, 160, 70, 160])
+    vt = Table(veh_data, colWidths=[65, 165, 65, 165])
     vt.setStyle(TableStyle([
         ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
         ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (2,0), (2,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (1,0), (1,-1), colors.HexColor('#1a1a2e')),
         ('TEXTCOLOR', (3,0), (3,-1), colors.HexColor('#1a1a2e')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 2),
         ('LINEBELOW', (0,0), (-1,-2), 0.5, colors.HexColor('#e0e0e0')),
         ('LINEBELOW', (0,-1), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8f8fc')),
     ]))
     story.append(vt)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # ─── OBSERVACIONES ───
     story.append(Paragraph("OBSERVACIONES", styles['SectionTitle']))
     story.append(Paragraph(observaciones, styles['BodyJustify']))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 4))
 
     # ─── PRECIOS ───
     story.append(Paragraph("CONDICIONES ECONÓMICAS", styles['SectionTitle']))
@@ -1716,26 +1717,26 @@ def _build_contract_pdf(consig, appraisal=None):
     ]
     if tasacion:
         price_data.append(["TASACIÓN FISCAL", fmt_clp(tasacion), "COMISIÓN", "{:.0%}".format(float(comision))])
-    pt = Table(price_data, colWidths=[120, 110, 120, 110])
+    pt = Table(price_data, colWidths=[110, 110, 120, 120])
     pt.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (2,0), (2,-1), colors.HexColor('#666666')),
         ('TEXTCOLOR', (1,0), (1,-1), colors.HexColor('#1a1a2e')),
         ('TEXTCOLOR', (3,0), (3,-1), colors.HexColor('#1a1a2e')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#1a1a2e')),
         ('LINEBELOW', (0,0), (-1,0), 0.5, colors.HexColor('#cccccc')),
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f0f0f8')),
     ]))
     story.append(pt)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
 
     # ─── CONSIGNADO POR ───
     story.append(Paragraph("Consignado por: <b>{}</b>".format(consignado_por), styles['BodyJustify']))
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 12))
 
     # ─── SIGNATURES ───
     sig_data = [
@@ -1747,12 +1748,12 @@ def _build_contract_pdf(consig, appraisal=None):
     sig_table.setStyle(TableStyle([
         ('LINEABOVE', (0,0), (0,0), 1, colors.HexColor('#333333')),
         ('LINEABOVE', (2,0), (2,0), 1, colors.HexColor('#333333')),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
     ]))
     story.append(sig_table)
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 10))
 
     # ─── FOOTER ───
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=4))
