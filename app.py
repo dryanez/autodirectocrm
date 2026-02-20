@@ -61,8 +61,17 @@ if FUNNELS_DIR.exists():
         url_prefix='/funnels'
     )
 
-    # Load listings at startup
+    # Load listings at startup (local files if available, else Supabase)
     funnels_module._cached_listings = funnels_module.load_all_listings()
+    # If no local data found (e.g. on Vercel), load from Supabase
+    if not funnels_module._cached_listings:
+        try:
+            with get_db() as conn:
+                rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+            funnels_module._cached_listings = [row_to_dict(r) for r in rows]
+            print(f"  ✅ Loaded {len(funnels_module._cached_listings)} funnel listings from Supabase")
+        except Exception as e:
+            print(f"  ⚠️  Could not load funnel listings from Supabase: {e}")
 
     @funnels_bp.route('/')
     def funnels_index():
@@ -72,7 +81,17 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/leads', methods=['GET'])
     def funnels_api_leads():
-        leads = funnels_module.get_leads()
+        leads = list(funnels_module.get_leads())
+        # If in-memory cache is empty (cold start on Vercel), load from Supabase
+        if not leads:
+            try:
+                with get_db() as conn:
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+                leads = [row_to_dict(r) for r in rows]
+                # Cache for subsequent requests
+                funnels_module._cached_listings = leads
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
         # Overlay status from Supabase (persists across deploys)
         try:
             with get_db() as conn:
@@ -92,6 +111,14 @@ if FUNNELS_DIR.exists():
     @funnels_bp.route('/api/reload', methods=['POST'])
     def funnels_api_reload():
         funnels_module._cached_listings = funnels_module.load_all_listings()
+        # Also re-sync from Supabase if local is empty
+        if not funnels_module._cached_listings:
+            try:
+                with get_db() as conn:
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+                funnels_module._cached_listings = [row_to_dict(r) for r in rows]
+            except Exception:
+                pass
         return jsonify({"success": True, "count": len(funnels_module._cached_listings)})
 
     @funnels_bp.route('/api/scrape', methods=['POST'])

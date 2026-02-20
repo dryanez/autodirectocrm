@@ -153,6 +153,26 @@ CREATE TABLE IF NOT EXISTS crm_activities (
 
 CREATE INDEX IF NOT EXISTS idx_crm_activities_lead ON crm_activities(lead_id);
 
+-- ─── Funnel Listings ─────────────────────────────────────────
+-- FB Marketplace scraped listings (migrated from local Apify JSON)
+CREATE TABLE IF NOT EXISTS funnel_listings (
+  id TEXT PRIMARY KEY,          -- Apify listing id (e.g. "926783459704701")
+  url TEXT UNIQUE NOT NULL,
+  title TEXT,
+  price TEXT,
+  price_num INTEGER,            -- numeric CLP amount for sorting/filtering
+  location TEXT,
+  year INTEGER,
+  mileage TEXT,
+  photo_url TEXT,
+  is_sold BOOLEAN DEFAULT FALSE,
+  scraped_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_funnel_listings_year ON funnel_listings(year);
+CREATE INDEX IF NOT EXISTS idx_funnel_listings_price ON funnel_listings(price_num);
+
 -- ─── Funnel Lead Status ───────────────────────────────────────
 -- Persists FB Marketplace lead status/valuation across deploys
 CREATE TABLE IF NOT EXISTS funnel_lead_status (
@@ -174,6 +194,7 @@ ALTER TABLE crm_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE consignaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE funnel_listings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE funnel_lead_status ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (SimplyAPI uses service role key)
@@ -182,4 +203,5 @@ CREATE POLICY "Service role full access" ON crm_users USING (true) WITH CHECK (t
 CREATE POLICY "Service role full access" ON consignaciones USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_leads USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_activities USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON funnel_listings USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON funnel_lead_status USING (true) WITH CHECK (true);
