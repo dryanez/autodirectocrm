@@ -26,5 +26,13 @@ build/
 # macOS
 .DS_Store
 
-# Funnels scraped data (local only)
-Funnels/
+# Funnels — ignore scraped data & venv, but keep the dashboard code
+Funnels/.venv/
+Funnels/venv/
+Funnels/.env
+Funnels/.DS_Store
+Funnels/dataset_*.json
+Funnels/fb_cookies.json
+Funnels/.tmp/
+Funnels/dashboard/server*.log
+Funnels/dashboard/templates/index.html.bak

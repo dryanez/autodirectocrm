@@ -72,7 +72,22 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/leads', methods=['GET'])
     def funnels_api_leads():
-        return jsonify(funnels_module.get_leads())
+        leads = funnels_module.get_leads()
+        # Overlay status from Supabase (persists across deploys)
+        try:
+            with get_db() as conn:
+                rows = conn.execute("SELECT * FROM funnel_lead_status").fetchall()
+            status_map = {row_to_dict(r)["url"]: row_to_dict(r) for r in rows}
+            for lead in leads:
+                url = lead.get("url") or lead.get("id", "")
+                if url in status_map:
+                    s = status_map[url]
+                    lead["status"] = s.get("status", "new")
+                    lead["contacted_at"] = s.get("contacted_at")
+                    lead["valuation"] = s.get("valuation")
+        except Exception:
+            pass  # fall back to file-based status
+        return jsonify(leads)
 
     @funnels_bp.route('/api/reload', methods=['POST'])
     def funnels_api_reload():
@@ -96,31 +111,49 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/leads/status', methods=['POST'])
     def funnels_api_update_status():
-        import time as _time
         data = request.json
         url = data.get("url")
         status = data.get("status")
         valuation = data.get("valuation")
         if not url:
             return jsonify({"error": "Missing url"}), 400
-        status_map = {}
-        if funnels_module.STATUS_FILE.exists():
+        now_ts = int(_time.time())
+        # Upsert into Supabase
+        try:
+            with get_db() as conn:
+                existing = conn.execute(
+                    "SELECT * FROM funnel_lead_status WHERE url=?", (url,)
+                ).fetchone()
+            entry = row_to_dict(existing) if existing else {"url": url, "status": "new"}
+            entry["updated_at"] = now_ts
+            if status:
+                entry["status"] = status
+                if status == "contacted":
+                    entry["contacted_at"] = now_ts
+            if valuation:
+                entry["valuation"] = valuation
+            with get_db() as conn:
+                if existing:
+                    set_clause = ", ".join(f"{k}=?" for k in entry if k != "url")
+                    vals = [entry[k] for k in entry if k != "url"] + [url]
+                    conn.execute(f"UPDATE funnel_lead_status SET {set_clause} WHERE url=?", vals)
+                else:
+                    cols = ", ".join(entry.keys())
+                    placeholders = ", ".join("?" for _ in entry)
+                    conn.execute(f"INSERT INTO funnel_lead_status ({cols}) VALUES ({placeholders})", list(entry.values()))
+                conn.commit()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        # Also write to local file as backup
+        if funnels_module.STATUS_FILE.parent.exists():
             try:
-                status_map = json.loads(funnels_module.STATUS_FILE.read_text())
+                status_map = {}
+                if funnels_module.STATUS_FILE.exists():
+                    status_map = json.loads(funnels_module.STATUS_FILE.read_text())
+                status_map[url] = entry
+                funnels_module.STATUS_FILE.write_text(json.dumps(status_map, indent=2))
             except Exception:
                 pass
-        entry = status_map.get(url, {})
-        if not isinstance(entry, dict):
-            entry = {"status": entry if entry else "new"}
-        entry["updated_at"] = int(_time.time())
-        if status:
-            entry["status"] = status
-            if status == "contacted":
-                entry["contacted_at"] = int(_time.time())
-        if valuation:
-            entry["valuation"] = valuation
-        status_map[url] = entry
-        funnels_module.STATUS_FILE.write_text(json.dumps(status_map, indent=2))
         return jsonify({"success": True, "status": entry.get("status"), "valuation": entry.get("valuation")})
 
     @funnels_bp.route('/api/valuation', methods=['POST'])

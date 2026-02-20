@@ -153,6 +153,19 @@ CREATE TABLE IF NOT EXISTS crm_activities (
 
 CREATE INDEX IF NOT EXISTS idx_crm_activities_lead ON crm_activities(lead_id);
 
+-- ─── Funnel Lead Status ───────────────────────────────────────
+-- Persists FB Marketplace lead status/valuation across deploys
+CREATE TABLE IF NOT EXISTS funnel_lead_status (
+  id SERIAL PRIMARY KEY,
+  url TEXT UNIQUE NOT NULL,
+  status TEXT DEFAULT 'new',
+  contacted_at BIGINT,
+  valuation JSONB,
+  updated_at BIGINT
+);
+
+CREATE INDEX IF NOT EXISTS idx_funnel_status_url ON funnel_lead_status(url);
+
 -- ─── Row Level Security ───────────────────────────────────────
 -- Service role key bypasses RLS, so these tables are accessible from SimplyAPI.
 -- Enable RLS to block public/anon access:
@@ -161,6 +174,7 @@ ALTER TABLE crm_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE consignaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE funnel_lead_status ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (SimplyAPI uses service role key)
 CREATE POLICY "Service role full access" ON cars USING (true) WITH CHECK (true);
@@ -168,3 +182,4 @@ CREATE POLICY "Service role full access" ON crm_users USING (true) WITH CHECK (t
 CREATE POLICY "Service role full access" ON consignaciones USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_leads USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON crm_activities USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON funnel_lead_status USING (true) WITH CHECK (true);
