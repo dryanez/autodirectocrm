@@ -1011,6 +1011,63 @@ def calendar_assign():
 
 
 # ─── API: Consignaciones ──────────────────────────────────────────────────────
+@app.route("/api/consignaciones", methods=["POST"])
+def create_consignacion():
+    """Create a new consignacion directly from the Autodirecto.cl wizard form."""
+    data = request.json or {}
+    now = datetime.now().isoformat()
+
+    # Accept both camelCase (from wizard) and snake_case
+    def g(camel, snake=None):
+        return data.get(camel) or data.get(snake or camel)
+
+    car = data.get("carData") or {}
+    plate = (g("plate") or "").upper().strip()
+    appointment_date = g("appointmentDate", "appointment_date") or ""
+    appointment_time = g("appointmentTime", "appointment_time") or ""
+
+    # Extract date/time if combined ISO string was sent
+    if "T" in appointment_date:
+        parts = appointment_date.split("T")
+        appointment_date = parts[0]
+        if not appointment_time:
+            appointment_time = parts[1][:5]
+
+    first_name = (g("firstName", "first_name") or "").strip()
+    last_name  = (g("lastName",  "last_name")  or "").strip()
+    full_name  = f"{first_name} {last_name}".strip() or data.get("full_name", "")
+
+    with get_db() as conn:
+        result = conn.execute("""
+            INSERT INTO consignaciones (
+                owner_first_name, owner_last_name, owner_full_name,
+                owner_rut, owner_phone, owner_country_code, owner_email,
+                owner_region, owner_commune, owner_address,
+                plate, car_make, car_model, car_year, mileage, version,
+                appointment_date, appointment_time,
+                status, created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            first_name, last_name, full_name,
+            g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
+            g("region"), g("commune"), g("address"),
+            plate,
+            car.get("make") or g("carMake", "car_make"),
+            car.get("model") or g("carModel", "car_model"),
+            car.get("year") or g("carYear", "car_year"),
+            g("mileage"), g("version"),
+            appointment_date, appointment_time,
+            "pendiente", now, now
+        ))
+        conn.commit()
+        # The Supabase adapter returns the inserted row directly
+        inserted = result.fetchone()
+        new_id = inserted.get("id") if inserted else conn._last_insert_id
+        row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (new_id,)).fetchone() if new_id else inserted
+
+    return jsonify({"ok": True, "id": new_id, "consignacion": row_to_dict(row or inserted)}), 201
+
+
 @app.route("/api/consignaciones", methods=["GET"])
 def get_consignaciones():
     status = request.args.get("status")
