@@ -1,0 +1,15 @@
+__pycache__/
+.venv/
+.env
+.tmp/
+.DS_Store
+*.pyc
+node_modules/
+dataset_facebook-marketplace-scraper_*.json
+lead_status.json
+leads.csv
+filtered_cars.json
+scraped_cars.json
+server.log
+server_v2.log
+server_v3.log

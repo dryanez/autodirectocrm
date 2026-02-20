@@ -1,0 +1,7 @@
+playwright
+playwright-stealth
+beautifulsoup4
+python-dotenv
+gspread
+google-auth
+google-auth-oauthlib
