@@ -1132,8 +1132,8 @@ def create_consignacion():
                 owner_region, owner_commune, owner_address,
                 plate, car_make, car_model, car_year, mileage, version,
                 appointment_date, appointment_time,
-                status, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                status, part1_completed_at, created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             first_name, last_name, full_name,
             g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
@@ -1144,7 +1144,7 @@ def create_consignacion():
             car.get("year") or g("carYear", "car_year"),
             g("mileage"), g("version"),
             appointment_date, appointment_time,
-            "pendiente", now, now
+            "parte1_completa", now, now, now
         ))
         conn.commit()
         # The Supabase adapter returns the inserted row directly
