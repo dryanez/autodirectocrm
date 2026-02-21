@@ -507,6 +507,7 @@ def create_inspeccion():
     # ── Extract fields that belong on consignaciones, not appraisals ──────────
     ai_market_price = data.pop("ai_market_price", None)
     ai_instant_buy_price = data.pop("ai_instant_buy_price", None)
+    owner_price = data.pop("owner_price", None)            # consignación payout to owner
     selling_price = data.pop("precio_publicado", None)    # alias alias
     tasacion = data.get("tasacion")                        # keep in appraisals too
 
@@ -537,6 +538,9 @@ def create_inspeccion():
             if ai_instant_buy_price is not None:
                 updates.append("ai_instant_buy_price=?")
                 params.append(int(ai_instant_buy_price))
+            if owner_price is not None:
+                updates.append("owner_price=?")
+                params.append(int(owner_price))
             if selling_price is not None:
                 updates.append("selling_price=?")
                 params.append(int(selling_price))
