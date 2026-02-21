@@ -1610,6 +1610,8 @@ def update_consignacion(cid):
         ).fetchone()
 
     result = row_to_dict(row)
+    log_to_file(f"[update_consignacion] cid={cid} result keys: {list(result.keys())}")
+    log_to_file(f"[update_consignacion] cid={cid} result identifiers: plate='{result.get('plate')}', supa_id='{result.get('appointment_supabase_id')}', rut='{result.get('owner_rut')}', phone='{result.get('owner_phone')}'")
 
     # Sync CRM lead stage when consignacion status changes
     new_status = updates.get("status")
@@ -1710,8 +1712,12 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
         print("[sync_crm_stage] Error:", e)
 
 def log_to_file(msg):
-    with open("simply_sync.log", "a") as f:
-        f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+    log_path = os.path.join(os.path.dirname(__file__), "simply_sync.log")
+    try:
+        with open(log_path, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+    except Exception:
+        pass # Don't crash if log fails
 
 def _sync_crm_lead_owner_details(consig):
     """
