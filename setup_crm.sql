@@ -202,12 +202,19 @@ ALTER TABLE funnel_listings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE funnel_lead_status ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (SimplyAPI uses service role key)
+DROP POLICY IF EXISTS "Service role full access" ON cars;
 CREATE POLICY "Service role full access" ON cars USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON crm_users;
 CREATE POLICY "Service role full access" ON crm_users USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON consignaciones;
 CREATE POLICY "Service role full access" ON consignaciones USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON crm_leads;
 CREATE POLICY "Service role full access" ON crm_leads USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON crm_activities;
 CREATE POLICY "Service role full access" ON crm_activities USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON funnel_listings;
 CREATE POLICY "Service role full access" ON funnel_listings USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON funnel_lead_status;
 CREATE POLICY "Service role full access" ON funnel_lead_status USING (true) WITH CHECK (true);
 
 -- ─── Compradores (Buyers) ────────────────────────────────────
@@ -259,4 +266,5 @@ CREATE INDEX IF NOT EXISTS idx_compradores_rut ON compradores(rut);
 CREATE INDEX IF NOT EXISTS idx_compradores_consig ON compradores(consignacion_id);
 
 ALTER TABLE compradores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Service role full access" ON compradores;
 CREATE POLICY "Service role full access" ON compradores USING (true) WITH CHECK (true);
