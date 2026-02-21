@@ -38,6 +38,16 @@ from db import get_conn, get_db, get_crm_conn, row_to_dict
 from execution.consignment_logic import calculate_commission
 from execution.validate_dte_schema import validate as validate_schema
 
+
+def log_to_file(msg):
+    """Simple logger — prints to stdout and appends to simply_sync.log."""
+    print(msg, flush=True)
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "simply_sync.log"), "a") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "autodirecto-crm-secret-2026")
 
@@ -1620,8 +1630,14 @@ def update_consignacion(cid):
             result.get("owner_phone")
         )
 
-    # Sync Owner details to CRM
-    _sync_crm_lead_owner_details(result)
+    # Sync Owner details to CRM — re-fetch full consig to ensure all fields are present
+    try:
+        with get_db() as conn_sync:
+            full_consig = conn_sync.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+        if full_consig:
+            _sync_crm_lead_owner_details(row_to_dict(full_consig))
+    except Exception as e_sync:
+        print(f"[update_consignacion] sync error: {e_sync}", flush=True)
 
     result["ok"] = True
     return jsonify(result)
@@ -1808,6 +1824,98 @@ def _sync_crm_lead_owner_details(consig):
                 print(f"[sync_crm_owner] No matching CRM lead found for consig {consig_id}", flush=True)
     except Exception as e:
         print(f"[sync_crm_owner] Error for consig {consig_id}: {e}", flush=True)
+
+
+def _sync_consignacion_from_crm_lead(lead):
+    """
+    Reverse sync: when CRM lead details are updated, push them to the
+    linked consignacion so both modules stay perfectly in sync.
+    Matches by plate, rut, or phone.
+    """
+    lead_id = lead.get("id")
+    plate = (lead.get("plate") or "").strip()
+    rut = (lead.get("rut") or "").strip()
+    phone = (lead.get("phone") or "").strip()
+    supabase_id = lead.get("supabase_id")
+
+    print(f"[sync_consig_from_crm] Triggered for CRM lead {lead_id} (plate='{plate}', rut='{rut}', phone='{phone}')", flush=True)
+
+    if not any([plate, rut, phone, supabase_id]):
+        print(f"[sync_consig_from_crm] No identifiers, skipping", flush=True)
+        return
+
+    # Build update payload: CRM field → consignacion field
+    consig_updates = {}
+    fn = (lead.get("first_name") or "").strip()
+    ln = (lead.get("last_name") or "").strip()
+    full = (lead.get("full_name") or "").strip() or "{} {}".format(fn, ln).strip()
+
+    if fn: consig_updates["owner_first_name"] = fn
+    if ln: consig_updates["owner_last_name"] = ln
+    if full: consig_updates["owner_full_name"] = full
+    if lead.get("rut"): consig_updates["owner_rut"] = rut
+    if lead.get("phone"): consig_updates["owner_phone"] = phone
+    if lead.get("email"): consig_updates["owner_email"] = lead["email"]
+    if lead.get("region"): consig_updates["owner_region"] = lead["region"]
+    if lead.get("commune"): consig_updates["owner_commune"] = lead["commune"]
+    if lead.get("address"): consig_updates["owner_address"] = lead["address"]
+    if lead.get("country_code"): consig_updates["owner_country_code"] = lead["country_code"]
+
+    if not consig_updates:
+        print(f"[sync_consig_from_crm] No owner fields to sync, skipping", flush=True)
+        return
+
+    consig_updates["updated_at"] = datetime.now().isoformat()
+
+    try:
+        with get_db() as conn:
+            consig = None
+
+            # 1. Match by appointment_supabase_id
+            if supabase_id:
+                consig = conn.execute(
+                    "SELECT id FROM consignaciones WHERE appointment_supabase_id=? LIMIT 1",
+                    (supabase_id,)
+                ).fetchone()
+                if consig: print(f"[sync_consig_from_crm] Matched by supabase_id → consig #{consig['id']}", flush=True)
+
+            # 2. Match by plate
+            if not consig and plate:
+                consig = conn.execute(
+                    "SELECT id FROM consignaciones WHERE plate=? LIMIT 1",
+                    (plate,)
+                ).fetchone()
+                if consig: print(f"[sync_consig_from_crm] Matched by plate → consig #{consig['id']}", flush=True)
+
+            # 3. Match by RUT
+            if not consig and rut:
+                consig = conn.execute(
+                    "SELECT id FROM consignaciones WHERE owner_rut=? LIMIT 1",
+                    (rut,)
+                ).fetchone()
+                if consig: print(f"[sync_consig_from_crm] Matched by RUT → consig #{consig['id']}", flush=True)
+
+            # 4. Match by phone
+            if not consig and phone:
+                consig = conn.execute(
+                    "SELECT id FROM consignaciones WHERE owner_phone=? LIMIT 1",
+                    (phone,)
+                ).fetchone()
+                if consig: print(f"[sync_consig_from_crm] Matched by phone → consig #{consig['id']}", flush=True)
+
+            if consig:
+                cid = consig["id"]
+                set_clause = ", ".join("{}=?".format(k) for k in consig_updates)
+                conn.execute(
+                    "UPDATE consignaciones SET {} WHERE id=?".format(set_clause),
+                    list(consig_updates.values()) + [cid]
+                )
+                conn.commit()
+                print(f"[sync_consig_from_crm] Updated consig #{cid} with: {list(consig_updates.keys())}", flush=True)
+            else:
+                print(f"[sync_consig_from_crm] No matching consignacion found for CRM lead {lead_id}", flush=True)
+    except Exception as e:
+        print(f"[sync_consig_from_crm] Error: {e}", flush=True)
 
 
 @app.route("/api/consignaciones/<int:cid>/publicar", methods=["POST"])
@@ -3279,6 +3387,15 @@ def crm_update_lead(lead_id):
         updates['tags'] = json.dumps(updates['tags'])
     updates['updated_at'] = datetime.now().isoformat()
 
+    # Auto-compute full_name when first_name or last_name changes
+    if 'first_name' in updates or 'last_name' in updates:
+        with get_crm_conn() as conn:
+            current = conn.execute("SELECT first_name, last_name FROM crm_leads WHERE id=?", (lead_id,)).fetchone()
+        if current:
+            fn = updates.get('first_name', current.get('first_name') or '').strip()
+            ln = updates.get('last_name', current.get('last_name') or '').strip()
+            updates['full_name'] = "{} {}".format(fn, ln).strip()
+
     # Track stage change
     old_stage = None
     if 'stage' in updates:
@@ -3302,7 +3419,13 @@ def crm_update_lead(lead_id):
             )
         conn.commit()
         row = conn.execute("SELECT * FROM crm_leads WHERE id=?", (lead_id,)).fetchone()
-    return jsonify(row_to_dict(row))
+
+    result = row_to_dict(row)
+
+    # ── Reverse sync: push owner details to matching consignacion ──
+    _sync_consignacion_from_crm_lead(result)
+
+    return jsonify(result)
 
 
 @app.route("/api/crm/leads/<int:lead_id>", methods=["DELETE"])
