@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS consignaciones (
   vin TEXT,
   owner_price INTEGER,
   selling_price INTEGER,
+  ai_market_price INTEGER,
+  ai_instant_buy_price INTEGER,
   commission_pct REAL DEFAULT 0.10,
   condition_notes TEXT,
   km_verified INTEGER,

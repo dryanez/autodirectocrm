@@ -1164,17 +1164,21 @@ def calendar_assign():
             # Check if this appointment is linked to a funnel lead with AI prices
             selling_price = None
             owner_price = None
+            ai_market_price = None
+            ai_instant_buy_price = None
             matched_id = appt.get("matched_funnel_id")
             if matched_id:
                 try:
                     with get_crm_conn() as crm_conn:
                         lead = crm_conn.execute(
-                            "SELECT estimated_value, ai_consignacion_price, listing_price FROM crm_leads WHERE funnel_url=? OR id=? LIMIT 1",
+                            "SELECT estimated_value, ai_consignacion_price, listing_price, ai_instant_buy_price FROM crm_leads WHERE funnel_url=? OR id=? LIMIT 1",
                             (matched_id, matched_id)
                         ).fetchone()
                         if lead:
                             # market value goes to selling_price
                             selling_price = lead.get("estimated_value")
+                            ai_market_price = lead.get("estimated_value")
+                            ai_instant_buy_price = lead.get("ai_instant_buy_price")
                             # payout goes to owner_price
                             owner_price = lead.get("ai_consignacion_price") or lead.get("listing_price")
                 except Exception as e:
@@ -1188,8 +1192,8 @@ def calendar_assign():
                     owner_email, owner_region, owner_commune, owner_address,
                     plate, car_make, car_model, car_year, mileage, version,
                     appointment_date, appointment_time, assigned_user_id,
-                    status, selling_price, owner_price, created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    status, selling_price, owner_price, ai_market_price, ai_instant_buy_price, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 supabase_id,
                 appt.get("first_name"), appt.get("last_name"), appt.get("full_name"),
@@ -1198,7 +1202,7 @@ def calendar_assign():
                 appt.get("plate"), appt.get("car_make"), appt.get("car_model"),
                 appt.get("car_year"), appt.get("mileage"), appt.get("version"),
                 appt.get("appointment_date"), appt.get("appointment_time"),
-                user_id, "parte1_completa", selling_price, owner_price, now, now
+                user_id, "parte1_completa", selling_price, owner_price, ai_market_price, ai_instant_buy_price, now, now
             ))
             consig_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.commit()
@@ -1392,9 +1396,14 @@ def create_consignacion():
                 if ai_market_price:
                     updates.append("selling_price=?")
                     params.append(int(ai_market_price))
+                    updates.append("ai_market_price=?")
+                    params.append(int(ai_market_price))
                 if ai_consignacion_price:
                     updates.append("owner_price=?")
                     params.append(int(ai_consignacion_price))
+                if ai_immediate_offer:
+                    updates.append("ai_instant_buy_price=?")
+                    params.append(int(ai_immediate_offer))
                 updates.append("updated_at=?")
                 params.append(now)
                 params.append(new_id)
@@ -1509,6 +1518,7 @@ def update_consignacion(cid):
         "owner_first_name","owner_last_name","owner_rut","owner_phone","owner_email",
         "owner_region","owner_commune","owner_address","plate","car_make","car_model",
         "car_year","mileage","version","color","vin","owner_price","selling_price",
+        "ai_market_price","ai_instant_buy_price",
         "commission_pct","condition_notes","km_verified","inspection_photos",
         "appointment_date","appointment_time","assigned_user_id","status","notes",
         "part1_completed_at","part2_completed_at","appraisal_supabase_id"

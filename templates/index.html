@@ -1430,7 +1430,17 @@
 
                     <div class="grid grid-cols-1 gap-3">
                         <div>
-                            <label class="block text-xs text-slate-400 mb-1">Tasación (CLP)</label>
+                            <label class="block text-xs text-slate-400 mb-1">🤖 Valor Mercado Real (IA) (CLP)</label>
+                            <input type="number" x-model.number="insp.aiMarketPrice" class="insp-input"
+                                placeholder="Cálculo IA del precio real">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">⚡ Compra Inmediata (IA) (CLP)</label>
+                            <input type="number" x-model.number="insp.aiInstantBuyPrice" class="insp-input"
+                                placeholder="Precio de toma/compra inmediata">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Tasación Fiscal (CLP)</label>
                             <input type="number" x-model.number="insp.tasacion" placeholder="$" class="insp-input">
                         </div>
                         <div>
@@ -1618,12 +1628,22 @@
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
                         <p class="text-xs text-green-400 font-semibold uppercase tracking-wider mb-3">Precios</p>
                         <div class="space-y-1">
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Tasación</span>
+                            <div class="flex justify-between items-center py-2 border-b border-white/5">
+                                <span class="text-slate-400">🤖 Valor Mercado (IA)</span>
+                                <span class="text-white font-mono"
+                                    x-text="insp.aiMarketPrice ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.aiMarketPrice) : '—'"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-white/5">
+                                <span class="text-slate-400">⚡ Compra Inmediata (IA)</span>
+                                <span class="text-white font-mono"
+                                    x-text="insp.aiInstantBuyPrice ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.aiInstantBuyPrice) : '—'"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-white/5">
+                                <span class="text-slate-400">Tasación Fiscal</span>
                                 <span class="text-white font-mono"
                                     x-text="insp.tasacion ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.tasacion) : '—'"></span>
                             </div>
-                            <div class="flex justify-between text-xs">
+                            <div class="flex justify-between items-center py-2 border-b border-white/5">
                                 <span class="text-slate-400">Publicado</span>
                                 <span class="text-white font-mono"
                                     x-text="insp.precioPublicado ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.precioPublicado) : '—'"></span>
@@ -3022,6 +3042,8 @@
                         soap: null,
                         soapCompania: '',
                         // Pricing
+                        aiMarketPrice: c?.ai_market_price || null,
+                        aiInstantBuyPrice: c?.ai_instant_buy_price || null,
                         tasacion: c?.market_value || null,
                         precioPublicado: c?.listing_price || null,
                         precioSugerido: c?.proposed_price || c?.market_value || null,
@@ -3098,6 +3120,8 @@
                             soap: this.insp.soap,
                             soap_compania: this.insp.soapCompania || null,
                             // Pricing
+                            ai_market_price: this.insp.aiMarketPrice || null,
+                            ai_instant_buy_price: this.insp.aiInstantBuyPrice || null,
                             tasacion: this.insp.tasacion || null,
                             precio_publicado: this.insp.precioPublicado || null,
                             precio_sugerido: this.insp.precioSugerido || null,
