@@ -1602,15 +1602,18 @@ def _sync_crm_lead_stage(plate, consig_status):
         "vendida":         "vendido",
     }
     new_stage = status_to_stage.get(consig_status)
-    if not new_stage:
+    plate = (plate or "").strip()
+    if not plate:
         return
+    print(f"[sync_crm_stage] Triggered for plate: {plate} -> {new_stage}")
     try:
         with get_crm_conn() as conn:
             lead = conn.execute(
-                "SELECT id, stage FROM crm_leads WHERE UPPER(plate)=UPPER(?) LIMIT 1",
+                "SELECT id, stage FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
                 (plate,)
             ).fetchone()
             if lead:
+                print(f"[sync_crm_stage] Found lead ID {lead['id']} for plate {plate}")
                 old_stage = lead["stage"]
                 if old_stage != new_stage:
                     now = datetime.now().isoformat()
@@ -1626,6 +1629,9 @@ def _sync_crm_lead_stage(plate, consig_status):
                              CRM_STAGE_LABELS.get(new_stage, new_stage)))
                     )
                     conn.commit()
+                    print(f"[sync_crm_stage] Successfully updated lead {lead['id']} stage to {new_stage}")
+            else:
+                print(f"[sync_crm_stage] No lead found for plate: {plate}")
     except Exception as e:
         print("[sync_crm_stage] Error:", e)
 
@@ -1636,9 +1642,11 @@ def _sync_crm_lead_owner_details(consig):
     so both modules stay perfectly in sync. 
     Also updates owner_full_name in the consignacion if not set.
     """
-    plate = consig.get("plate")
+    plate = (consig.get("plate") or "").strip()
     if not plate:
         return
+    
+    print(f"[sync_crm_owner] Triggered for consig ID {consig.get('id')} (plate: {plate})")
     
     fn = (consig.get("owner_first_name") or "").strip()
     ln = (consig.get("owner_last_name") or "").strip()
@@ -1650,7 +1658,9 @@ def _sync_crm_lead_owner_details(consig):
             with get_db() as conn:
                 conn.execute("UPDATE consignaciones SET owner_full_name=? WHERE id=?", (full, consig["id"]))
                 conn.commit()
-        except: pass
+                print(f"[sync_crm_owner] Updated local owner_full_name to: {full}")
+        except Exception as e:
+            print("[sync_crm_owner] Local full_name update error:", e)
 
     lead_updates = {
         "first_name": fn,
@@ -1667,18 +1677,21 @@ def _sync_crm_lead_owner_details(consig):
 
     try:
         with get_crm_conn() as conn:
-            # Find lead by plate
             lead = conn.execute(
-                "SELECT id FROM crm_leads WHERE UPPER(plate)=UPPER(?) LIMIT 1",
+                "SELECT id FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
                 (plate,)
             ).fetchone()
             if lead:
+                print(f"[sync_crm_owner] Found matching CRM lead ID {lead['id']} for plate {plate}")
                 set_clause = ", ".join("{}=?".format(k) for k in lead_updates)
                 conn.execute(
                     "UPDATE crm_leads SET {} WHERE id=?".format(set_clause),
                     list(lead_updates.values()) + [lead["id"]]
                 )
                 conn.commit()
+                print(f"[sync_crm_owner] Successfully pushed updates to CRM lead {lead['id']}: {full}")
+            else:
+                print(f"[sync_crm_owner] No CRM lead found with plate: {plate}")
     except Exception as e:
         print("[sync_crm_owner] Error:", e)
 
