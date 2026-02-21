@@ -1570,6 +1570,9 @@ def update_consignacion(cid):
     if new_status:
         _sync_crm_lead_stage(result.get("plate"), new_status)
 
+    # Sync Owner details to CRM
+    _sync_crm_lead_owner_details(result)
+
     result["ok"] = True
     return jsonify(result)
 
@@ -1615,7 +1618,60 @@ def _sync_crm_lead_stage(plate, consig_status):
                     )
                     conn.commit()
     except Exception as e:
-        print("[sync_crm] Error:", e)
+        print("[sync_crm_stage] Error:", e)
+
+
+def _sync_crm_lead_owner_details(consig):
+    """
+    When consignacion owner details are updated, push them to the linked CRM lead
+    so both modules stay perfectly in sync. 
+    Also updates owner_full_name in the consignacion if not set.
+    """
+    plate = consig.get("plate")
+    if not plate:
+        return
+    
+    fn = (consig.get("owner_first_name") or "").strip()
+    ln = (consig.get("owner_last_name") or "").strip()
+    full = "{} {}".format(fn, ln).strip()
+    
+    # Update local owner_full_name if it changed or is missing
+    if full and full != consig.get("owner_full_name"):
+        try:
+            with get_db() as conn:
+                conn.execute("UPDATE consignaciones SET owner_full_name=? WHERE id=?", (full, consig["id"]))
+                conn.commit()
+        except: pass
+
+    lead_updates = {
+        "first_name": fn,
+        "last_name": ln,
+        "full_name": full,
+        "phone": consig.get("owner_phone"),
+        "email": consig.get("owner_email"),
+        "rut": consig.get("owner_rut"),
+        "region": consig.get("owner_region"),
+        "commune": consig.get("owner_commune"),
+        "address": consig.get("owner_address"),
+        "updated_at": datetime.now().isoformat()
+    }
+
+    try:
+        with get_crm_conn() as conn:
+            # Find lead by plate
+            lead = conn.execute(
+                "SELECT id FROM crm_leads WHERE UPPER(plate)=UPPER(?) LIMIT 1",
+                (plate,)
+            ).fetchone()
+            if lead:
+                set_clause = ", ".join("{}=?".format(k) for k in lead_updates)
+                conn.execute(
+                    "UPDATE crm_leads SET {} WHERE id=?".format(set_clause),
+                    list(lead_updates.values()) + [lead["id"]]
+                )
+                conn.commit()
+    except Exception as e:
+        print("[sync_crm_owner] Error:", e)
 
 
 @app.route("/api/consignaciones/<int:cid>/publicar", methods=["POST"])
