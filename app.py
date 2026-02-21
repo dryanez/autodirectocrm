@@ -1161,6 +1161,25 @@ def calendar_assign():
             )
             consig_id = existing["id"]
         else:
+            # Check if this appointment is linked to a funnel lead with AI prices
+            selling_price = None
+            owner_price = None
+            matched_id = appt.get("matched_funnel_id")
+            if matched_id:
+                try:
+                    with get_crm_conn() as crm_conn:
+                        lead = crm_conn.execute(
+                            "SELECT estimated_value, ai_consignacion_price, listing_price FROM crm_leads WHERE funnel_url=? OR id=? LIMIT 1",
+                            (matched_id, matched_id)
+                        ).fetchone()
+                        if lead:
+                            # market value goes to selling_price
+                            selling_price = lead.get("estimated_value")
+                            # payout goes to owner_price
+                            owner_price = lead.get("ai_consignacion_price") or lead.get("listing_price")
+                except Exception as e:
+                    print(f"[Calendar assign] Error fetching CRM lead prices: {e}")
+
             # Create Part 1 consignación from appointment data
             conn.execute("""
                 INSERT INTO consignaciones (
@@ -1169,8 +1188,8 @@ def calendar_assign():
                     owner_email, owner_region, owner_commune, owner_address,
                     plate, car_make, car_model, car_year, mileage, version,
                     appointment_date, appointment_time, assigned_user_id,
-                    status, created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    status, selling_price, owner_price, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 supabase_id,
                 appt.get("first_name"), appt.get("last_name"), appt.get("full_name"),
@@ -1179,7 +1198,7 @@ def calendar_assign():
                 appt.get("plate"), appt.get("car_make"), appt.get("car_model"),
                 appt.get("car_year"), appt.get("mileage"), appt.get("version"),
                 appt.get("appointment_date"), appt.get("appointment_time"),
-                user_id, "parte1_completa", now, now
+                user_id, "parte1_completa", selling_price, owner_price, now, now
             ))
             consig_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.commit()
@@ -1364,18 +1383,18 @@ def create_consignacion():
             print("[consignacion] no matched lead or no AI price, skipping AI price", flush=True)
 
         # ── Update consignacion with AI prices ──
-        # selling_price = AI consignación price (what the contract uses)
-        # owner_price = FB listing price (what the person originally asked)
-        if new_id and (ai_consignacion_price or listing_price):
+        # selling_price = AI market price (what the car will be sold for)
+        # owner_price = AI consignación price (what the owner gets)
+        if new_id and (ai_market_price or ai_consignacion_price):
             try:
                 updates = []
                 params = []
-                if ai_consignacion_price:
+                if ai_market_price:
                     updates.append("selling_price=?")
-                    params.append(int(ai_consignacion_price))
-                if listing_price:
+                    params.append(int(ai_market_price))
+                if ai_consignacion_price:
                     updates.append("owner_price=?")
-                    params.append(int(listing_price))
+                    params.append(int(ai_consignacion_price))
                 updates.append("updated_at=?")
                 params.append(now)
                 params.append(new_id)
@@ -1891,9 +1910,18 @@ def _build_contract_pdf(consig, appraisal=None):
     permiso     = "Pagado" if a.get("permiso_circulacion") else "Pendiente"
     soap        = "Pagado" if a.get("soap") else "Pendiente"
     num_llaves  = a.get("num_llaves","")
-    tasacion    = a.get("tasacion", 0)
-    precio_pub  = a.get("precio_publicado", 0) or c.get("selling_price", 0)
-    precio_cli  = a.get("precio_sugerido", 0) or c.get("owner_price", 0)
+    # Appraisal data (if available from Supabase)
+    a = appraisal or {}
+    
+    # ── PRICING LOGIC FIX ──
+    # PRECIO PUBLICACIÓN (market price) should come from "precio_sugerido" in the UI
+    precio_pub = a.get("precio_sugerido", 0) or c.get("selling_price", 0)
+    
+    # PRECIO CLIENTE (owner payout)
+    # The owner payout is the consignacion price we calculated, which is stored in owner_price
+    # or it is calculated as market price - commission
+    precio_cli = c.get("owner_price", 0) or a.get("precio_publicado", 0)
+    comision_calc = precio_pub - precio_cli if precio_pub > precio_cli else 0
     observaciones = a.get("observaciones","") or c.get("condition_notes","") or "No se registran observaciones."
     comision    = a.get("comision") or c.get("commission_pct") or 0.10
     consignado_por = a.get("quien_tomo_fotos","") or signer_name
