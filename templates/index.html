@@ -1181,7 +1181,7 @@
                     </div>
 
                     <!-- Signature Canvas -->
-                    <div class="flex-1 flex flex-col">
+                    <div x-show="!contractSigned" class="flex-1 flex flex-col">
                         <div class="flex items-center justify-between mb-2">
                             <label class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Dibuje su
                                 firma</label>
@@ -1204,11 +1204,21 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Already Signed State -->
+                    <div x-show="contractSigned"
+                        class="flex-1 flex flex-col items-center justify-center text-center p-4">
+                        <i class="ph ph-check-circle text-5xl text-green-500 mb-3"></i>
+                        <h4 class="text-white font-bold text-lg mb-2">Contrato Firmado</h4>
+                        <p class="text-slate-400 text-sm">El cliente ya ha firmado este documento digitalmente. El
+                            contrato final se encuentra guardado de forma permanente.</p>
+                    </div>
                 </div>
 
                 <!-- Submit signature -->
                 <div class="p-5 border-t border-slate-800 space-y-2">
-                    <button @click="submitSignature()" :disabled="!signatureStarted || contractSigning"
+                    <button x-show="!contractSigned" @click="submitSignature()"
+                        :disabled="!signatureStarted || contractSigning"
                         class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white py-3 rounded-xl text-sm font-bold transition-all">
                         <span x-show="!contractSigning" class="flex items-center gap-2">
                             <i class="ph ph-check-circle text-lg"></i> Firmar Contrato
@@ -1218,8 +1228,8 @@
                         </span>
                     </button>
                     <button @click="contractOpen=false"
-                        class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 py-2 rounded-xl text-xs font-medium transition-colors">
-                        Omitir por ahora
+                        class="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-xl text-xs font-semibold transition-colors">
+                        <span x-text="contractSigned ? 'Cerrar' : 'Omitir por ahora'"></span>
                     </button>
                 </div>
             </div>

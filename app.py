@@ -2170,10 +2170,10 @@ def _add_client_signature_to_pdf(pdf_bytes, signature_b64, consig):
     overlay_buf = io.BytesIO()
     c = pdf_canvas.Canvas(overlay_buf, pagesize=letter)
     # Position: right side, above the signature line (matching the layout)
-    # The client signature area is roughly at x=350, y=80, width=180, height=60
+    # The client signature area is roughly at x=350, y=135, width=180, height=60
     from reportlab.lib.utils import ImageReader
     img = ImageReader(sig_img)
-    c.drawImage(img, 350, 85, width=180, height=55, mask='auto', preserveAspectRatio=True, anchor='c')
+    c.drawImage(img, 350, 135, width=180, height=55, mask='auto', preserveAspectRatio=True, anchor='c')
     c.save()
     overlay_buf.seek(0)
 
