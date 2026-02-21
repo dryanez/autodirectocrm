@@ -39,6 +39,24 @@ from execution.consignment_logic import calculate_commission
 from execution.validate_dte_schema import validate as validate_schema
 
 
+def _parse_car_from_title(title):
+    """Parse car_make, car_model, car_year from a FB Marketplace title like '2025 Hyundai Creta'."""
+    import re as _re
+    if not title:
+        return None, None, None
+    parts = title.split()
+    car_year = None
+    # Strip leading year (e.g. "2025 Hyundai Creta" → ["Hyundai", "Creta"])
+    year_match = _re.search(r'\b(19|20)\d{2}\b', title)
+    if year_match:
+        car_year = int(year_match.group())
+    if parts and parts[0].isdigit() and len(parts[0]) == 4:
+        parts = parts[1:]  # remove year from front
+    car_make = parts[0] if len(parts) > 0 else None
+    car_model = " ".join(parts[1:]) if len(parts) > 1 else None
+    return car_make, car_model, car_year
+
+
 def log_to_file(msg):
     """Simple logger — prints to stdout and appends to simply_sync.log."""
     print(msg, flush=True)
@@ -237,14 +255,8 @@ if FUNNELS_DIR.exists():
                                     break
 
                             title = (listing or {}).get("title", "") if listing else ""
-                            parts = title.split()
-                            car_make = parts[0] if len(parts) > 0 else None
-                            car_model = " ".join(parts[1:]) if len(parts) > 1 else None
-                            car_year = None
-                            year_match = _re.search(r'\b(19|20)\d{2}\b', title)
-                            if year_match:
-                                car_year = int(year_match.group())
-                            elif listing and listing.get("year"):
+                            car_make, car_model, car_year = _parse_car_from_title(title)
+                            if listing and listing.get("year") and not car_year:
                                 car_year = int(listing["year"])
 
                             mileage = None
@@ -3643,14 +3655,7 @@ def crm_import_funnels():
                 continue
             # Parse vehicle info from title
             title = lead.get("title", "")
-            parts = title.split()
-            car_make = parts[0] if len(parts) > 0 else None
-            car_model = " ".join(parts[1:]) if len(parts) > 1 else None
-            # Parse year from title
-            car_year = None
-            year_match = _re.search(r'\b(19|20)\d{2}\b', title)
-            if year_match:
-                car_year = int(year_match.group())
+            car_make, car_model, car_year = _parse_car_from_title(title)
             # Parse mileage
             mileage_raw = lead.get("mileage", "")
             mileage = None
