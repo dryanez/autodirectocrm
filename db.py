@@ -71,6 +71,11 @@ class SupabaseRow(dict):
         except KeyError:
             raise AttributeError(key)
 
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
     def keys(self):
         return super().keys()
 

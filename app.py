@@ -3167,10 +3167,11 @@ def crm_stats():
             count = conn.execute("SELECT COUNT(*) FROM crm_leads WHERE stage=?", (stage,)).fetchone()[0]
             pipeline[stage] = count
         # Source breakdown
-        sources = conn.execute(
-            "SELECT source, COUNT(*) as count FROM crm_leads GROUP BY source"
-        ).fetchall()
-        source_map = {r['source']: r['count'] for r in sources}
+        all_leads = conn.execute("SELECT source FROM crm_leads").fetchall()
+        source_map = {}
+        for r in all_leads:
+            src = r.get("source") or "unknown"
+            source_map[src] = source_map.get(src, 0) + 1
         # Recent leads (last 7 days)
         recent = conn.execute(
             "SELECT COUNT(*) FROM crm_leads WHERE created_at >= datetime('now', '-7 days')"
@@ -3362,9 +3363,7 @@ def stats():
             "SELECT selling_price, commission_pct FROM cars WHERE status IN ('sold','sent_dte')"
         ).fetchall()
         total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0)) for r in rows)
-        total_ventas = conn.execute(
-            "SELECT COALESCE(SUM(selling_price),0) FROM cars WHERE status IN ('sold','sent_dte')"
-        ).fetchone()[0]
+        total_ventas = sum(r["selling_price"] or 0 for r in rows)
 
     return jsonify({
         "total": total,
