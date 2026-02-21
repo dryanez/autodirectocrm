@@ -1521,7 +1521,8 @@ def update_consignacion(cid):
         "ai_market_price","ai_instant_buy_price",
         "commission_pct","condition_notes","km_verified","inspection_photos",
         "appointment_date","appointment_time","assigned_user_id","status","notes",
-        "part1_completed_at","part2_completed_at","appraisal_supabase_id"
+        "part1_completed_at","part2_completed_at","appraisal_supabase_id",
+        "contract_signed_at","contract_pdf"
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
@@ -2169,11 +2170,11 @@ def _add_client_signature_to_pdf(pdf_bytes, signature_b64, consig):
     # Create overlay PDF with just the signature image
     overlay_buf = io.BytesIO()
     c = pdf_canvas.Canvas(overlay_buf, pagesize=letter)
-    # Position: right side, above the signature line (matching the layout)
-    # The client signature area is roughly at x=350, y=135, width=180, height=60
+    # Position: right side, on the signature line (above client name/RUT)
+    # The client signature area is roughly at x=350, y=175, width=180, height=55
     from reportlab.lib.utils import ImageReader
     img = ImageReader(sig_img)
-    c.drawImage(img, 350, 135, width=180, height=55, mask='auto', preserveAspectRatio=True, anchor='c')
+    c.drawImage(img, 350, 175, width=180, height=55, mask='auto', preserveAspectRatio=True, anchor='c')
     c.save()
     overlay_buf.seek(0)
 
@@ -2195,14 +2196,69 @@ def _add_client_signature_to_pdf(pdf_bytes, signature_b64, consig):
     return output.getvalue()
 
 
+def _upload_contract_to_supabase(pdf_bytes, filename):
+    """Upload a contract PDF to Supabase Storage bucket 'contratos'."""
+    import requests as req_lib
+    supa_url, headers = _supa_headers()
+    # Use storage API (not REST)
+    storage_url = "{}/storage/v1/object/contratos/{}".format(supa_url, filename)
+    upload_headers = {
+        "apikey": headers["apikey"],
+        "Authorization": headers["Authorization"],
+        "Content-Type": "application/pdf",
+        "x-upsert": "true",  # overwrite if exists
+    }
+    r = req_lib.post(storage_url, headers=upload_headers, data=pdf_bytes, timeout=15)
+    if r.status_code in (200, 201):
+        print("[contrato] Uploaded {} to Supabase Storage".format(filename))
+        return True
+    else:
+        print("[contrato] Upload failed {}: {}".format(r.status_code, r.text))
+        return False
+
+
+def _download_contract_from_supabase(filename):
+    """Download a contract PDF from Supabase Storage bucket 'contratos'. Returns bytes or None."""
+    import requests as req_lib
+    supa_url, headers = _supa_headers()
+    storage_url = "{}/storage/v1/object/contratos/{}".format(supa_url, filename)
+    dl_headers = {
+        "apikey": headers["apikey"],
+        "Authorization": headers["Authorization"],
+    }
+    r = req_lib.get(storage_url, headers=dl_headers, timeout=15)
+    if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("application/"):
+        return r.content
+    print("[contrato] Download from storage failed {}: {}".format(r.status_code, r.text[:200]))
+    return None
+
 @app.route("/api/consignaciones/<int:cid>/contrato", methods=["GET"])
 def generate_contract(cid):
-    """Generate the consignment contract PDF, digitally signed."""
+    """Generate or retrieve the consignment contract PDF, digitally signed."""
     with get_db() as conn:
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "Consignación no encontrada"}), 404
     consig = row_to_dict(row)
+
+    # If the contract is already signed, serve the signed version from Supabase Storage
+    if consig.get("contract_signed_at") and consig.get("contract_pdf"):
+        signed_filename = consig["contract_pdf"]
+        # Try local cache first
+        contratos_dir = os.path.join("/tmp", "contratos")
+        filepath = os.path.join(contratos_dir, signed_filename)
+        if os.path.exists(filepath):
+            return send_file(filepath, mimetype="application/pdf", as_attachment=False,
+                             download_name=signed_filename)
+        # Try Supabase Storage
+        pdf_bytes = _download_contract_from_supabase(signed_filename)
+        if pdf_bytes:
+            # Cache locally
+            os.makedirs(contratos_dir, exist_ok=True)
+            with open(filepath, "wb") as f:
+                f.write(pdf_bytes)
+            return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                             as_attachment=False, download_name=signed_filename)
 
     # Try to get appraisal data from Supabase
     appraisal = None
@@ -2316,11 +2372,17 @@ def sign_contract_client(cid):
     except Exception as e:
         print("[contrato] re-signing error:", e)
 
-    # Save signed version
+    # Save signed version locally
     signed_filename = "contrato_{}_firmado.pdf".format(cid)
     signed_filepath = os.path.join(contratos_dir, signed_filename)
     with open(signed_filepath, "wb") as f:
         f.write(pdf_bytes)
+
+    # Upload signed contract to Supabase Storage for permanent persistence
+    try:
+        _upload_contract_to_supabase(pdf_bytes, signed_filename)
+    except Exception as e:
+        print("[contrato] Supabase upload error (non-fatal):", e)
 
     # Save client signature as separate image too
     try:
@@ -2346,8 +2408,8 @@ def sign_contract_client(cid):
 
 @app.route("/api/consignaciones/<int:cid>/contrato/descargar", methods=["GET"])
 def download_contract(cid):
-    """Download the latest contract PDF (signed or unsigned).
-    If the cached file is gone (Vercel ephemeral /tmp), regenerate it.
+    """Download the latest contract PDF (signed version preferred).
+    If the cached file is gone (Vercel ephemeral /tmp), fetch from Supabase Storage or regenerate.
     """
     with get_db() as conn:
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
@@ -2359,11 +2421,23 @@ def download_contract(cid):
     filename = consig.get("contract_pdf")
     filepath = os.path.join(contratos_dir, filename) if filename else None
 
+    # Try local cache first
     if filepath and os.path.exists(filepath):
-        return send_file(filepath, mimetype="application/pdf", as_attachment=False,
-                         download_name=filename)
+        return send_file(filepath, mimetype="application/pdf",
+                         as_attachment=True, download_name=filename)
 
-    # File not cached — regenerate
+    # Try Supabase Storage (for signed contracts that were persisted)
+    if filename:
+        pdf_bytes = _download_contract_from_supabase(filename)
+        if pdf_bytes:
+            # Cache locally for future requests
+            os.makedirs(contratos_dir, exist_ok=True)
+            with open(os.path.join(contratos_dir, filename), "wb") as f:
+                f.write(pdf_bytes)
+            return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                             as_attachment=True, download_name=filename)
+
+    # File not found anywhere — regenerate unsigned version
     appraisal = None
     if consig.get("appraisal_supabase_id"):
         try:
@@ -2386,7 +2460,7 @@ def download_contract(cid):
 
     dl_name = filename or "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                     as_attachment=False, download_name=dl_name)
+                     as_attachment=True, download_name=dl_name)
 
 
 
