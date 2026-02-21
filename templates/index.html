@@ -78,7 +78,8 @@
             <a href="#" @click.prevent="currentView='dashboard'"
                 :class="currentView==='dashboard' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-squares-four text-xl mr-3" :class="currentView==='dashboard' ? 'text-blue-400' : ''"></i>
+                <i class="ph ph-squares-four text-xl mr-3"
+                    :class="currentView==='dashboard' ? 'text-blue-400' : ''"></i>
                 <span class="font-medium">Dashboard</span>
             </a>
             <a href="#" @click.prevent="currentView='dashboard'"
@@ -103,7 +104,8 @@
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
                 <i class="ph ph-funnel text-xl mr-3" :class="currentView==='funnels' ? 'text-green-400' : ''"></i>
                 <span class="font-medium">Funnels</span>
-                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold">Live</span>
+                <span
+                    class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold">Live</span>
             </a>
 
             <a href="#" @click.prevent="currentView='crm'; loadCRM()"
@@ -111,20 +113,23 @@
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
                 <i class="ph ph-address-book text-xl mr-3" :class="currentView==='crm' ? 'text-purple-400' : ''"></i>
                 <span class="font-medium">CRM</span>
-                <span class="ml-auto bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full font-semibold" x-text="crmStats.total || ''"></span>
+                <span class="ml-auto bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                    x-text="crmStats.total || ''"></span>
             </a>
 
             <a href="#" @click.prevent="currentView='calendar'; loadCalendar()"
                 :class="currentView==='calendar' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-calendar-dots text-xl mr-3" :class="currentView==='calendar' ? 'text-cyan-400' : ''"></i>
+                <i class="ph ph-calendar-dots text-xl mr-3"
+                    :class="currentView==='calendar' ? 'text-cyan-400' : ''"></i>
                 <span class="font-medium">Calendario</span>
             </a>
 
             <a href="#" @click.prevent="currentView='consignaciones'; loadConsignaciones()"
                 :class="currentView==='consignaciones' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-clipboard-text text-xl mr-3" :class="currentView==='consignaciones' ? 'text-amber-400' : ''"></i>
+                <i class="ph ph-clipboard-text text-xl mr-3"
+                    :class="currentView==='consignaciones' ? 'text-amber-400' : ''"></i>
                 <span class="font-medium">Consignaciones</span>
             </a>
 
@@ -353,7 +358,8 @@
                     :class="crmFilterStage===st ? crmStageColors[st].active : 'bg-slate-800/50 hover:bg-slate-800'"
                     class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap border border-slate-700">
                     <span class="w-2.5 h-2.5 rounded-full" :class="crmStageColors[st].dot"></span>
-                    <span :class="crmFilterStage===st ? 'text-white' : 'text-slate-300'" x-text="crmStageLabels[st]"></span>
+                    <span :class="crmFilterStage===st ? 'text-white' : 'text-slate-300'"
+                        x-text="crmStageLabels[st]"></span>
                     <span class="text-xs px-1.5 py-0.5 rounded-full bg-slate-700/50"
                         :class="crmFilterStage===st ? 'text-white' : 'text-slate-500'"
                         x-text="(crmStats.pipeline && crmStats.pipeline[st]) || 0"></span>
@@ -366,8 +372,7 @@
             <div class="flex gap-4 h-full min-w-max">
                 <template x-for="stage in crmStageOrder" :key="stage">
                     <div class="w-80 flex flex-col bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden"
-                        @dragover.prevent
-                        @drop="handleCRMDrop($event, stage)">
+                        @dragover.prevent @drop="handleCRMDrop($event, stage)">
                         <!-- Column Header -->
                         <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
                             <div class="flex items-center gap-2">
@@ -381,8 +386,7 @@
                         <div class="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
                             <template x-for="lead in crmLeads.filter(l => l.stage===stage)" :key="lead.id">
                                 <div class="glass rounded-xl p-4 cursor-pointer hover:bg-slate-700/50 transition-all border border-transparent hover:border-purple-500/30 group"
-                                    draggable="true"
-                                    @dragstart="$event.dataTransfer.setData('text/plain', lead.id)"
+                                    draggable="true" @dragstart="$event.dataTransfer.setData('text/plain', lead.id)"
                                     @click="openCRMDetail(lead.id)">
                                     <!-- Priority Indicator + Source -->
                                     <div class="flex items-center justify-between mb-2">
@@ -393,27 +397,33 @@
                                                 :class="{'text-blue-400': lead.source==='autodirecto', 'text-green-400': lead.source==='funnels', 'text-slate-500': lead.source==='manual'}"
                                                 x-text="lead.source || 'manual'"></span>
                                         </div>
-                                        <span class="text-[10px] text-slate-600 font-mono" x-text="'#' + lead.id"></span>
+                                        <span class="text-[10px] text-slate-600 font-mono"
+                                            x-text="'#' + lead.id"></span>
                                     </div>
                                     <!-- Name -->
                                     <h4 class="text-sm font-semibold text-white truncate mb-1"
-                                        x-text="lead.full_name || (lead.first_name ? lead.first_name + ' ' + (lead.last_name || '') : 'Sin nombre')"></h4>
+                                        x-text="lead.full_name || (lead.first_name ? lead.first_name + ' ' + (lead.last_name || '') : 'Sin nombre')">
+                                    </h4>
                                     <!-- Vehicle -->
                                     <div x-show="lead.car_make || lead.plate" class="flex items-center gap-1.5 mb-2">
                                         <i class="ph ph-car-simple text-slate-500 text-xs"></i>
                                         <span class="text-xs text-slate-400 truncate"
                                             x-text="[lead.car_make, lead.car_model, lead.car_year].filter(Boolean).join(' ') || lead.plate"></span>
-                                        <span x-show="lead.plate" class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-300 font-mono" x-text="lead.plate"></span>
+                                        <span x-show="lead.plate"
+                                            class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-300 font-mono"
+                                            x-text="lead.plate"></span>
                                     </div>
                                     <!-- Bottom info -->
                                     <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-800">
                                         <div class="flex items-center gap-2">
-                                            <span x-show="lead.phone" class="text-[10px] text-slate-500 flex items-center gap-0.5">
+                                            <span x-show="lead.phone"
+                                                class="text-[10px] text-slate-500 flex items-center gap-0.5">
                                                 <i class="ph ph-phone"></i>
                                                 <span x-text="lead.phone"></span>
                                             </span>
                                         </div>
-                                        <span x-show="lead.appointment_date" class="text-[10px] text-purple-400 flex items-center gap-0.5">
+                                        <span x-show="lead.appointment_date"
+                                            class="text-[10px] text-purple-400 flex items-center gap-0.5">
                                             <i class="ph ph-calendar"></i>
                                             <span x-text="lead.appointment_date"></span>
                                         </span>
@@ -451,11 +461,13 @@
                     </thead>
                     <tbody class="divide-y divide-slate-700">
                         <template x-for="lead in crmLeads" :key="lead.id">
-                            <tr class="hover:bg-slate-800/30 transition-colors cursor-pointer" @click="openCRMDetail(lead.id)">
+                            <tr class="hover:bg-slate-800/30 transition-colors cursor-pointer"
+                                @click="openCRMDetail(lead.id)">
                                 <td class="px-4 py-3 font-mono text-slate-500 text-xs" x-text="lead.id"></td>
                                 <td class="px-4 py-3">
                                     <div class="font-medium text-white text-sm"
-                                        x-text="lead.full_name || (lead.first_name ? lead.first_name + ' ' + (lead.last_name || '') : 'Sin nombre')"></div>
+                                        x-text="lead.full_name || (lead.first_name ? lead.first_name + ' ' + (lead.last_name || '') : 'Sin nombre')">
+                                    </div>
                                     <div x-show="lead.rut" class="text-xs text-slate-500" x-text="lead.rut"></div>
                                 </td>
                                 <td class="px-4 py-3">
@@ -469,13 +481,18 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="text-sm text-white" x-text="[lead.car_make, lead.car_model, lead.car_year].filter(Boolean).join(' ') || '-'"></div>
+                                    <div class="text-sm text-white"
+                                        x-text="[lead.car_make, lead.car_model, lead.car_year].filter(Boolean).join(' ') || '-'">
+                                    </div>
                                     <div x-show="lead.plate" class="mt-0.5">
-                                        <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded font-mono text-slate-300" x-text="lead.plate"></span>
+                                        <span
+                                            class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded font-mono text-slate-300"
+                                            x-text="lead.plate"></span>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span x-show="lead.appointment_date" class="text-xs text-purple-400" x-text="lead.appointment_date + (lead.appointment_time ? ' ' + lead.appointment_time : '')"></span>
+                                    <span x-show="lead.appointment_date" class="text-xs text-purple-400"
+                                        x-text="lead.appointment_date + (lead.appointment_time ? ' ' + lead.appointment_time : '')"></span>
                                     <span x-show="!lead.appointment_date" class="text-xs text-slate-600">—</span>
                                 </td>
                                 <td class="px-4 py-3 text-center">
@@ -515,12 +532,9 @@
     <div x-show="crmDetailOpen" class="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm"
         @click.self="crmDetailOpen=false" style="display:none;">
         <div class="w-full max-w-xl bg-slate-900 border-l border-slate-700 h-full flex flex-col overflow-hidden shadow-2xl"
-            x-transition:enter="transition ease-out duration-300"
-            x-transition:enter-start="translate-x-full"
-            x-transition:enter-end="translate-x-0"
-            x-transition:leave="transition ease-in duration-200"
-            x-transition:leave-start="translate-x-0"
-            x-transition:leave-end="translate-x-full">
+            x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full"
+            x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
             <!-- Detail Header -->
             <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-3">
@@ -546,7 +560,8 @@
             <div class="flex-1 overflow-y-auto">
                 <!-- Stage Selector -->
                 <div class="px-6 py-4 border-b border-slate-800">
-                    <label class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2 block">Etapa del Pipeline</label>
+                    <label class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2 block">Etapa del
+                        Pipeline</label>
                     <div class="flex flex-wrap gap-1.5">
                         <template x-for="st in crmStageOrder" :key="st">
                             <button @click="updateCRMLeadStage(crmDetail.id, st)"
@@ -567,8 +582,10 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <i class="ph ph-phone text-slate-500 w-5 text-center"></i>
-                            <span class="text-sm text-white" x-text="crmDetail?.phone ? (crmDetail.country_code || '+56') + ' ' + crmDetail.phone : '—'"></span>
-                            <a x-show="crmDetail?.phone" :href="'https://wa.me/' + (crmDetail?.country_code || '+56').replace('+','') + crmDetail?.phone"
+                            <span class="text-sm text-white"
+                                x-text="crmDetail?.phone ? (crmDetail.country_code || '+56') + ' ' + crmDetail.phone : '—'"></span>
+                            <a x-show="crmDetail?.phone"
+                                :href="'https://wa.me/' + (crmDetail?.country_code || '+56').replace('+','') + crmDetail?.phone"
                                 target="_blank" class="text-green-400 hover:text-green-300 text-xs">
                                 <i class="ph ph-whatsapp-logo"></i>
                             </a>
@@ -590,7 +607,9 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div class="bg-slate-800/50 rounded-lg p-3">
                             <p class="text-[10px] text-slate-500 uppercase mb-0.5">Marca / Modelo</p>
-                            <p class="text-sm text-white font-medium" x-text="[crmDetail?.car_make, crmDetail?.car_model].filter(Boolean).join(' ') || '—'"></p>
+                            <p class="text-sm text-white font-medium"
+                                x-text="[crmDetail?.car_make, crmDetail?.car_model].filter(Boolean).join(' ') || '—'">
+                            </p>
                         </div>
                         <div class="bg-slate-800/50 rounded-lg p-3">
                             <p class="text-[10px] text-slate-500 uppercase mb-0.5">Año</p>
@@ -602,17 +621,56 @@
                         </div>
                         <div class="bg-slate-800/50 rounded-lg p-3">
                             <p class="text-[10px] text-slate-500 uppercase mb-0.5">Kilometraje</p>
-                            <p class="text-sm text-white" x-text="crmDetail?.mileage ? crmDetail.mileage.toLocaleString('es-CL') + ' km' : '—'"></p>
+                            <p class="text-sm text-white"
+                                x-text="crmDetail?.mileage ? crmDetail.mileage.toLocaleString('es-CL') + ' km' : '—'">
+                            </p>
                         </div>
                     </div>
-                    <div x-show="crmDetail?.estimated_value || crmDetail?.listing_price" class="mt-3 grid grid-cols-2 gap-3">
-                        <div class="bg-slate-800/50 rounded-lg p-3">
-                            <p class="text-[10px] text-slate-500 uppercase mb-0.5">Valor Estimado</p>
-                            <p class="text-sm text-green-400 font-medium" x-text="crmDetail?.estimated_value ? formatCLP(crmDetail.estimated_value) : '—'"></p>
+                    <!-- Pricing Breakdown -->
+                    <div x-show="crmDetail?.estimated_value || crmDetail?.listing_price || crmDetail?.ai_consignacion_price"
+                        class="mt-3 space-y-2">
+                        <!-- Row 1: Owner's original listing price -->
+                        <div x-show="crmDetail?.listing_price"
+                            class="bg-slate-800/50 rounded-lg p-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[10px] text-slate-500 uppercase mb-0.5">Publicación de Dueño</p>
+                                <p class="text-[9px] text-slate-600">Precio que el dueño pide en FB</p>
+                            </div>
+                            <p class="text-sm text-slate-300 font-medium" x-text="formatCLP(crmDetail.listing_price)">
+                            </p>
                         </div>
-                        <div class="bg-slate-800/50 rounded-lg p-3">
-                            <p class="text-[10px] text-slate-500 uppercase mb-0.5">Precio Publicación</p>
-                            <p class="text-sm text-white font-medium" x-text="crmDetail?.listing_price ? formatCLP(crmDetail.listing_price) : '—'"></p>
+                        <!-- Row 2: AI Market Price = what we publish & sell for (contrato de VENTA) -->
+                        <div x-show="crmDetail?.estimated_value"
+                            class="bg-green-500/10 border border-green-500/20 rounded-lg p-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[10px] text-green-400 uppercase font-bold mb-0.5">💰 Precio a Vender</p>
+                                <p class="text-[9px] text-green-600">Se publica en la página · Contrato de Venta</p>
+                            </div>
+                            <p class="text-base text-green-400 font-bold" x-text="formatCLP(crmDetail.estimated_value)">
+                            </p>
+                        </div>
+                        <!-- Row 3: Consignación price = what owner gets (contrato de consignación) -->
+                        <div x-show="crmDetail?.ai_consignacion_price"
+                            class="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[10px] text-blue-400 uppercase font-bold mb-0.5">🤝 Precio Consignación
+                                </p>
+                                <p class="text-[9px] text-blue-600">Monto que recibe el dueño · Contrato de Consignación
+                                </p>
+                            </div>
+                            <p class="text-base text-blue-400 font-bold"
+                                x-text="formatCLP(crmDetail.ai_consignacion_price)"></p>
+                        </div>
+                        <!-- Commission math helper -->
+                        <div x-show="crmDetail?.estimated_value && crmDetail?.ai_consignacion_price"
+                            class="bg-slate-800/30 rounded-lg p-2 text-[10px] text-slate-500 leading-relaxed">
+                            <span class="font-bold text-slate-400">📊 Comisión Mr. Car:</span>
+                            <span
+                                x-text="formatCLP((crmDetail?.estimated_value || 0) - (crmDetail?.ai_consignacion_price || 0))"></span>
+                            <span class="mx-1">·</span>
+                            <span
+                                x-text="((((crmDetail?.estimated_value || 0) - (crmDetail?.ai_consignacion_price || 0)) / (crmDetail?.estimated_value || 1)) * 100).toFixed(1) + '%'"></span>
+                            <span class="block mt-0.5 text-slate-600">Precio a Vender − Consignación = Comisión</span>
                         </div>
                     </div>
                 </div>
@@ -625,7 +683,9 @@
                         </div>
                         <div>
                             <p class="text-white font-semibold" x-text="crmDetail?.appointment_date"></p>
-                            <p class="text-purple-400 text-sm" x-text="crmDetail?.appointment_time ? 'Hora: ' + crmDetail.appointment_time : 'Sin hora definida'"></p>
+                            <p class="text-purple-400 text-sm"
+                                x-text="crmDetail?.appointment_time ? 'Hora: ' + crmDetail.appointment_time : 'Sin hora definida'">
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -658,14 +718,15 @@
                 <!-- Notes -->
                 <div class="px-6 py-4 border-b border-slate-800">
                     <h4 class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2">Notas</h4>
-                    <textarea x-model="crmDetailNotes" @change="saveCRMNotes(crmDetail.id)"
-                        rows="3" placeholder="Agregar nota sobre este lead..."
+                    <textarea x-model="crmDetailNotes" @change="saveCRMNotes(crmDetail.id)" rows="3"
+                        placeholder="Agregar nota sobre este lead..."
                         class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 resize-none"></textarea>
                 </div>
                 <!-- Activity Timeline -->
                 <div class="px-6 py-4">
                     <div class="flex items-center justify-between mb-3">
-                        <h4 class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Historial de Actividad</h4>
+                        <h4 class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Historial de Actividad
+                        </h4>
                         <button @click="addCRMNoteModal=true"
                             class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors">
                             <i class="ph ph-plus"></i> Nota
@@ -675,8 +736,8 @@
                     <div x-show="addCRMNoteModal" class="mb-4 bg-slate-800/50 rounded-lg p-3 border border-slate-700">
                         <input type="text" x-model="newCRMNoteTitle" placeholder="Título de la nota..."
                             class="w-full bg-transparent border-0 text-white text-sm focus:outline-none mb-2 placeholder:text-slate-600">
-                        <textarea x-model="newCRMNoteDesc" placeholder="Descripción (opcional)..."
-                            rows="2" class="w-full bg-transparent border-0 text-slate-400 text-xs focus:outline-none resize-none placeholder:text-slate-600"></textarea>
+                        <textarea x-model="newCRMNoteDesc" placeholder="Descripción (opcional)..." rows="2"
+                            class="w-full bg-transparent border-0 text-slate-400 text-xs focus:outline-none resize-none placeholder:text-slate-600"></textarea>
                         <div class="flex justify-end gap-2 mt-2">
                             <button @click="addCRMNoteModal=false; newCRMNoteTitle=''; newCRMNoteDesc=''"
                                 class="text-xs text-slate-400 hover:text-white px-3 py-1 transition-colors">Cancelar</button>
@@ -698,8 +759,7 @@
                                         'border-cyan-500 bg-cyan-500/20': act.type==='imported',
                                         'border-slate-600 bg-slate-800': act.type==='note' || act.type==='created'
                                     }">
-                                    <i class="text-[8px]"
-                                        :class="{
+                                    <i class="text-[8px]" :class="{
                                             'ph ph-phone text-blue-400': act.type==='call',
                                             'ph ph-whatsapp-logo text-green-400': act.type==='whatsapp',
                                             'ph ph-envelope text-orange-400': act.type==='email',
@@ -712,7 +772,8 @@
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-sm text-white" x-text="act.title"></p>
-                                    <p x-show="act.description" class="text-xs text-slate-500 mt-0.5" x-text="act.description"></p>
+                                    <p x-show="act.description" class="text-xs text-slate-500 mt-0.5"
+                                        x-text="act.description"></p>
                                     <p class="text-[10px] text-slate-600 mt-1" x-text="formatDate(act.created_at)"></p>
                                 </div>
                             </div>
@@ -733,18 +794,22 @@
             <div class="flex items-center gap-3">
                 <i class="ph ph-calendar-dots text-xl text-cyan-400"></i>
                 <h2 class="text-lg font-semibold text-white">Calendario de Citas</h2>
-                <span class="bg-cyan-500/20 text-cyan-400 text-xs px-2 py-0.5 rounded-full" x-text="calEvents.length + ' citas'"></span>
+                <span class="bg-cyan-500/20 text-cyan-400 text-xs px-2 py-0.5 rounded-full"
+                    x-text="calEvents.length + ' citas'"></span>
             </div>
             <div class="flex items-center gap-3">
                 <!-- Month nav -->
-                <button @click="calPrevMonth()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+                <button @click="calPrevMonth()"
+                    class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
                     <i class="ph ph-caret-left"></i>
                 </button>
                 <span class="text-white font-semibold w-36 text-center" x-text="calMonthLabel"></span>
-                <button @click="calNextMonth()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+                <button @click="calNextMonth()"
+                    class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
                     <i class="ph ph-caret-right"></i>
                 </button>
-                <button @click="loadCalendar()" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700 transition-colors">
+                <button @click="loadCalendar()"
+                    class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700 transition-colors">
                     <i class="ph ph-arrows-clockwise"></i>
                 </button>
             </div>
@@ -780,10 +845,11 @@
                                         :class="ev.assigned_user ? 'text-white' : 'bg-cyan-900/40 text-cyan-300'"
                                         :style="ev.assigned_user ? 'background:' + (ev.assigned_user.color || '#3b82f6') + '33; color:' + (ev.assigned_user.color || '#3b82f6') : ''"
                                         @click.stop="openCalEvent(ev)"
-                                        x-text="(ev.appointment_time || '') + ' ' + (ev.full_name || ev.plate || 'Cita')"></div>
+                                        x-text="(ev.appointment_time || '') + ' ' + (ev.full_name || ev.plate || 'Cita')">
+                                    </div>
                                 </template>
-                                <div x-show="(cell.events || []).length > 3"
-                                    class="text-[9px] text-slate-500 px-1" x-text="'+' + ((cell.events||[]).length-3) + ' más'"></div>
+                                <div x-show="(cell.events || []).length > 3" class="text-[9px] text-slate-500 px-1"
+                                    x-text="'+' + ((cell.events||[]).length-3) + ' más'"></div>
                             </div>
                         </div>
                     </template>
@@ -793,7 +859,8 @@
             <!-- Day Detail Panel (right sidebar) -->
             <div class="w-80 border-l border-slate-700 flex flex-col overflow-hidden shrink-0">
                 <div class="px-5 py-4 border-b border-slate-700">
-                    <h3 class="text-sm font-semibold text-white" x-text="calSelectedDay ? calSelectedDayLabel : 'Selecciona un día'"></h3>
+                    <h3 class="text-sm font-semibold text-white"
+                        x-text="calSelectedDay ? calSelectedDayLabel : 'Selecciona un día'"></h3>
                     <p class="text-xs text-slate-500 mt-0.5" x-text="calSelectedDayEvents.length + ' citas'"></p>
                 </div>
                 <div class="flex-1 overflow-y-auto p-4 space-y-3">
@@ -806,7 +873,8 @@
                             @click="openCalEvent(ev)">
                             <!-- Time + status -->
                             <div class="flex items-center justify-between mb-2">
-                                <span class="text-cyan-400 text-xs font-mono" x-text="ev.appointment_time || 'Sin hora'"></span>
+                                <span class="text-cyan-400 text-xs font-mono"
+                                    x-text="ev.appointment_time || 'Sin hora'"></span>
                                 <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                                     :class="ev.status==='agendado' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-700 text-slate-400'"
                                     x-text="ev.status || 'agendado'"></span>
@@ -814,7 +882,9 @@
                             <!-- Name -->
                             <p class="text-sm font-medium text-white mb-1" x-text="ev.full_name || 'Sin nombre'"></p>
                             <!-- Vehicle -->
-                            <p class="text-xs text-slate-400" x-text="[ev.car_make, ev.car_model, ev.car_year].filter(Boolean).join(' ') + (ev.plate ? ' · ' + ev.plate : '')"></p>
+                            <p class="text-xs text-slate-400"
+                                x-text="[ev.car_make, ev.car_model, ev.car_year].filter(Boolean).join(' ') + (ev.plate ? ' · ' + ev.plate : '')">
+                            </p>
                             <!-- Assigned -->
                             <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
                                 <div x-show="ev.assigned_user" class="flex items-center gap-1.5">
@@ -842,7 +912,8 @@
         <div class="glass w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-slate-700">
             <div class="flex items-center justify-between mb-5">
                 <h3 class="text-white font-semibold text-lg" x-text="calActiveEvent?.full_name || 'Cita'"></h3>
-                <button @click="calEventOpen=false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                <button @click="calEventOpen=false"
+                    class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
                     <i class="ph ph-x text-lg"></i>
                 </button>
             </div>
@@ -850,11 +921,15 @@
             <div class="grid grid-cols-2 gap-3 mb-5">
                 <div class="bg-slate-800/50 rounded-lg p-3">
                     <p class="text-[10px] text-slate-500 uppercase mb-0.5">Fecha y Hora</p>
-                    <p class="text-sm text-white font-medium" x-text="(calActiveEvent?.appointment_date || '') + ' ' + (calActiveEvent?.appointment_time || '')"></p>
+                    <p class="text-sm text-white font-medium"
+                        x-text="(calActiveEvent?.appointment_date || '') + ' ' + (calActiveEvent?.appointment_time || '')">
+                    </p>
                 </div>
                 <div class="bg-slate-800/50 rounded-lg p-3">
                     <p class="text-[10px] text-slate-500 uppercase mb-0.5">Vehículo</p>
-                    <p class="text-sm text-white font-medium" x-text="[calActiveEvent?.car_make, calActiveEvent?.car_model, calActiveEvent?.car_year].filter(Boolean).join(' ') || '—'"></p>
+                    <p class="text-sm text-white font-medium"
+                        x-text="[calActiveEvent?.car_make, calActiveEvent?.car_model, calActiveEvent?.car_year].filter(Boolean).join(' ') || '—'">
+                    </p>
                 </div>
                 <div class="bg-slate-800/50 rounded-lg p-3">
                     <p class="text-[10px] text-slate-500 uppercase mb-0.5">Patente</p>
@@ -867,7 +942,8 @@
             </div>
             <!-- Assign User -->
             <div class="mb-5">
-                <label class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2 block">Asignar a</label>
+                <label class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2 block">Asignar
+                    a</label>
                 <div class="flex flex-wrap gap-2">
                     <button @click="calAssignUser(calActiveEvent, null)"
                         :class="!calActiveEvent?.assigned_user_id ? 'bg-slate-600 text-white ring-1 ring-white/20' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
@@ -884,23 +960,28 @@
                 </div>
             </div>
             <!-- Funnels Match Suggestions -->
-            <div x-show="calActiveEvent?.matched_funnel_leads?.length > 0" class="mt-4 bg-slate-800/30 rounded-xl p-4 border border-slate-700">
+            <div x-show="calActiveEvent?.matched_funnel_leads?.length > 0"
+                class="mt-4 bg-slate-800/30 rounded-xl p-4 border border-slate-700">
                 <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                     <i class="ph ph-intersect text-cyan-400"></i> Posibles coincidencias en Funnels
                 </p>
                 <div class="space-y-2">
                     <template x-for="m in calActiveEvent.matched_funnel_leads" :key="m.id">
                         <a :href="m.funnel_url" target="_blank"
-                           class="flex items-center justify-between p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors group">
+                            class="flex items-center justify-between p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors group">
                             <div>
-                                <p class="text-xs text-white font-medium" x-text="[m.car_make, m.car_model, m.car_year].filter(Boolean).join(' ')"></p>
-                                <p class="text-[10px] text-slate-500" x-text="(m.mileage ? m.mileage.toLocaleString('es-CL') + ' km' : '') + (m.listing_price ? ' · $' + m.listing_price.toLocaleString('es-CL') : '')"></p>
+                                <p class="text-xs text-white font-medium"
+                                    x-text="[m.car_make, m.car_model, m.car_year].filter(Boolean).join(' ')"></p>
+                                <p class="text-[10px] text-slate-500"
+                                    x-text="(m.mileage ? m.mileage.toLocaleString('es-CL') + ' km' : '') + (m.listing_price ? ' · $' + m.listing_price.toLocaleString('es-CL') : '')">
+                                </p>
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="text-[10px] px-2 py-0.5 rounded-full font-bold"
                                     :class="m.score >= 100 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'"
                                     x-text="m.score + '% match'"></span>
-                                <i class="ph ph-arrow-square-out text-slate-500 group-hover:text-cyan-400 transition-colors text-sm"></i>
+                                <i
+                                    class="ph ph-arrow-square-out text-slate-500 group-hover:text-cyan-400 transition-colors text-sm"></i>
                             </div>
                         </a>
                     </template>
@@ -911,7 +992,9 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Consignación</p>
-                        <p class="text-sm text-white" x-text="calActiveEvent?.consignacion_status === 'sin_consignacion' ? 'No creada aún' : calActiveEvent?.consignacion_status"></p>
+                        <p class="text-sm text-white"
+                            x-text="calActiveEvent?.consignacion_status === 'sin_consignacion' ? 'No creada aún' : calActiveEvent?.consignacion_status">
+                        </p>
                     </div>
                     <button x-show="calActiveEvent?.consignacion_id"
                         @click="calEventOpen=false; currentView='consignaciones'; loadConsignaciones(); setTimeout(()=>openConsignacion(calActiveEvent.consignacion_id),300)"
@@ -934,8 +1017,10 @@
     <!-- CONSIGNACIONES VIEW                                                    -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- ═══ INSPECTION VIEWER OVERLAY ═══ -->
-    <div x-show="inspViewOpen" class="fixed inset-0 z-[85] bg-slate-950/95 backdrop-blur-sm flex flex-col overflow-hidden" style="display:none;"
-        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+    <div x-show="inspViewOpen"
+        class="fixed inset-0 z-[85] bg-slate-950/95 backdrop-blur-sm flex flex-col overflow-hidden"
+        style="display:none;" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100">
         <!-- Top bar -->
         <div class="h-14 flex-shrink-0 bg-slate-900 border-b border-slate-800 flex items-center px-6 gap-4">
             <button @click="inspViewOpen=false"
@@ -945,7 +1030,8 @@
             <div class="flex-1 flex items-center gap-2">
                 <i class="ph ph-file-text text-green-400"></i>
                 <span class="text-white font-semibold text-sm">Informe de Inspección</span>
-                <span class="text-green-400 text-sm font-mono" x-text="inspViewData?.appraisal?.vehicle_marca + ' ' + inspViewData?.appraisal?.vehicle_modelo + ' · ' + (inspViewData?.appraisal?.vehicle_patente||'').toUpperCase()"></span>
+                <span class="text-green-400 text-sm font-mono"
+                    x-text="inspViewData?.appraisal?.vehicle_marca + ' ' + inspViewData?.appraisal?.vehicle_modelo + ' · ' + (inspViewData?.appraisal?.vehicle_patente||'').toUpperCase()"></span>
             </div>
             <!-- Action buttons -->
             <div class="flex items-center gap-2">
@@ -971,18 +1057,19 @@
                 </div>
             </div>
             <iframe x-show="!inspViewLoading" :src="inspViewId ? '/api/inspecciones/' + inspViewId + '/pdf' : ''"
-                @load="inspViewLoading=false"
-                class="w-full h-full border-0"
-                style="background:#0f172a;"></iframe>
+                @load="inspViewLoading=false" class="w-full h-full border-0" style="background:#0f172a;"></iframe>
         </div>
 
         <!-- Email send modal -->
-        <div x-show="inspEmailOpen" class="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 backdrop-blur-sm" style="display:none;">
+        <div x-show="inspEmailOpen"
+            class="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            style="display:none;">
             <div class="glass w-full max-w-md rounded-2xl p-6 shadow-2xl" @click.away="inspEmailOpen=false">
                 <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
                     <i class="ph ph-envelope text-blue-400"></i> Enviar Inspección
                 </h3>
-                <p class="text-xs text-slate-400 mb-4">Se enviará el informe completo como email HTML desde inspeccion@autochile.cl</p>
+                <p class="text-xs text-slate-400 mb-4">Se enviará el informe completo como email HTML desde
+                    inspeccion@autochile.cl</p>
 
                 <div class="space-y-3">
                     <div>
@@ -1007,11 +1094,11 @@
                         class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">
                         Cancelar
                     </button>
-                    <button @click="sendInspEmail()"
-                        :disabled="inspEmailSending || !inspEmailTo"
+                    <button @click="sendInspEmail()" :disabled="inspEmailSending || !inspEmailTo"
                         class="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2">
                         <span x-show="!inspEmailSending"><i class="ph ph-paper-plane-tilt"></i> Enviar</span>
-                        <span x-show="inspEmailSending" style="display:none;"><i class="ph ph-spinner animate-spin"></i> Enviando...</span>
+                        <span x-show="inspEmailSending" style="display:none;"><i class="ph ph-spinner animate-spin"></i>
+                            Enviando...</span>
                     </button>
                 </div>
             </div>
@@ -1020,8 +1107,10 @@
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- ═══ CONTRACT SIGNING OVERLAY ═══ -->
-    <div x-show="contractOpen" class="fixed inset-0 z-[95] bg-slate-950/98 backdrop-blur-sm flex flex-col overflow-hidden" style="display:none;"
-        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+    <div x-show="contractOpen"
+        class="fixed inset-0 z-[95] bg-slate-950/98 backdrop-blur-sm flex flex-col overflow-hidden"
+        style="display:none;" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100">
         <!-- Top bar -->
         <div class="h-14 flex-shrink-0 bg-slate-900 border-b border-slate-800 flex items-center px-6 gap-4">
             <button @click="contractOpen=false"
@@ -1038,7 +1127,8 @@
                     class="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
                     <i class="ph ph-download text-sm"></i> Descargar PDF
                 </a>
-                <span x-show="contractSigned" class="flex items-center gap-1 bg-green-600/20 text-green-400 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                <span x-show="contractSigned"
+                    class="flex items-center gap-1 bg-green-600/20 text-green-400 px-3 py-1.5 rounded-lg text-xs font-semibold">
                     <i class="ph ph-check-circle"></i> Firmado ✓
                 </span>
             </div>
@@ -1055,8 +1145,7 @@
                 </div>
                 <iframe x-show="!contractLoading"
                     :src="contractConsigId ? '/api/consignaciones/' + contractConsigId + '/contrato' : ''"
-                    @load="contractLoading=false"
-                    class="w-full h-full border-0"></iframe>
+                    @load="contractLoading=false" class="w-full h-full border-0"></iframe>
             </div>
 
             <!-- Right: Signature panel -->
@@ -1065,7 +1154,8 @@
                     <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
                         <i class="ph ph-pen text-amber-400"></i> Firma del Cliente
                     </h3>
-                    <p class="text-xs text-slate-400 mb-4">El cliente debe firmar aquí para completar el contrato de consignación.</p>
+                    <p class="text-xs text-slate-400 mb-4">El cliente debe firmar aquí para completar el contrato de
+                        consignación.</p>
 
                     <!-- Signer info -->
                     <div class="bg-slate-800/60 rounded-xl p-3 mb-4 border border-slate-700">
@@ -1085,14 +1175,16 @@
                         <p class="text-xs text-blue-400 font-semibold flex items-center gap-1 mb-1">
                             <i class="ph ph-shield-check"></i> Certificado Digital
                         </p>
-                        <p class="text-xs text-blue-300">Firmado digitalmente por <b>Felipe Horacio Yáñez Fernández</b></p>
+                        <p class="text-xs text-blue-300">Firmado digitalmente por <b>Felipe Horacio Yáñez Fernández</b>
+                        </p>
                         <p class="text-[10px] text-blue-400/70 mt-0.5">E-CERTCHILE CA FES 02 · Válido hasta Feb 2027</p>
                     </div>
 
                     <!-- Signature Canvas -->
                     <div class="flex-1 flex flex-col">
                         <div class="flex items-center justify-between mb-2">
-                            <label class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Dibuje su firma</label>
+                            <label class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Dibuje su
+                                firma</label>
                             <button @click="clearSignature()"
                                 class="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1">
                                 <i class="ph ph-eraser"></i> Borrar
@@ -1101,16 +1193,13 @@
                         <div class="relative bg-white rounded-xl border-2 border-dashed border-slate-600 overflow-hidden"
                             style="height: 160px; touch-action: none;">
                             <canvas id="signatureCanvas" class="w-full h-full cursor-crosshair"
-                                @mousedown="startDrawing($event)"
-                                @mousemove="draw($event)"
-                                @mouseup="stopDrawing()"
-                                @mouseleave="stopDrawing()"
-                                @touchstart.prevent="startDrawingTouch($event)"
-                                @touchmove.prevent="drawTouch($event)"
-                                @touchend.prevent="stopDrawing()">
+                                @mousedown="startDrawing($event)" @mousemove="draw($event)" @mouseup="stopDrawing()"
+                                @mouseleave="stopDrawing()" @touchstart.prevent="startDrawingTouch($event)"
+                                @touchmove.prevent="drawTouch($event)" @touchend.prevent="stopDrawing()">
                             </canvas>
                             <!-- Placeholder text -->
-                            <div x-show="!signatureStarted" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div x-show="!signatureStarted"
+                                class="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <p class="text-slate-300 text-sm italic">Firme aquí con el dedo o mouse</p>
                             </div>
                         </div>
@@ -1119,8 +1208,7 @@
 
                 <!-- Submit signature -->
                 <div class="p-5 border-t border-slate-800 space-y-2">
-                    <button @click="submitSignature()"
-                        :disabled="!signatureStarted || contractSigning"
+                    <button @click="submitSignature()" :disabled="!signatureStarted || contractSigning"
                         class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white py-3 rounded-xl text-sm font-bold transition-all">
                         <span x-show="!contractSigning" class="flex items-center gap-2">
                             <i class="ph ph-check-circle text-lg"></i> Firmar Contrato
@@ -1140,7 +1228,8 @@
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- ═══ INSPECTION FULL-SCREEN OVERLAY ═══ -->
-    <div x-show="inspectionOpen" class="fixed inset-0 z-[90] bg-slate-950 flex flex-col overflow-hidden" style="display:none;">
+    <div x-show="inspectionOpen" class="fixed inset-0 z-[90] bg-slate-950 flex flex-col overflow-hidden"
+        style="display:none;">
         <!-- Top bar -->
         <div class="h-14 flex-shrink-0 bg-slate-900 border-b border-slate-800 flex items-center px-6 gap-4">
             <button @click="inspectionOpen=false; inspStep=1"
@@ -1150,7 +1239,8 @@
             <div class="flex-1 flex items-center gap-2">
                 <i class="ph ph-magnifying-glass text-amber-400"></i>
                 <span class="text-white font-semibold text-sm">Inspección —</span>
-                <span class="text-amber-400 text-sm font-mono" x-text="(consigDetail?.car_make||'') + ' ' + (consigDetail?.car_model||'') + ' ' + (consigDetail?.plate ? '· '+consigDetail.plate : '')"></span>
+                <span class="text-amber-400 text-sm font-mono"
+                    x-text="(consigDetail?.car_make||'') + ' ' + (consigDetail?.car_model||'') + ' ' + (consigDetail?.plate ? '· '+consigDetail.plate : '')"></span>
             </div>
             <!-- Step pills -->
             <div class="flex items-center gap-1">
@@ -1160,7 +1250,8 @@
                             :class="inspStep===i+1 ? 'bg-amber-500 text-slate-900' : (inspStep>i+1 ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-400')"
                             class="w-7 h-7 rounded-full text-xs font-bold transition-all flex items-center justify-center"
                             x-text="inspStep>i+1 ? '✓' : (i+1)"></button>
-                        <div x-show="i<inspSteps.length-1" class="w-4 h-px" :class="inspStep>i+1 ? 'bg-green-600' : 'bg-slate-700'"></div>
+                        <div x-show="i<inspSteps.length-1" class="w-4 h-px"
+                            :class="inspStep>i+1 ? 'bg-green-600' : 'bg-slate-700'"></div>
                     </div>
                 </template>
             </div>
@@ -1211,11 +1302,13 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Patente *</label>
-                            <input type="text" x-model="insp.vehiclePatente" placeholder="AB-1234" class="insp-input font-mono uppercase">
+                            <input type="text" x-model="insp.vehiclePatente" placeholder="AB-1234"
+                                class="insp-input font-mono uppercase">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Dígito Patente</label>
-                            <input type="text" x-model="insp.digitoPatente" placeholder="Dígito verificador" maxlength="1" class="insp-input font-mono uppercase">
+                            <input type="text" x-model="insp.digitoPatente" placeholder="Dígito verificador"
+                                maxlength="1" class="insp-input font-mono uppercase">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Año *</label>
@@ -1239,11 +1332,13 @@
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Color</label>
-                            <input type="text" x-model="insp.vehicleColor" placeholder="Blanco, Negro..." class="insp-input">
+                            <input type="text" x-model="insp.vehicleColor" placeholder="Blanco, Negro..."
+                                class="insp-input">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Motor</label>
-                            <input type="text" x-model="insp.vehicleMotor" placeholder="1.6L, 2.0T..." class="insp-input">
+                            <input type="text" x-model="insp.vehicleMotor" placeholder="1.6L, 2.0T..."
+                                class="insp-input">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Transmisión</label>
@@ -1263,7 +1358,8 @@
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Tipo de carrocería</label>
-                            <input type="text" x-model="insp.vehicleBodyType" placeholder="SUV, Sedán, Hatchback..." class="insp-input">
+                            <input type="text" x-model="insp.vehicleBodyType" placeholder="SUV, Sedán, Hatchback..."
+                                class="insp-input">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Tracción</label>
@@ -1294,7 +1390,8 @@
                                 :class="insp.permisoCirculacion===false ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'"
                                 class="flex-1 py-2 rounded-lg text-sm font-medium transition-all">No</button>
                         </div>
-                        <input type="month" x-model="insp.permisoVence" placeholder="Vencimiento" class="insp-input text-xs">
+                        <input type="month" x-model="insp.permisoVence" placeholder="Vencimiento"
+                            class="insp-input text-xs">
                     </div>
 
                     <!-- Revisión Técnica -->
@@ -1308,7 +1405,8 @@
                                 :class="insp.revisionTecnica===false ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'"
                                 class="flex-1 py-2 rounded-lg text-sm font-medium transition-all">No</button>
                         </div>
-                        <input type="month" x-model="insp.revisionVence" placeholder="Vencimiento" class="insp-input text-xs">
+                        <input type="month" x-model="insp.revisionVence" placeholder="Vencimiento"
+                            class="insp-input text-xs">
                     </div>
 
                     <!-- SOAP -->
@@ -1322,7 +1420,8 @@
                                 :class="insp.soap===false ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'"
                                 class="flex-1 py-2 rounded-lg text-sm font-medium transition-all">No</button>
                         </div>
-                        <input type="text" x-model="insp.soapCompania" placeholder="Compañía SOAP" class="insp-input text-xs">
+                        <input type="text" x-model="insp.soapCompania" placeholder="Compañía SOAP"
+                            class="insp-input text-xs">
                     </div>
                 </div>
 
@@ -1335,12 +1434,14 @@
                             <input type="number" x-model.number="insp.tasacion" placeholder="$" class="insp-input">
                         </div>
                         <div>
-                            <label class="block text-xs text-slate-400 mb-1">Precio Publicado (CLP)</label>
-                            <input type="number" x-model.number="insp.precioPublicado" class="insp-input">
+                            <label class="block text-xs text-slate-400 mb-1">Publicación de Dueño (CLP)</label>
+                            <input type="number" x-model.number="insp.precioPublicado" class="insp-input"
+                                placeholder="Precio que pide el dueño en FB">
                         </div>
                         <div>
-                            <label class="block text-xs text-slate-400 mb-1">Precio Sugerido (CLP)</label>
-                            <input type="number" x-model.number="insp.precioSugerido" class="insp-input">
+                            <label class="block text-xs text-slate-400 mb-1">💰 Precio a Vender (CLP)</label>
+                            <input type="number" x-model.number="insp.precioSugerido" class="insp-input"
+                                placeholder="Precio real para publicar y contrato de venta">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Comisión (CLP)</label>
@@ -1356,9 +1457,11 @@
                     <div class="bg-slate-800/60 rounded-xl p-4">
                         <label class="flex items-center gap-3 cursor-pointer">
                             <input type="checkbox" x-model="insp.enPrenda" class="w-5 h-5 rounded accent-red-500">
-                            <span :class="insp.enPrenda ? 'text-red-400' : 'text-white'" class="font-bold text-sm">¿Está en Prenda?</span>
+                            <span :class="insp.enPrenda ? 'text-red-400' : 'text-white'" class="font-bold text-sm">¿Está
+                                en Prenda?</span>
                         </label>
-                        <div x-show="insp.enPrenda" class="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
+                        <div x-show="insp.enPrenda"
+                            class="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
                             ⚠️ Vehículo con restricciones legales
                         </div>
                     </div>
@@ -1376,10 +1479,12 @@
             <div x-show="inspStep===3" class="mt-4">
                 <div class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     <template x-for="(feat, key) in insp.features" :key="key">
-                        <label class="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700 rounded-xl cursor-pointer hover:border-amber-500/40 transition-all"
+                        <label
+                            class="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700 rounded-xl cursor-pointer hover:border-amber-500/40 transition-all"
                             :class="insp.features[key] ? 'border-amber-500/50 bg-amber-500/10' : ''">
                             <input type="checkbox" x-model="insp.features[key]" class="w-4 h-4 accent-amber-500">
-                            <span class="text-xs text-slate-300 capitalize leading-tight" x-text="key.replace(/([A-Z])/g,' $1').trim()"></span>
+                            <span class="text-xs text-slate-300 capitalize leading-tight"
+                                x-text="key.replace(/([A-Z])/g,' $1').trim()"></span>
                         </label>
                     </template>
                 </div>
@@ -1421,8 +1526,8 @@
 
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">Observaciones generales</label>
-                        <textarea x-model="insp.observaciones" rows="5"
-                            class="insp-input resize-none" placeholder="Motor, carrocería, detalles..."></textarea>
+                        <textarea x-model="insp.observaciones" rows="5" class="insp-input resize-none"
+                            placeholder="Motor, carrocería, detalles..."></textarea>
                     </div>
                 </div>
 
@@ -1448,8 +1553,8 @@
                             <span class="text-sm font-semibold">Subir Archivos</span>
                             <span class="text-[10px] text-slate-500">JPG, PNG desde galería</span>
                         </button>
-                        <input type="file" accept="image/*" multiple x-ref="photoInput"
-                            class="hidden" @change="handlePhotoUpload($event)">
+                        <input type="file" accept="image/*" multiple x-ref="photoInput" class="hidden"
+                            @change="handlePhotoUpload($event)">
                     </div>
 
                     <!-- Photo count badge -->
@@ -1458,18 +1563,22 @@
                         <i class="ph ph-check-circle"></i>
                         <span x-text="insp.photos.length + ' foto(s) lista(s) para subir'"></span>
                     </div>
-                    <p x-show="insp.photos.length === 0" class="text-xs text-slate-600 text-center">Las fotos son opcionales pero recomendadas</p>
+                    <p x-show="insp.photos.length === 0" class="text-xs text-slate-600 text-center">Las fotos son
+                        opcionales pero recomendadas</p>
 
                     <!-- Photo grid previews -->
                     <div x-show="insp.photos.length > 0" class="grid grid-cols-3 gap-2">
                         <template x-for="(photo, idx) in insp.photos" :key="idx">
-                            <div class="relative group rounded-lg overflow-hidden aspect-square bg-slate-800 border border-slate-700">
+                            <div
+                                class="relative group rounded-lg overflow-hidden aspect-square bg-slate-800 border border-slate-700">
                                 <img :src="photo.preview" class="w-full h-full object-cover">
                                 <button type="button" @click="insp.photos.splice(idx,1)"
                                     class="absolute top-1 right-1 w-6 h-6 bg-red-600 rounded-full text-white text-xs items-center justify-center hidden group-hover:flex shadow-lg">
                                     <i class="ph ph-x text-[10px]"></i>
                                 </button>
-                                <span class="absolute bottom-0 left-0 right-0 text-[9px] bg-black/70 text-white px-1 py-0.5 truncate" x-text="photo.name"></span>
+                                <span
+                                    class="absolute bottom-0 left-0 right-0 text-[9px] bg-black/70 text-white px-1 py-0.5 truncate"
+                                    x-text="photo.name"></span>
                             </div>
                         </template>
                         <!-- Add more -->
@@ -1487,7 +1596,8 @@
                     <!-- Owner summary -->
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
                         <p class="text-xs text-blue-400 font-semibold uppercase tracking-wider mb-3">Dueño</p>
-                        <p class="text-white text-sm font-semibold" x-text="insp.clientNombre + ' ' + insp.clientApellido"></p>
+                        <p class="text-white text-sm font-semibold"
+                            x-text="insp.clientNombre + ' ' + insp.clientApellido"></p>
                         <p class="text-slate-400 text-xs mt-1" x-text="insp.clientRut"></p>
                         <p class="text-slate-400 text-xs" x-text="insp.clientTelefono"></p>
                         <p class="text-slate-400 text-xs" x-text="insp.clientEmail"></p>
@@ -1496,9 +1606,13 @@
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
                         <p class="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-3">Vehículo</p>
                         <p class="text-white text-sm font-bold font-mono" x-text="insp.vehiclePatente"></p>
-                        <p class="text-slate-300 text-sm" x-text="insp.vehicleMarca + ' ' + insp.vehicleModelo + ' ' + insp.vehicleAno"></p>
-                        <p class="text-slate-400 text-xs mt-1" x-text="(insp.vehicleKm||0).toLocaleString('es-CL') + ' km · ' + (insp.vehicleColor||'—')"></p>
-                        <p class="text-slate-400 text-xs" x-text="insp.vehicleTransmision + ' · ' + insp.vehicleCombustible"></p>
+                        <p class="text-slate-300 text-sm"
+                            x-text="insp.vehicleMarca + ' ' + insp.vehicleModelo + ' ' + insp.vehicleAno"></p>
+                        <p class="text-slate-400 text-xs mt-1"
+                            x-text="(insp.vehicleKm||0).toLocaleString('es-CL') + ' km · ' + (insp.vehicleColor||'—')">
+                        </p>
+                        <p class="text-slate-400 text-xs"
+                            x-text="insp.vehicleTransmision + ' · ' + insp.vehicleCombustible"></p>
                     </div>
                     <!-- Pricing summary -->
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
@@ -1506,15 +1620,18 @@
                         <div class="space-y-1">
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">Tasación</span>
-                                <span class="text-white font-mono" x-text="insp.tasacion ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.tasacion) : '—'"></span>
+                                <span class="text-white font-mono"
+                                    x-text="insp.tasacion ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.tasacion) : '—'"></span>
                             </div>
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">Publicado</span>
-                                <span class="text-white font-mono" x-text="insp.precioPublicado ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.precioPublicado) : '—'"></span>
+                                <span class="text-white font-mono"
+                                    x-text="insp.precioPublicado ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.precioPublicado) : '—'"></span>
                             </div>
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">En Prenda</span>
-                                <span :class="insp.enPrenda ? 'text-red-400' : 'text-green-400'" x-text="insp.enPrenda ? 'SÍ ⚠️' : 'No'"></span>
+                                <span :class="insp.enPrenda ? 'text-red-400' : 'text-green-400'"
+                                    x-text="insp.enPrenda ? 'SÍ ⚠️' : 'No'"></span>
                             </div>
                         </div>
                     </div>
@@ -1523,17 +1640,23 @@
                 <!-- Docs row -->
                 <div class="grid grid-cols-3 gap-3">
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700 flex items-center gap-3">
-                        <i class="ph ph-file-text text-xl" :class="insp.permisoCirculacion ? 'text-green-400' : 'text-red-400'"></i>
+                        <i class="ph ph-file-text text-xl"
+                            :class="insp.permisoCirculacion ? 'text-green-400' : 'text-red-400'"></i>
                         <div>
                             <p class="text-xs text-slate-400">Permiso Circulación</p>
-                            <p class="text-sm font-semibold" :class="insp.permisoCirculacion ? 'text-green-400' : 'text-red-400'" x-text="insp.permisoCirculacion ? 'Al día' : 'Sin permiso'"></p>
+                            <p class="text-sm font-semibold"
+                                :class="insp.permisoCirculacion ? 'text-green-400' : 'text-red-400'"
+                                x-text="insp.permisoCirculacion ? 'Al día' : 'Sin permiso'"></p>
                         </div>
                     </div>
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700 flex items-center gap-3">
-                        <i class="ph ph-shield-check text-xl" :class="insp.revisionTecnica ? 'text-green-400' : 'text-red-400'"></i>
+                        <i class="ph ph-shield-check text-xl"
+                            :class="insp.revisionTecnica ? 'text-green-400' : 'text-red-400'"></i>
                         <div>
                             <p class="text-xs text-slate-400">Revisión Técnica</p>
-                            <p class="text-sm font-semibold" :class="insp.revisionTecnica ? 'text-green-400' : 'text-red-400'" x-text="insp.revisionTecnica ? 'Al día' : 'Sin revisión'"></p>
+                            <p class="text-sm font-semibold"
+                                :class="insp.revisionTecnica ? 'text-green-400' : 'text-red-400'"
+                                x-text="insp.revisionTecnica ? 'Al día' : 'Sin revisión'"></p>
                         </div>
                     </div>
                     <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700 flex items-center gap-3">
@@ -1547,21 +1670,21 @@
 
                 <!-- Features summary -->
                 <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
-                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3">Equipamiento activo</p>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3">Equipamiento activo
+                    </p>
                     <div class="flex flex-wrap gap-2">
                         <template x-for="(val, key) in insp.features" :key="key">
-                            <span x-show="val"
-                                class="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full"
+                            <span x-show="val" class="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full"
                                 x-text="key.replace(/([A-Z])/g,' $1').trim()"></span>
                         </template>
-                        <span x-show="!Object.values(insp.features).some(Boolean)" class="text-xs text-slate-600">Ninguno seleccionado</span>
+                        <span x-show="!Object.values(insp.features).some(Boolean)"
+                            class="text-xs text-slate-600">Ninguno seleccionado</span>
                     </div>
                 </div>
 
                 <!-- Submit button -->
                 <div class="pt-4">
-                    <button @click="submitInspection()"
-                        :disabled="inspSaving"
+                    <button @click="submitInspection()" :disabled="inspSaving"
                         class="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white py-4 rounded-xl font-bold text-base transition-all shadow-lg shadow-green-900/30">
                         <span x-show="!inspSaving" class="flex items-center gap-2">
                             <i class="ph ph-check-circle text-xl"></i> Guardar Inspección Completa
@@ -1572,7 +1695,8 @@
                     </button>
                     <p class="text-center text-xs text-slate-600 mt-2">
                         Se guardará en Supabase
-                        <span x-show="insp.photos.length > 0" class="text-amber-400" x-text="' + ' + insp.photos.length + ' foto(s)'"></span>
+                        <span x-show="insp.photos.length > 0" class="text-amber-400"
+                            x-text="' + ' + insp.photos.length + ' foto(s)'"></span>
                         y marcará la consignación como Parte 2 ✓
                     </p>
                 </div>
@@ -1587,14 +1711,11 @@
                 <span x-text="inspStep===1 ? 'Cancelar' : 'Anterior'"></span>
             </button>
             <span class="text-xs text-slate-500" x-text="'Paso ' + inspStep + ' de ' + inspSteps.length"></span>
-            <button x-show="inspStep < inspSteps.length"
-                @click="if(inspValidate(inspStep)) inspStep++"
+            <button x-show="inspStep < inspSteps.length" @click="if(inspValidate(inspStep)) inspStep++"
                 class="flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-medium transition-colors">
                 Siguiente <i class="ph ph-arrow-right"></i>
             </button>
-            <button x-show="inspStep === inspSteps.length"
-                @click="submitInspection()"
-                :disabled="inspSaving"
+            <button x-show="inspStep === inspSteps.length" @click="submitInspection()" :disabled="inspSaving"
                 class="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-all"
                 style="display:none;">
                 <i class="ph ph-check-circle"></i> Guardar Inspección
@@ -1610,7 +1731,9 @@
                 <h2 class="text-lg font-semibold text-white">Consignaciones</h2>
             </div>
             <div class="flex gap-2">
-                <template x-for="f in [['todas','Todas'],['pendiente','Pendientes'],['parte1_completa','Parte 1'],['parte2_completa','Parte 2'],['en_venta','En Venta']]" :key="f[0]">
+                <template
+                    x-for="f in [['todas','Todas'],['pendiente','Pendientes'],['parte1_completa','Parte 1'],['parte2_completa','Parte 2'],['en_venta','En Venta']]"
+                    :key="f[0]">
                     <button @click="consigFilter=f[0]; loadConsignaciones()"
                         :class="consigFilter===f[0] ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors" x-text="f[1]"></button>
@@ -1629,8 +1752,7 @@
                                 <!-- Header row -->
                                 <div class="flex items-center gap-3 mb-2">
                                     <span class="text-xs font-mono text-slate-500">#<span x-text="c.id"></span></span>
-                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
-                                        :class="{
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold" :class="{
                                             'bg-slate-700 text-slate-400': c.status==='pendiente',
                                             'bg-blue-500/20 text-blue-400': c.status==='parte1_completa',
                                             'bg-amber-500/20 text-amber-400': c.status==='parte2_completa',
@@ -1638,25 +1760,40 @@
                                             'bg-purple-500/20 text-purple-400': c.status==='vendida'
                                         }"
                                         x-text="{pendiente:'Pendiente',parte1_completa:'Parte 1 ✓',parte2_completa:'Parte 2 ✓',en_venta:'En Venta',vendida:'Vendida'}[c.status] || c.status"></span>
-                                    <span x-show="c.assigned_user_name" class="flex items-center gap-1 text-xs text-slate-400">
-                                        <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + (c.assigned_user_color || '#3b82f6')"></span>
+                                    <span x-show="c.assigned_user_name"
+                                        class="flex items-center gap-1 text-xs text-slate-400">
+                                        <span class="w-2.5 h-2.5 rounded-full"
+                                            :style="'background:' + (c.assigned_user_color || '#3b82f6')"></span>
                                         <span x-text="c.assigned_user_name"></span>
                                     </span>
                                 </div>
                                 <!-- Name + vehicle -->
-                                <p class="text-white font-semibold mb-0.5" x-text="c.owner_full_name || (c.owner_first_name + ' ' + (c.owner_last_name||''))"></p>
-                                <p class="text-sm text-slate-400" x-text="[c.car_make, c.car_model, c.car_year].filter(Boolean).join(' ') + (c.plate ? ' · ' + c.plate : '')"></p>
+                                <p class="text-white font-semibold mb-0.5"
+                                    x-text="c.owner_full_name || (c.owner_first_name + ' ' + (c.owner_last_name||''))">
+                                </p>
+                                <p class="text-sm text-slate-400"
+                                    x-text="[c.car_make, c.car_model, c.car_year].filter(Boolean).join(' ') + (c.plate ? ' · ' + c.plate : '')">
+                                </p>
                             </div>
                             <div class="text-right shrink-0 ml-4">
-                                <p x-show="c.appointment_date" class="text-xs text-cyan-400 mb-1" x-text="c.appointment_date + (c.appointment_time ? ' ' + c.appointment_time : '')"></p>
-                                <p x-show="c.selling_price" class="text-sm font-semibold text-green-400" x-text="formatCLP(c.selling_price)"></p>
+                                <p x-show="c.appointment_date" class="text-xs text-cyan-400 mb-1"
+                                    x-text="c.appointment_date + (c.appointment_time ? ' ' + c.appointment_time : '')">
+                                </p>
+                                <p x-show="c.selling_price" class="text-sm font-semibold text-green-400"
+                                    x-text="formatCLP(c.selling_price)"></p>
                             </div>
                         </div>
                         <!-- Progress bar -->
                         <div class="mt-3 flex gap-1.5">
-                            <div class="h-1 flex-1 rounded-full" :class="['parte1_completa','parte2_completa','en_venta','vendida'].includes(c.status) ? 'bg-blue-500' : 'bg-slate-700'"></div>
-                            <div class="h-1 flex-1 rounded-full" :class="['parte2_completa','en_venta','vendida'].includes(c.status) ? 'bg-amber-500' : 'bg-slate-700'"></div>
-                            <div class="h-1 flex-1 rounded-full" :class="['en_venta','vendida'].includes(c.status) ? 'bg-green-500' : 'bg-slate-700'"></div>
+                            <div class="h-1 flex-1 rounded-full"
+                                :class="['parte1_completa','parte2_completa','en_venta','vendida'].includes(c.status) ? 'bg-blue-500' : 'bg-slate-700'">
+                            </div>
+                            <div class="h-1 flex-1 rounded-full"
+                                :class="['parte2_completa','en_venta','vendida'].includes(c.status) ? 'bg-amber-500' : 'bg-slate-700'">
+                            </div>
+                            <div class="h-1 flex-1 rounded-full"
+                                :class="['en_venta','vendida'].includes(c.status) ? 'bg-green-500' : 'bg-slate-700'">
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -1668,10 +1805,12 @@
             </div>
 
             <!-- Detail Panel -->
-            <div x-show="consigDetailOpen" class="w-96 border-l border-slate-700 flex flex-col overflow-hidden shrink-0 bg-slate-900">
+            <div x-show="consigDetailOpen"
+                class="w-96 border-l border-slate-700 flex flex-col overflow-hidden shrink-0 bg-slate-900">
                 <div class="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
                     <h3 class="text-white font-semibold" x-text="'Consignación #' + (consigDetail?.id || '')"></h3>
-                    <button @click="consigDetailOpen=false" class="text-slate-400 hover:text-white p-1 rounded transition-colors">
+                    <button @click="consigDetailOpen=false"
+                        class="text-slate-400 hover:text-white p-1 rounded transition-colors">
                         <i class="ph ph-x"></i>
                     </button>
                 </div>
@@ -1679,99 +1818,125 @@
                     <!-- Status + progress -->
                     <div class="px-5 py-4 border-b border-slate-800">
                         <div class="flex gap-1 mb-3">
-                            <div class="h-2 flex-1 rounded-full" :class="['parte1_completa','parte2_completa','en_venta','vendida'].includes(consigDetail?.status) ? 'bg-blue-500' : 'bg-slate-700'"></div>
-                            <div class="h-2 flex-1 rounded-full" :class="['parte2_completa','en_venta','vendida'].includes(consigDetail?.status) ? 'bg-amber-500' : 'bg-slate-700'"></div>
-                            <div class="h-2 flex-1 rounded-full" :class="['en_venta','vendida'].includes(consigDetail?.status) ? 'bg-green-500' : 'bg-slate-700'"></div>
+                            <div class="h-2 flex-1 rounded-full"
+                                :class="['parte1_completa','parte2_completa','en_venta','vendida'].includes(consigDetail?.status) ? 'bg-blue-500' : 'bg-slate-700'">
+                            </div>
+                            <div class="h-2 flex-1 rounded-full"
+                                :class="['parte2_completa','en_venta','vendida'].includes(consigDetail?.status) ? 'bg-amber-500' : 'bg-slate-700'">
+                            </div>
+                            <div class="h-2 flex-1 rounded-full"
+                                :class="['en_venta','vendida'].includes(consigDetail?.status) ? 'bg-green-500' : 'bg-slate-700'">
+                            </div>
                         </div>
                         <div class="flex gap-1.5 flex-wrap">
-                            <template x-for="s in [['pendiente','Pendiente'],['parte1_completa','Parte 1 ✓'],['parte2_completa','Parte 2 ✓'],['en_venta','En Venta'],['vendida','Vendida']]" :key="s[0]">
+                            <template
+                                x-for="s in [['pendiente','Pendiente'],['parte1_completa','Parte 1 ✓'],['parte2_completa','Parte 2 ✓'],['en_venta','En Venta'],['vendida','Vendida']]"
+                                :key="s[0]">
                                 <button @click="saveConsignacion(consigDetail.id, {status: s[0]})"
                                     :class="consigDetail?.status===s[0] ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
-                                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all" x-text="s[1]"></button>
+                                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+                                    x-text="s[1]"></button>
                             </template>
                         </div>
                     </div>
                     <!-- PART 1: Contact Info -->
                     <div class="px-5 py-4 border-b border-slate-800">
-                        <h4 class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                        <h4
+                            class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-1">
                             <i class="ph ph-user"></i> Parte 1 — Datos del Dueño
                         </h4>
                         <div class="space-y-2">
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[10px] text-slate-500 uppercase">Nombre</label>
-                                    <input type="text" :value="consigDetail?.owner_first_name" @change="consigEdits.owner_first_name=$event.target.value"
+                                    <input type="text" :value="consigDetail?.owner_first_name"
+                                        @change="consigEdits.owner_first_name=$event.target.value"
                                         class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
                                     <label class="text-[10px] text-slate-500 uppercase">Apellido</label>
-                                    <input type="text" :value="consigDetail?.owner_last_name" @change="consigEdits.owner_last_name=$event.target.value"
+                                    <input type="text" :value="consigDetail?.owner_last_name"
+                                        @change="consigEdits.owner_last_name=$event.target.value"
                                         class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                                 </div>
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">RUT</label>
-                                <input type="text" :value="consigDetail?.owner_rut" @change="consigEdits.owner_rut=$event.target.value"
+                                <input type="text" :value="consigDetail?.owner_rut"
+                                    @change="consigEdits.owner_rut=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Teléfono</label>
-                                <input type="text" :value="(consigDetail?.owner_country_code||'+56') + ' ' + (consigDetail?.owner_phone||'')" @change="consigEdits.owner_phone=$event.target.value"
+                                <input type="text"
+                                    :value="(consigDetail?.owner_country_code||'+56') + ' ' + (consigDetail?.owner_phone||'')"
+                                    @change="consigEdits.owner_phone=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Email</label>
-                                <input type="text" :value="consigDetail?.owner_email" @change="consigEdits.owner_email=$event.target.value"
+                                <input type="text" :value="consigDetail?.owner_email"
+                                    @change="consigEdits.owner_email=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Dirección</label>
-                                <input type="text" :value="[consigDetail?.owner_address, consigDetail?.owner_commune, consigDetail?.owner_region].filter(Boolean).join(', ')"
-                                    class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500" readonly>
+                                <input type="text"
+                                    :value="[consigDetail?.owner_address, consigDetail?.owner_commune, consigDetail?.owner_region].filter(Boolean).join(', ')"
+                                    class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                                    readonly>
                             </div>
                         </div>
                     </div>
                     <!-- PART 1: Vehicle -->
                     <div class="px-5 py-4 border-b border-slate-800">
-                        <h4 class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                        <h4
+                            class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-1">
                             <i class="ph ph-car-simple"></i> Parte 1 — Datos del Vehículo
                         </h4>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Patente</label>
-                                <input type="text" :value="consigDetail?.plate" @change="consigEdits.plate=$event.target.value"
+                                <input type="text" :value="consigDetail?.plate"
+                                    @change="consigEdits.plate=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Año</label>
-                                <input type="number" :value="consigDetail?.car_year" @change="consigEdits.car_year=$event.target.value"
+                                <input type="number" :value="consigDetail?.car_year"
+                                    @change="consigEdits.car_year=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Marca</label>
-                                <input type="text" :value="consigDetail?.car_make" @change="consigEdits.car_make=$event.target.value"
+                                <input type="text" :value="consigDetail?.car_make"
+                                    @change="consigEdits.car_make=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Modelo</label>
-                                <input type="text" :value="consigDetail?.car_model" @change="consigEdits.car_model=$event.target.value"
+                                <input type="text" :value="consigDetail?.car_model"
+                                    @change="consigEdits.car_model=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Kilometraje</label>
-                                <input type="number" :value="consigDetail?.mileage" @change="consigEdits.mileage=$event.target.value"
+                                <input type="number" :value="consigDetail?.mileage"
+                                    @change="consigEdits.mileage=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Versión</label>
-                                <input type="text" :value="consigDetail?.version" @change="consigEdits.version=$event.target.value"
+                                <input type="text" :value="consigDetail?.version"
+                                    @change="consigEdits.version=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                         </div>
                     </div>
                     <!-- PART 2: Field Inspection -->
                     <div class="px-5 py-4 border-b border-slate-800">
-                        <h4 class="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                        <h4
+                            class="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-1">
                             <i class="ph ph-magnifying-glass"></i> Parte 2 — Inspección en Campo
                         </h4>
 
@@ -1784,22 +1949,26 @@
                                     <i class="ph ph-check-circle text-green-400"></i>
                                     <span class="text-xs font-semibold text-green-400">Inspección completada</span>
                                 </div>
-                                <div class="flex items-center gap-1 text-green-400/70 group-hover:text-green-300 transition-colors">
+                                <div
+                                    class="flex items-center gap-1 text-green-400/70 group-hover:text-green-300 transition-colors">
                                     <span class="text-[10px] font-medium">Ver informe</span>
                                     <i class="ph ph-arrow-right text-xs"></i>
                                 </div>
                             </div>
-                            <p class="text-[10px] text-slate-500 font-mono truncate mt-1" x-text="'ID: ' + consigDetail?.appraisal_supabase_id"></p>
+                            <p class="text-[10px] text-slate-500 font-mono truncate mt-1"
+                                x-text="'ID: ' + consigDetail?.appraisal_supabase_id"></p>
                         </div>
 
                         <!-- Open embedded inspection -->
                         <button @click="openInspection(consigDetail)"
                             class="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
                             <i class="ph ph-clipboard-text text-base"></i>
-                            <span x-text="consigDetail?.appraisal_supabase_id ? 'Nueva Inspección' : 'Iniciar Inspección Completa'"></span>
+                            <span
+                                x-text="consigDetail?.appraisal_supabase_id ? 'Nueva Inspección' : 'Iniciar Inspección Completa'"></span>
                             <i class="ph ph-arrow-right text-xs"></i>
                         </button>
-                        <p class="text-[10px] text-slate-600 text-center mt-1">Formulario de 5 pasos + fotos integrado</p>
+                        <p class="text-[10px] text-slate-600 text-center mt-1">Formulario de 5 pasos + fotos integrado
+                        </p>
                     </div>
                     <!-- Actions -->
                     <div class="px-5 py-4 flex flex-col gap-2">
@@ -1813,23 +1982,26 @@
                             <i class="ph ph-arrow-up-right mr-1"></i> Promover a Inventario
                         </button>
                         <!-- CONTRACT -->
-                        <div x-show="consigDetail?.appraisal_supabase_id || consigDetail?.status !== 'pendiente'" class="mt-1">
+                        <div x-show="consigDetail?.appraisal_supabase_id || consigDetail?.status !== 'pendiente'"
+                            class="mt-1">
                             <button @click="openContract(consigDetail.id)"
                                 class="w-full flex items-center justify-center gap-2 text-white py-2 rounded-lg text-sm font-medium transition-colors"
                                 :class="consigDetail?.contract_signed_at ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-700 hover:bg-amber-600'">
-                                <i class="ph text-base" :class="consigDetail?.contract_signed_at ? 'ph-check-circle' : 'ph-file-text'"></i>
-                                <span x-text="consigDetail?.contract_signed_at ? 'Ver Contrato Firmado' : 'Generar / Firmar Contrato'"></span>
+                                <i class="ph text-base"
+                                    :class="consigDetail?.contract_signed_at ? 'ph-check-circle' : 'ph-file-text'"></i>
+                                <span
+                                    x-text="consigDetail?.contract_signed_at ? 'Ver Contrato Firmado' : 'Generar / Firmar Contrato'"></span>
                             </button>
                         </div>
                         <!-- PUBLISH TO WEBSITE -->
                         <div x-show="consigDetail?.appraisal_supabase_id" class="mt-1">
                             <button @click="publishToWebsite(consigDetail.id)"
-                                :disabled="publishingId === consigDetail?.id"
-                                x-show="!consigDetail?.listing_id"
+                                :disabled="publishingId === consigDetail?.id" x-show="!consigDetail?.listing_id"
                                 class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-blue-900/30">
                                 <i class="ph ph-globe text-base"></i>
                                 <span x-show="publishingId !== consigDetail?.id">Publicar en autodirecto.cl</span>
-                                <span x-show="publishingId === consigDetail?.id" style="display:none;"><i class="ph ph-spinner animate-spin"></i> Publicando...</span>
+                                <span x-show="publishingId === consigDetail?.id" style="display:none;"><i
+                                        class="ph ph-spinner animate-spin"></i> Publicando...</span>
                             </button>
                             <!-- Already published badge -->
                             <div x-show="consigDetail?.listing_id"
@@ -1872,7 +2044,8 @@
                     <div>
                         <label class="block text-sm text-slate-400 mb-1">Nombre</label>
                         <input type="text" x-model="newCRMLead.first_name"
-                            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" required>
+                            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                            required>
                     </div>
                     <div>
                         <label class="block text-sm text-slate-400 mb-1">Apellido</label>
@@ -2067,7 +2240,8 @@
 
         <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <!-- Add user form -->
-            <div x-show="usuarioAddOpen" class="bg-slate-800/50 border border-slate-700 rounded-xl p-5" style="display:none;">
+            <div x-show="usuarioAddOpen" class="bg-slate-800/50 border border-slate-700 rounded-xl p-5"
+                style="display:none;">
                 <h3 class="text-sm font-semibold text-white mb-4 flex items-center gap-2">
                     <i class="ph ph-user-plus text-blue-400"></i> Nuevo Usuario
                 </h3>
@@ -2153,17 +2327,19 @@
                                 </td>
                                 <td class="px-4 py-3 text-slate-400 font-mono text-xs" x-text="u.email"></td>
                                 <td class="px-4 py-3">
-                                    <span :class="u.role==='admin' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'"
-                                        class="px-2 py-0.5 rounded-full text-xs font-medium capitalize" x-text="u.role"></span>
+                                    <span
+                                        :class="u.role==='admin' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'"
+                                        class="px-2 py-0.5 rounded-full text-xs font-medium capitalize"
+                                        x-text="u.role"></span>
                                 </td>
                                 <td class="px-4 py-3 text-slate-400 text-xs" x-text="u.sucursal || 'Vitacura'"></td>
                                 <td class="px-4 py-3 text-right">
-                                    <button @click="deleteUsuario(u.id)"
-                                        x-show="u.email !== currentUser?.email"
+                                    <button @click="deleteUsuario(u.id)" x-show="u.email !== currentUser?.email"
                                         class="text-slate-500 hover:text-red-400 transition-colors text-xs px-2 py-1 rounded hover:bg-red-500/10">
                                         <i class="ph ph-trash"></i> Desactivar
                                     </button>
-                                    <span x-show="u.email === currentUser?.email" class="text-[10px] text-slate-600">(tú)</span>
+                                    <span x-show="u.email === currentUser?.email"
+                                        class="text-[10px] text-slate-600">(tú)</span>
                                 </td>
                             </tr>
                         </template>
@@ -2179,7 +2355,10 @@
                 <i class="ph ph-info text-amber-400 text-lg mt-0.5 flex-shrink-0"></i>
                 <div>
                     <p class="text-xs text-amber-300 font-medium">Credenciales de acceso</p>
-                    <p class="text-xs text-slate-400 mt-1">Los usuarios acceden con su email y contraseña en <code class="font-mono bg-slate-800 px-1 rounded">localhost:8080</code>. El admin por defecto es <code class="font-mono bg-slate-800 px-1 rounded">admin@autodirecto.cl / admin1234</code>.</p>
+                    <p class="text-xs text-slate-400 mt-1">Los usuarios acceden con su email y contraseña en <code
+                            class="font-mono bg-slate-800 px-1 rounded">localhost:8080</code>. El admin por defecto es
+                        <code class="font-mono bg-slate-800 px-1 rounded">admin@autodirecto.cl / admin1234</code>.
+                    </p>
                 </div>
             </div>
         </div>
@@ -2193,7 +2372,8 @@
         <div class="w-full max-w-sm mx-4">
             <!-- Logo / Brand -->
             <div class="text-center mb-8">
-                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-900/40">
+                <div
+                    class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-900/40">
                     <i class="ph ph-car-simple text-3xl text-white"></i>
                 </div>
                 <h1 class="text-2xl font-bold text-white">Autodirecto CRM</h1>
@@ -2210,17 +2390,16 @@
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Email</label>
-                        <input type="email" x-model="loginEmail"
-                            @keydown.enter="doLogin()"
+                        <label
+                            class="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Email</label>
+                        <input type="email" x-model="loginEmail" @keydown.enter="doLogin()"
                             placeholder="admin@autodirecto.cl"
                             class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Contraseña</label>
-                        <input type="password" x-model="loginPassword"
-                            @keydown.enter="doLogin()"
-                            placeholder="••••••••"
+                        <label
+                            class="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Contraseña</label>
+                        <input type="password" x-model="loginPassword" @keydown.enter="doLogin()" placeholder="••••••••"
                             class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
                     </div>
                     <button @click="doLogin()" :disabled="loginLoading"
@@ -2228,7 +2407,8 @@
                         <span x-show="!loginLoading" class="flex items-center justify-center gap-2">
                             <i class="ph ph-sign-in"></i> Iniciar Sesión
                         </span>
-                        <span x-show="loginLoading" class="flex items-center justify-center gap-2" style="display:none;">
+                        <span x-show="loginLoading" class="flex items-center justify-center gap-2"
+                            style="display:none;">
                             <i class="ph ph-spinner animate-spin"></i> Verificando...
                         </span>
                     </button>
@@ -2337,7 +2517,7 @@
                         try {
                             const r = await fetch('/api/crm/stats');
                             this.crmStats = await r.json();
-                        } catch(e) {}
+                        } catch (e) { }
                     }
                 },
 
@@ -2346,7 +2526,7 @@
                     try {
                         const r = await fetch('/api/auth/me');
                         if (r.ok) this.currentUser = await r.json();
-                    } catch(e) {}
+                    } catch (e) { }
                 },
 
                 async doLogin() {
@@ -2365,11 +2545,11 @@
                             try {
                                 const s = await fetch('/api/crm/stats');
                                 this.crmStats = await s.json();
-                            } catch(e) {}
+                            } catch (e) { }
                         } else {
                             this.loginError = d.error || 'Credenciales incorrectas';
                         }
-                    } catch(e) {
+                    } catch (e) {
                         this.loginError = 'Error de conexión. ¿Está corriendo el servidor?';
                     }
                     this.loginLoading = false;
@@ -2386,7 +2566,7 @@
                     try {
                         const r = await fetch('/api/users');
                         this.usuarios = await r.json();
-                    } catch(e) {}
+                    } catch (e) { }
                     this.usuariosLoading = false;
                 },
 
@@ -2498,7 +2678,7 @@
                     try {
                         const d = new Date(dateStr);
                         return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
-                    } catch(e) {
+                    } catch (e) {
                         return dateStr;
                     }
                 },
@@ -2513,15 +2693,15 @@
                 calActiveEvent: null,
 
                 get calMonthLabel() {
-                    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                                    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
                     return months[this.calMonth - 1] + ' ' + this.calYear;
                 },
 
                 get calSelectedDayLabel() {
                     if (!this.calSelectedDay) return '';
                     const [y, m, d] = this.calSelectedDay.split('-');
-                    const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+                    const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
                     const dt = new Date(+y, +m - 1, +d);
                     return days[dt.getDay()] + ' ' + +d + ' de ' + this.calMonthLabel;
                 },
@@ -2543,7 +2723,7 @@
                     for (let i = 0; i < startDow; i++) cells.push({ date: null, day: null, events: [] });
                     // Month days
                     for (let d = 1; d <= daysInMonth; d++) {
-                        const dateStr = this.calYear + '-' + String(this.calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+                        const dateStr = this.calYear + '-' + String(this.calMonth).padStart(2, '0') + '-' + String(d).padStart(2, '0');
                         cells.push({
                             date: dateStr,
                             day: d,
@@ -2631,10 +2811,10 @@
                 publishingId: null,
                 inspSteps: [
                     { label: 'Datos del Dueño & Vehículo', desc: 'Información básica del propietario y el auto' },
-                    { label: 'Documentación & Precios',    desc: 'Permisos, revisión técnica y valores' },
-                    { label: 'Equipamiento',               desc: 'Características y accesorios del vehículo' },
-                    { label: 'Técnico & Fotos',            desc: 'Estado físico, neumáticos y galería de fotos' },
-                    { label: 'Revisión & Guardar',         desc: 'Confirma los datos antes de guardar' },
+                    { label: 'Documentación & Precios', desc: 'Permisos, revisión técnica y valores' },
+                    { label: 'Equipamiento', desc: 'Características y accesorios del vehículo' },
+                    { label: 'Técnico & Fotos', desc: 'Estado físico, neumáticos y galería de fotos' },
+                    { label: 'Revisión & Guardar', desc: 'Confirma los datos antes de guardar' },
                 ],
                 insp: {},
 
@@ -2764,7 +2944,7 @@
                         } else {
                             alert('❌ Error: ' + (data.error || 'Error firmando'));
                         }
-                    } catch(e) {
+                    } catch (e) {
                         alert('❌ Error: ' + e.message);
                     }
                     this.contractSigning = false;
@@ -2780,7 +2960,7 @@
                     try {
                         const res = await fetch('/api/inspecciones/' + appraisalId);
                         this.inspViewData = await res.json();
-                    } catch(e) {
+                    } catch (e) {
                         console.error('Error loading inspection:', e);
                     }
                 },
@@ -2805,7 +2985,7 @@
                         } else {
                             alert('❌ Error: ' + (data.error || 'No se pudo enviar'));
                         }
-                    } catch(e) {
+                    } catch (e) {
                         alert('❌ Error de conexión: ' + e.message);
                     }
                     this.inspEmailSending = false;
@@ -2814,26 +2994,26 @@
                 openInspection(c) {
                     this.insp = {
                         // Client
-                        clientNombre:    c?.owner_first_name || '',
-                        clientApellido:  c?.owner_last_name  || '',
-                        clientRut:       c?.owner_rut        || '',
-                        clientTelefono:  (c?.owner_country_code||'+56') + (c?.owner_phone||''),
-                        clientEmail:     c?.owner_email      || '',
+                        clientNombre: c?.owner_first_name || '',
+                        clientApellido: c?.owner_last_name || '',
+                        clientRut: c?.owner_rut || '',
+                        clientTelefono: (c?.owner_country_code || '+56') + (c?.owner_phone || ''),
+                        clientEmail: c?.owner_email || '',
                         clientDireccion: [c?.owner_address, c?.owner_commune, c?.owner_region].filter(Boolean).join(', '),
                         // Vehicle
-                        vehiclePatente:      c?.plate      || '',
-                        vehicleMarca:        c?.car_make   || '',
-                        vehicleModelo:       c?.car_model  || '',
-                        vehicleVersion:      c?.version    || '',
-                        vehicleAno:          c?.car_year   || new Date().getFullYear(),
-                        vehicleKm:           c?.mileage    || 0,
-                        vehicleColor:        c?.color      || '',
-                        vehicleMotor:        '',
-                        vehicleTransmision:  'Manual',
-                        vehicleCombustible:  'Bencina',
-                        vehicleBodyType:     '',
-                        digitoPatente:       '',
-                        traccion:            '',
+                        vehiclePatente: c?.plate || '',
+                        vehicleMarca: c?.car_make || '',
+                        vehicleModelo: c?.car_model || '',
+                        vehicleVersion: c?.version || '',
+                        vehicleAno: c?.car_year || new Date().getFullYear(),
+                        vehicleKm: c?.mileage || 0,
+                        vehicleColor: c?.color || '',
+                        vehicleMotor: '',
+                        vehicleTransmision: 'Manual',
+                        vehicleCombustible: 'Bencina',
+                        vehicleBodyType: '',
+                        digitoPatente: '',
+                        traccion: '',
                         // Docs
                         permisoCirculacion: null,
                         permisoVence: '',
@@ -2842,10 +3022,10 @@
                         soap: null,
                         soapCompania: '',
                         // Pricing
-                        tasacion: null,
-                        precioPublicado: null,
-                        precioSugerido: null,
-                        comision: null,
+                        tasacion: c?.market_value || null,
+                        precioPublicado: c?.listing_price || null,
+                        precioSugerido: c?.proposed_price || c?.market_value || null,
+                        comision: c?.commission || null,
                         numDuenos: null,
                         // Legal
                         enPrenda: false,
@@ -2889,64 +3069,64 @@
                     this.inspSaving = true;
                     try {
                         const payload = {
-                            consignacion_id:        this.insp._consignacionId,
+                            consignacion_id: this.insp._consignacionId,
                             // Client
-                            client_nombre:          this.insp.clientNombre,
-                            client_apellido:        this.insp.clientApellido,
-                            client_rut:             this.insp.clientRut,
-                            client_telefono:        this.insp.clientTelefono,
-                            client_email:           this.insp.clientEmail || null,
-                            client_direccion:       this.insp.clientDireccion || null,
+                            client_nombre: this.insp.clientNombre,
+                            client_apellido: this.insp.clientApellido,
+                            client_rut: this.insp.clientRut,
+                            client_telefono: this.insp.clientTelefono,
+                            client_email: this.insp.clientEmail || null,
+                            client_direccion: this.insp.clientDireccion || null,
                             // Vehicle — exact Supabase column names
-                            vehicle_patente:        this.insp.vehiclePatente,
-                            vehicle_marca:          this.insp.vehicleMarca,
-                            vehicle_modelo:         this.insp.vehicleModelo,
-                            vehicle_version:        this.insp.vehicleVersion || null,
-                            'vehicle_año':          this.insp.vehicleAno,
-                            vehicle_km:             this.insp.vehicleKm,
-                            vehicle_color:          this.insp.vehicleColor || null,
-                            vehicle_motor:          this.insp.vehicleMotor || null,
-                            vehicle_transmision:    this.insp.vehicleTransmision,
-                            vehicle_combustible:    this.insp.vehicleCombustible,
-                            traccion:               this.insp.traccion || null,
-                            digito_patente:         this.insp.digitoPatente || null,
+                            vehicle_patente: this.insp.vehiclePatente,
+                            vehicle_marca: this.insp.vehicleMarca,
+                            vehicle_modelo: this.insp.vehicleModelo,
+                            vehicle_version: this.insp.vehicleVersion || null,
+                            'vehicle_año': this.insp.vehicleAno,
+                            vehicle_km: this.insp.vehicleKm,
+                            vehicle_color: this.insp.vehicleColor || null,
+                            vehicle_motor: this.insp.vehicleMotor || null,
+                            vehicle_transmision: this.insp.vehicleTransmision,
+                            vehicle_combustible: this.insp.vehicleCombustible,
+                            traccion: this.insp.traccion || null,
+                            digito_patente: this.insp.digitoPatente || null,
                             // Docs
-                            permiso_circulacion:    this.insp.permisoCirculacion,
-                            vence_permiso:          this.insp.permisoVence || null,
-                            revision_tecnica:       this.insp.revisionTecnica,
-                            vence_revision:         this.insp.revisionVence || null,
-                            soap:                   this.insp.soap,
-                            soap_compania:          this.insp.soapCompania || null,
+                            permiso_circulacion: this.insp.permisoCirculacion,
+                            vence_permiso: this.insp.permisoVence || null,
+                            revision_tecnica: this.insp.revisionTecnica,
+                            vence_revision: this.insp.revisionVence || null,
+                            soap: this.insp.soap,
+                            soap_compania: this.insp.soapCompania || null,
                             // Pricing
-                            tasacion:               this.insp.tasacion || null,
-                            precio_publicado:       this.insp.precioPublicado || null,
-                            precio_sugerido:        this.insp.precioSugerido || null,
-                            comision:               this.insp.comision || null,
-                            'num_dueños':           this.insp.numDuenos || null,
+                            tasacion: this.insp.tasacion || null,
+                            precio_publicado: this.insp.precioPublicado || null,
+                            precio_sugerido: this.insp.precioSugerido || null,
+                            comision: this.insp.comision || null,
+                            'num_dueños': this.insp.numDuenos || null,
                             // Legal
-                            en_prenda:              this.insp.enPrenda,
-                            remate:                 this.insp.enRemate,
+                            en_prenda: this.insp.enPrenda,
+                            remate: this.insp.enRemate,
                             // Technical
-                            airbags:                this.insp.airbags || null,
-                            num_llaves:             this.insp.numLlaves,
-                            neumaticos:             this.insp.neumaticos,
-                            quien_tomo_fotos:       this.insp.quienTomoFotos || null,
-                            observaciones:          this.insp.observaciones || null,
+                            airbags: this.insp.airbags || null,
+                            num_llaves: this.insp.numLlaves,
+                            neumaticos: this.insp.neumaticos,
+                            quien_tomo_fotos: this.insp.quienTomoFotos || null,
+                            observaciones: this.insp.observaciones || null,
                             // Features — JSON blob + individual boolean columns
-                            features:               this.insp.features,
-                            calefactor_asiento:     !!this.insp.features.calefactorAsiento,
-                            conexion_usb:           !!this.insp.features.conexionUsb,
-                            gps:                    !!this.insp.features.gps,
-                            isofix:                 !!this.insp.features.isofix,
-                            smart_key:              !!this.insp.features.smartKey,
-                            luces_led:              !!this.insp.features.lucesLed,
-                            mandos_volante:         !!this.insp.features.mandosVolante,
+                            features: this.insp.features,
+                            calefactor_asiento: !!this.insp.features.calefactorAsiento,
+                            conexion_usb: !!this.insp.features.conexionUsb,
+                            gps: !!this.insp.features.gps,
+                            isofix: !!this.insp.features.isofix,
+                            smart_key: !!this.insp.features.smartKey,
+                            luces_led: !!this.insp.features.lucesLed,
+                            mandos_volante: !!this.insp.features.mandosVolante,
                             sensor_estacionamiento: !!this.insp.features.sensorEstacionamiento,
-                            sonido_premium:         !!this.insp.features.sonidoPremium,
-                            techo_electrico:        !!this.insp.features.techoElectrico,
-                            ventilador_asiento:     !!this.insp.features.ventiladorAsiento,
-                            carplay_android:        !!this.insp.features.carplayAndroid,
-                            status:                 'completed',
+                            sonido_premium: !!this.insp.features.sonidoPremium,
+                            techo_electrico: !!this.insp.features.techoElectrico,
+                            ventilador_asiento: !!this.insp.features.ventiladorAsiento,
+                            carplay_android: !!this.insp.features.carplayAndroid,
+                            status: 'completed',
                         };
 
                         // POST to SimplyAPI proxy → Supabase
@@ -3001,7 +3181,7 @@
                                             } else {
                                                 alert('⚠️ El email falló: ' + (emailData.error || 'Error'));
                                             }
-                                        } catch(emailErr) {
+                                        } catch (emailErr) {
                                             alert('⚠️ El email falló: ' + emailErr.message);
                                         }
                                     }
@@ -3010,7 +3190,7 @@
                         } else {
                             alert('✅ Inspección guardada correctamente');
                         }
-                    } catch(e) {
+                    } catch (e) {
                         alert('❌ Error: ' + e.message);
                     }
                     this.inspSaving = false;
@@ -3020,14 +3200,14 @@
                     const i = this.insp;
                     if (step === 1) {
                         const missing = [];
-                        if (!i.clientNombre?.trim())   missing.push('Nombre');
-                        if (!i.clientApellido?.trim())  missing.push('Apellido');
-                        if (!i.clientRut?.trim())       missing.push('RUT');
-                        if (!i.clientTelefono?.trim())  missing.push('Teléfono');
-                        if (!i.vehiclePatente?.trim())  missing.push('Patente');
-                        if (!i.vehicleMarca?.trim())    missing.push('Marca');
-                        if (!i.vehicleModelo?.trim())   missing.push('Modelo');
-                        if (!i.vehicleAno)              missing.push('Año');
+                        if (!i.clientNombre?.trim()) missing.push('Nombre');
+                        if (!i.clientApellido?.trim()) missing.push('Apellido');
+                        if (!i.clientRut?.trim()) missing.push('RUT');
+                        if (!i.clientTelefono?.trim()) missing.push('Teléfono');
+                        if (!i.vehiclePatente?.trim()) missing.push('Patente');
+                        if (!i.vehicleMarca?.trim()) missing.push('Marca');
+                        if (!i.vehicleModelo?.trim()) missing.push('Modelo');
+                        if (!i.vehicleAno) missing.push('Año');
                         if (!i.vehicleKm && i.vehicleKm !== 0) missing.push('Kilometraje');
                         if (missing.length) {
                             alert('⚠️ Campos obligatorios:\n• ' + missing.join('\n• '));
@@ -3101,7 +3281,7 @@
                         } else {
                             alert('❌ Error al publicar: ' + (data.error || 'Error desconocido'));
                         }
-                    } catch(e) {
+                    } catch (e) {
                         alert('❌ Error de conexión: ' + e.message);
                     }
                     this.publishingId = null;
