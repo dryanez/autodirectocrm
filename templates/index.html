@@ -3803,11 +3803,18 @@
                 },
 
                 async saveConsignacion(id, data) {
+                    console.log(`[SimplyAPI] Saving Consignacion #${id}...`);
+                    console.log(`[SimplyAPI] Payload:`, data);
+
                     const res = await fetch(`/api/consignaciones/${id}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
+
+                    const result = await res.json();
+                    console.log(`[SimplyAPI] Server Response:`, result);
+
                     if (res.ok) {
                         this.consigEdits = {};
                         await this.openConsignacion(id);
@@ -3815,6 +3822,11 @@
                         // Always refresh CRM + inventory in case names/prices changed
                         await this.loadCRM();
                         await this.refresh();
+
+                        // Visual confirmation
+                        alert('✅ Cambios guardados y sincronizados con el CRM correctamente.');
+                    } else {
+                        alert(`❌ error: ${result.error || 'Error desconocido'}`);
                     }
                 },
 
