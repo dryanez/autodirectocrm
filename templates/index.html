@@ -1123,7 +1123,8 @@
                 <span class="text-amber-400 text-sm font-mono" x-text="contractPlate"></span>
             </div>
             <div class="flex items-center gap-2">
-                <a :href="'/api/consignaciones/' + contractConsigId + '/contrato'" target="_blank"
+                <a :href="contractSigned ? '/api/consignaciones/' + contractConsigId + '/contrato/descargar' : '/api/consignaciones/' + contractConsigId + '/contrato'"
+                    target="_blank"
                     class="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
                     <i class="ph ph-download text-sm"></i> Descargar PDF
                 </a>
@@ -1140,12 +1141,11 @@
                 <div x-show="contractLoading" class="absolute inset-0 flex items-center justify-center bg-slate-950">
                     <div class="text-center">
                         <i class="ph ph-spinner animate-spin text-4xl text-amber-400"></i>
-                        <p class="text-slate-400 text-sm mt-3">Generando contrato...</p>
+                        <p class="text-slate-400 text-sm mt-3">Cargando contrato...</p>
                     </div>
                 </div>
-                <iframe x-show="!contractLoading"
-                    :src="contractConsigId ? '/api/consignaciones/' + contractConsigId + '/contrato' : ''"
-                    @load="contractLoading=false" class="w-full h-full border-0"></iframe>
+                <iframe x-show="!contractLoading" :src="contractIframeSrc" @load="contractLoading=false"
+                    class="w-full h-full border-0"></iframe>
             </div>
 
             <!-- Right: Signature panel -->
@@ -2869,6 +2869,7 @@
                 contractSigned: false,
                 contractSigning: false,
                 signatureStarted: false,
+                contractIframeSrc: '',
                 _sigCtx: null,
                 _sigDrawing: false,
 
@@ -2880,10 +2881,16 @@
                     this.contractClientRut = c.owner_rut || '';
                     this.contractSigned = !!c.contract_signed_at;
                     this.contractLoading = true;
+                    this.contractIframeSrc = '';
                     this.contractOpen = true;
                     this.signatureStarted = false;
-                    // Initialize canvas after DOM renders
+                    // Set iframe src with cache-busting timestamp
                     this.$nextTick(() => {
+                        if (this.contractSigned) {
+                            this.contractIframeSrc = '/api/consignaciones/' + consigId + '/contrato/descargar?t=' + Date.now();
+                        } else {
+                            this.contractIframeSrc = '/api/consignaciones/' + consigId + '/contrato?t=' + Date.now();
+                        }
                         const canvas = document.getElementById('signatureCanvas');
                         if (canvas) {
                             canvas.width = canvas.offsetWidth;
@@ -2957,14 +2964,10 @@
                         const data = await res.json();
                         if (data.ok) {
                             this.contractSigned = true;
-                            // Refresh the contract preview
+                            // Refresh the contract preview with signed version
                             this.contractLoading = true;
                             this.$nextTick(() => {
-                                const iframe = this.$el.querySelector('iframe[x-show="!contractLoading"]') ||
-                                    document.querySelector('.fixed[x-show="contractOpen"] iframe');
-                                if (iframe) {
-                                    iframe.src = `/api/consignaciones/${this.contractConsigId}/contrato/descargar`;
-                                }
+                                this.contractIframeSrc = '/api/consignaciones/' + this.contractConsigId + '/contrato/descargar?t=' + Date.now();
                             });
                             // Refresh consignacion detail
                             if (this.consigDetail?.id) {
