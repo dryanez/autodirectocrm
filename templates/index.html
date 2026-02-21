@@ -3314,6 +3314,8 @@
                             this.compradorAddOpen = false;
                             this.newComprador = { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' };
                             await this.loadCompradores();
+                            await this.loadConsignaciones();
+                            await this.refresh();
                         }
                     } catch (e) { alert('Error: ' + e.message); }
                 },
@@ -3330,6 +3332,8 @@
                         });
                         this.compradorDetail[field] = value;
                         await this.loadCompradores();
+                        await this.loadConsignaciones();
+                        await this.refresh();
                     } catch (e) { console.error('updateCompradorField', e); }
                 },
 
@@ -3351,6 +3355,8 @@
                             this.creditSim.down_payment = Math.round(d.car_price * 0.2);
                             this.matchConsigId = '';
                             await this.loadCompradores();
+                            await this.loadConsignaciones();
+                            await this.refresh();
                             alert('✅ Auto vinculado: ' + d.car_description + ' (' + d.car_plate + ')');
                         } else {
                             alert('❌ ' + (d.error || 'Error'));
@@ -3381,6 +3387,8 @@
                             this.compradorDetail.credit_institution = this.creditSim.institution;
                             this.compradorDetail.credit_rate = this.creditSim.annual_rate_pct / 100;
                             await this.loadCompradores();
+                            await this.loadConsignaciones();
+                            await this.refresh();
                         } else {
                             alert('❌ ' + (d.error || 'Error'));
                         }
@@ -3392,6 +3400,8 @@
                         await fetch('/api/compradores/' + id, { method: 'DELETE' });
                         this.compradorDetail = null;
                         await this.loadCompradores();
+                        await this.loadConsignaciones();
+                        await this.refresh();
                     } catch (e) { alert('Error: ' + e.message); }
                 },
 
@@ -3879,6 +3889,8 @@
                     // Refresh detail & list
                     await this.openCRMDetail(leadId);
                     await this.loadCRM();
+                    await this.loadConsignaciones();
+                    await this.refresh();
                 },
 
                 async handleCRMDrop(event, newStage) {
@@ -3903,6 +3915,8 @@
                     });
                     await this.openCRMDetail(leadId);
                     await this.loadCRM();
+                    await this.loadConsignaciones();
+                    await this.refresh();
                 },
 
                 async submitCRMNote(leadId) {
@@ -3929,6 +3943,8 @@
                     this.crmDetailOpen = false;
                     this.crmDetail = null;
                     await this.loadCRM();
+                    await this.loadConsignaciones();
+                    await this.refresh();
                 },
 
                 openCRMAddModal() {
@@ -3945,6 +3961,8 @@
                     if (res.ok) {
                         this.closeModal('crmAdd');
                         await this.loadCRM();
+                        await this.loadConsignaciones();
+                        await this.refresh();
                     } else {
                         const err = await res.json();
                         alert('Error: ' + (err.error || 'Unknown'));
