@@ -159,6 +159,96 @@ if FUNNELS_DIR.exists():
                     entry["contacted_at"] = now_ts
             if valuation:
                 entry["valuation"] = valuation
+                # Ensure the AI price also syncs to the main CRM leads database 
+                # so that appointments can instantly retrieve it.
+                # UPSERT: UPDATE if exists, INSERT if not (so AI tasación auto-creates CRM leads)
+                import re as _re
+                try:
+                    with get_crm_conn() as crm:
+                        # Check if a CRM lead already exists for this funnel URL
+                        existing_lead = crm.execute(
+                            "SELECT id FROM crm_leads WHERE source='funnels' AND funnel_url=?", (url,)
+                        ).fetchone()
+
+                        if existing_lead:
+                            # Lead exists — just update the AI prices
+                            crm.execute('''
+                                UPDATE crm_leads SET 
+                                    estimated_value=?, ai_consignacion_price=?, ai_instant_buy_price=?,
+                                    updated_at=?
+                                WHERE source='funnels' AND funnel_url=?
+                            ''', (
+                                valuation.get("market_price"),
+                                valuation.get("consignment_liquidation"),
+                                valuation.get("immediate_offer"),
+                                datetime.now().isoformat(),
+                                url
+                            ))
+                        else:
+                            # No CRM lead yet — auto-create from cached listing data
+                            listing = None
+                            for l in (funnels_module._cached_listings or []):
+                                if (l.get("url") or l.get("id", "")) == url:
+                                    listing = l
+                                    break
+
+                            title = (listing or {}).get("title", "") if listing else ""
+                            parts = title.split()
+                            car_make = parts[0] if len(parts) > 0 else None
+                            car_model = " ".join(parts[1:]) if len(parts) > 1 else None
+                            car_year = None
+                            year_match = _re.search(r'\b(19|20)\d{2}\b', title)
+                            if year_match:
+                                car_year = int(year_match.group())
+                            elif listing and listing.get("year"):
+                                car_year = int(listing["year"])
+
+                            mileage = None
+                            if listing and listing.get("mileage"):
+                                digits = _re.findall(r'\d+', str(listing["mileage"]).replace(",", ""))
+                                if digits:
+                                    mileage = int(digits[0])
+
+                            listing_price = None
+                            if listing:
+                                price_str = listing.get("price", "")
+                                if price_str:
+                                    digits = _re.findall(r'\d+', str(price_str).replace(",", "").replace(".", ""))
+                                    if digits:
+                                        listing_price = int(digits[0])
+
+                            now_iso = datetime.now().isoformat()
+                            crm.execute("""
+                                INSERT INTO crm_leads (
+                                    full_name, phone, car_make, car_model, car_year, mileage,
+                                    listing_price, estimated_value, ai_consignacion_price,
+                                    ai_instant_buy_price, stage, source, funnel_url,
+                                    created_at, updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                (listing or {}).get("seller"),
+                                (listing or {}).get("seller_phone"),
+                                car_make, car_model, car_year, mileage,
+                                listing_price,
+                                valuation.get("market_price"),
+                                valuation.get("consignment_liquidation"),
+                                valuation.get("immediate_offer"),
+                                'nuevo', 'funnels', url, now_iso, now_iso
+                            ))
+                            # Add activity log
+                            lead_id = crm.execute("SELECT last_insert_rowid()").fetchone()[0]
+                            crm.execute(
+                                "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                                (lead_id, 'ai_valuation', 'Lead creado por AI Tasación',
+                                 'Publicación: {} — Precio AI: ${}'.format(
+                                     title, valuation.get("market_price", "?")))
+                            )
+                            print(f"[funnels_api_update_status] Auto-created CRM lead #{lead_id} for {url}")
+
+                        crm.commit()
+                except Exception as e:
+                    print(f"[funnels_api_update_status] Error syncing to crm_leads: {e}")
+
             with get_db() as conn:
                 if existing:
                     set_clause = ", ".join(f"{k}=?" for k in entry if k != "url")
@@ -1152,6 +1242,195 @@ def create_consignacion():
         new_id = inserted.get("id") if inserted else conn._last_insert_id
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (new_id,)).fetchone() if new_id else inserted
 
+    # ── Match against existing funnels leads (FB Marketplace) by make+model+year ──
+    # Then call MrCar AI to get real pricing, and create/update a CRM lead as "Agendado".
+    try:
+        car_make_val = (car.get("make") or g("carMake", "car_make") or "").strip().upper()
+        car_model_val = (car.get("model") or g("carModel", "car_model") or "").strip().upper()
+        car_year_val = car.get("year") or g("carYear", "car_year") or ""
+        mileage_val = g("mileage") or ""
+
+        matched_lead = None
+        listing_price = None   # What the FB seller asks
+        print("[consignacion] matching: make={} model={} year={}".format(car_make_val, car_model_val, car_year_val), flush=True)
+
+        with get_crm_conn() as crm:
+            # Try to find a funnels lead that matches this car.
+            # Funnels car_model = "Brand Model" (e.g. "Mazda CX-5") and car_year = year.
+            # Wizard sends make="TOYOTA", model="YARIS" separately.
+            # Strategy: use the same point-based scoring logic as the calendar view.
+            if car_make_val or car_model_val:
+                make = car_make_val.lower().strip()
+                model = car_model_val.lower().strip()
+                year = car_year_val
+
+                candidates = crm.execute(
+                    "SELECT id, full_name, car_make, car_model, car_year, mileage, "
+                    "listing_price, estimated_value, ai_consignacion_price, ai_instant_buy_price, funnel_url "
+                    "FROM crm_leads WHERE source='funnels'"
+                ).fetchall()
+
+                matches = []
+                for c in candidates:
+                    score = 0
+                    c_make = (c["car_make"] or "").lower().strip()
+                    c_model = (c["car_model"] or "").lower().strip()
+                    c_combined = (c_make + " " + c_model).lower()
+                    c_year = c["car_year"]
+
+                    if make and (make in c_make or make in c_model or make in c_combined):
+                        score += 40
+                    if model and c_model and (model in c_model or c_model in model):
+                        score += 40
+                    if year and c_year and int(year) == int(c_year):
+                        score += 30  # exact year bonus
+                    elif year and c_year and abs(int(year) - int(c_year)) <= 1:
+                        score += 15
+
+                    if score >= 60:
+                        matches.append({
+                            "lead": c,
+                            "score": score
+                        })
+
+                if matches:
+                    matches.sort(key=lambda x: -x["score"])
+                    matched_lead = matches[0]["lead"]
+                    listing_price = matched_lead.get("listing_price") or matched_lead.get("estimated_value")
+                    print("[consignacion] MATCHED funnels lead id={} with score={}, listing_price={}".format(
+                        matched_lead.get("id"), matches[0]["score"], listing_price), flush=True)
+
+            # Also check by plate (for non-funnels leads)
+            if not matched_lead and plate:
+                existing_by_plate = crm.execute(
+                    "SELECT * FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
+                ).fetchone()
+                if existing_by_plate:
+                    matched_lead = existing_by_plate
+                    listing_price = existing_by_plate.get("listing_price") or existing_by_plate.get("estimated_value")
+
+            if matched_lead:
+                lead_id = matched_lead.get("id")
+                # Update the matched lead to agendado with the new contact info
+                crm.execute("""
+                    UPDATE crm_leads SET
+                        stage=?, first_name=?, last_name=?, full_name=?,
+                        rut=?, phone=?, country_code=?, email=?,
+                        region=?, commune=?, address=?, plate=?,
+                        appointment_date=?, appointment_time=?,
+                        updated_at=?
+                    WHERE id=?
+                """, (
+                    "agendado", first_name, last_name, full_name,
+                    g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
+                    g("region"), g("commune"), g("address"), plate,
+                    appointment_date, appointment_time,
+                    now, lead_id
+                ))
+                crm.commit()
+                print("[consignacion] matched funnels lead #{} (listing_price={})".format(lead_id, listing_price))
+            else:
+                # No match — create a fresh CRM lead
+                crm.execute("""
+                    INSERT INTO crm_leads (
+                        first_name, last_name, full_name, rut, phone, country_code, email,
+                        region, commune, address, plate, car_make, car_model, car_year,
+                        mileage, version, appointment_date, appointment_time,
+                        stage, source, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    first_name, last_name, full_name,
+                    g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
+                    g("region"), g("commune"), g("address"),
+                    plate, car_make_val, car_model_val, car_year_val,
+                    mileage_val, g("version"),
+                    appointment_date, appointment_time,
+                    "agendado", "web_wizard", now, now
+                ))
+                crm.commit()
+
+
+        # ── Use AI price from matched crm_lead if available, else skip AI price ──
+        ai_consignacion_price = None
+        ai_market_price = None
+        ai_immediate_offer = None
+        if matched_lead:
+            ai_consignacion_price = matched_lead.get("ai_consignacion_price")
+            ai_market_price = matched_lead.get("estimated_value")
+            ai_immediate_offer = matched_lead.get("ai_instant_buy_price")
+            print(f"[consignacion] using AI price from crm_lead: consignacion={ai_consignacion_price}", flush=True)
+        # If no matched lead or no AI price, do NOT recalculate — just leave selling_price blank
+        else:
+            print("[consignacion] no matched lead or no AI price, skipping AI price", flush=True)
+
+        # ── Update consignacion with AI prices ──
+        # selling_price = AI consignación price (what the contract uses)
+        # owner_price = FB listing price (what the person originally asked)
+        if new_id and (ai_consignacion_price or listing_price):
+            try:
+                updates = []
+                params = []
+                if ai_consignacion_price:
+                    updates.append("selling_price=?")
+                    params.append(int(ai_consignacion_price))
+                if listing_price:
+                    updates.append("owner_price=?")
+                    params.append(int(listing_price))
+                updates.append("updated_at=?")
+                params.append(now)
+                params.append(new_id)
+
+                print("[consignacion] updating consignacion #{}: {}".format(
+                    new_id, ", ".join(updates)), flush=True)
+                with get_db() as conn2:
+                    conn2.execute(
+                        "UPDATE consignaciones SET {} WHERE id=?".format(", ".join(updates)),
+                        tuple(params)
+                    )
+                    conn2.commit()
+                print("[consignacion] set selling_price={}, owner_price={} on consignacion #{}".format(
+                    ai_consignacion_price, listing_price, new_id), flush=True)
+            except Exception as e2:
+                import traceback
+                print("[consignacion] price update error: {}".format(e2), flush=True)
+                traceback.print_exc()
+        else:
+            print("[consignacion] skipping price update (no AI price and no listing_price)", flush=True)
+
+        # ── Also update AI prices on the CRM lead (if columns exist) ──
+        if matched_lead and (ai_consignacion_price or ai_immediate_offer or ai_market_price):
+            try:
+                lead_id = matched_lead.get("id")
+                with get_crm_conn() as crm2:
+                    lead_updates = []
+                    lead_params = []
+                    if ai_market_price:
+                        lead_updates.append("estimated_value=?")
+                        lead_params.append(int(ai_market_price))
+                    if ai_consignacion_price:
+                        lead_updates.append("ai_consignacion_price=?")
+                        lead_params.append(int(ai_consignacion_price))
+                    if ai_immediate_offer:
+                        lead_updates.append("ai_instant_buy_price=?")
+                        lead_params.append(int(ai_immediate_offer))
+                    lead_updates.append("updated_at=?")
+                    lead_params.append(now)
+                    lead_params.append(lead_id)
+                    crm2.execute(
+                        "UPDATE crm_leads SET {} WHERE id=?".format(", ".join(lead_updates)),
+                        tuple(lead_params)
+                    )
+                    crm2.commit()
+                print("[consignacion] updated AI prices on crm_lead #{}".format(lead_id), flush=True)
+            except Exception as e3:
+                # Columns may not exist yet — non-fatal
+                print("[consignacion] crm_lead AI price update skipped: {}".format(e3), flush=True)
+
+    except Exception as e:
+        import traceback
+        print("[consignacion→crm_lead] error:", e, flush=True)
+        traceback.print_exc()
+
     return jsonify({"ok": True, "id": new_id, "consignacion": row_to_dict(row or inserted)}), 201
 
 
@@ -1159,14 +1438,29 @@ def create_consignacion():
 def get_consignaciones():
     status = request.args.get("status")
     with get_db() as conn:
-        q = "SELECT c.*, u.name as assigned_user_name, u.color as assigned_user_color FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE 1=1"
+        q = "SELECT * FROM consignaciones WHERE 1=1"
         params = []
         if status:
-            q += " AND c.status=?"
+            q += " AND status=?"
             params.append(status)
-        q += " ORDER BY c.appointment_date ASC, c.appointment_time ASC"
+        q += " ORDER BY appointment_date ASC, appointment_time ASC"
         rows = conn.execute(q, params).fetchall()
-    return jsonify([row_to_dict(r) for r in rows])
+    result = [row_to_dict(r) for r in rows]
+    # Resolve assigned user names in a second pass
+    user_cache = {}
+    for c in result:
+        uid = c.get("assigned_user_id")
+        if uid and uid not in user_cache:
+            try:
+                with get_db() as conn2:
+                    u = conn2.execute("SELECT name, color FROM crm_users WHERE id=?", (uid,)).fetchone()
+                    user_cache[uid] = row_to_dict(u) if u else {}
+            except:
+                user_cache[uid] = {}
+        if uid and user_cache.get(uid):
+            c["assigned_user_name"] = user_cache[uid].get("name", "")
+            c["assigned_user_color"] = user_cache[uid].get("color", "")
+    return jsonify(result)
 
 
 @app.route("/api/consignaciones/<int:cid>", methods=["GET"])

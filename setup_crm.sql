@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   funnel_url TEXT,
   estimated_value INTEGER,
   listing_price INTEGER,
+  ai_consignacion_price INTEGER,
+  ai_instant_buy_price INTEGER,
   notes TEXT,
   tags TEXT DEFAULT '[]',
   last_contact_at TEXT,
