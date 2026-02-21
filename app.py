@@ -1243,6 +1243,7 @@ def create_consignacion():
 
     car = data.get("carData") or {}
     plate = (g("plate") or "").upper().strip()
+    supa_id = data.get("appointment_supabase_id")
     appointment_date = g("appointmentDate", "appointment_date") or ""
     appointment_time = g("appointmentTime", "appointment_time") or ""
 
@@ -1260,14 +1261,16 @@ def create_consignacion():
     with get_db() as conn:
         result = conn.execute("""
             INSERT INTO consignaciones (
+                appointment_supabase_id,
                 owner_first_name, owner_last_name, owner_full_name,
                 owner_rut, owner_phone, owner_country_code, owner_email,
                 owner_region, owner_commune, owner_address,
                 plate, car_make, car_model, car_year, mileage, version,
                 appointment_date, appointment_time,
                 status, part1_completed_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
+            supa_id,
             first_name, last_name, full_name,
             g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
             g("region"), g("commune"), g("address"),
@@ -1343,16 +1346,46 @@ def create_consignacion():
                     print("[consignacion] MATCHED funnels lead id={} with score={}, listing_price={}".format(
                         matched_lead.get("id"), matches[0]["score"], listing_price), flush=True)
 
-            # Also check by plate (for non-funnels leads)
+            # 1. Match by Supabase ID (strongest link from wizard)
+            if not matched_lead and supa_id:
+                existing_by_supa = crm.execute(
+                    "SELECT * FROM crm_leads WHERE supabase_id=? LIMIT 1", (supa_id,)
+                ).fetchone()
+                if existing_by_supa:
+                    matched_lead = existing_by_supa
+                    print(f"[consignacion] Matched by Supabase ID: {supa_id}")
+
+            # 2. Match by plate (standard match)
             if not matched_lead and plate:
                 existing_by_plate = crm.execute(
                     "SELECT * FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
                 ).fetchone()
                 if existing_by_plate:
                     matched_lead = existing_by_plate
-                    listing_price = existing_by_plate.get("listing_price") or existing_by_plate.get("estimated_value")
+                    print(f"[consignacion] Matched by Plate: {plate}")
+
+            # 3. Match by RUT (strong contact match)
+            rut = g("rut")
+            if not matched_lead and rut:
+                existing_by_rut = crm.execute(
+                    "SELECT * FROM crm_leads WHERE rut=? LIMIT 1", (rut,)
+                ).fetchone()
+                if existing_by_rut:
+                    matched_lead = existing_by_rut
+                    print(f"[consignacion] Matched by RUT: {rut}")
+
+            # 4. Match by Phone (fallback contact match)
+            phone = g("phone")
+            if not matched_lead and phone:
+                existing_by_phone = crm.execute(
+                    "SELECT * FROM crm_leads WHERE phone=? LIMIT 1", (phone,)
+                ).fetchone()
+                if existing_by_phone:
+                    matched_lead = existing_by_phone
+                    print(f"[consignacion] Matched by Phone: {phone}")
 
             if matched_lead:
+                listing_price = matched_lead.get("listing_price") or matched_lead.get("estimated_value")
                 lead_id = matched_lead.get("id")
                 # Update the matched lead to agendado with the new contact info
                 crm.execute("""
@@ -1361,14 +1394,14 @@ def create_consignacion():
                         rut=?, phone=?, country_code=?, email=?,
                         region=?, commune=?, address=?, plate=?,
                         appointment_date=?, appointment_time=?,
-                        updated_at=?
+                        supabase_id=?, updated_at=?
                     WHERE id=?
                 """, (
                     "agendado", first_name, last_name, full_name,
                     g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
                     g("region"), g("commune"), g("address"), plate,
                     appointment_date, appointment_time,
-                    now, lead_id
+                    supa_id, now, lead_id
                 ))
                 crm.commit()
                 print("[consignacion] matched funnels lead #{} (listing_price={})".format(lead_id, listing_price))
@@ -1379,8 +1412,8 @@ def create_consignacion():
                         first_name, last_name, full_name, rut, phone, country_code, email,
                         region, commune, address, plate, car_make, car_model, car_year,
                         mileage, version, appointment_date, appointment_time,
-                        stage, source, created_at, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        stage, source, supabase_id, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     first_name, last_name, full_name,
                     g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
@@ -1388,7 +1421,7 @@ def create_consignacion():
                     plate, car_make_val, car_model_val, car_year_val,
                     mileage_val, g("version"),
                     appointment_date, appointment_time,
-                    "agendado", "web_wizard", now, now
+                    "agendado", "web_wizard", supa_id, now, now
                 ))
                 crm.commit()
 
@@ -1577,7 +1610,7 @@ def update_consignacion(cid):
     # Sync CRM lead stage when consignacion status changes
     new_status = updates.get("status")
     if new_status:
-        _sync_crm_lead_stage(result.get("plate"), new_status)
+        _sync_crm_lead_stage(result.get("plate"), new_status, result.get("appointment_supabase_id"))
 
     # Sync Owner details to CRM
     _sync_crm_lead_owner_details(result)
@@ -1586,13 +1619,11 @@ def update_consignacion(cid):
     return jsonify(result)
 
 
-def _sync_crm_lead_stage(plate, consig_status):
+def _sync_crm_lead_stage(plate, consig_status, appt_id=None):
     """
     When a consignacion status changes, find any matching CRM lead by plate
-    and update its stage accordingly.
+    (or appt_id fallback) and update its stage accordingly.
     """
-    if not plate:
-        return
     # Map consignacion status → CRM stage
     status_to_stage = {
         "pendiente":       "nuevo",
@@ -1603,17 +1634,28 @@ def _sync_crm_lead_stage(plate, consig_status):
     }
     new_stage = status_to_stage.get(consig_status)
     plate = (plate or "").strip()
-    if not plate:
+    
+    if not plate and not appt_id:
         return
-    print(f"[sync_crm_stage] Triggered for plate: {plate} -> {new_stage}")
+
+    print(f"[sync_crm_stage] Triggered for plate: {plate}, appt_id: {appt_id} -> {new_stage}")
     try:
         with get_crm_conn() as conn:
-            lead = conn.execute(
-                "SELECT id, stage FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
-                (plate,)
-            ).fetchone()
+            lead = None
+            if plate:
+                lead = conn.execute(
+                    "SELECT id, stage FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
+                    (plate,)
+                ).fetchone()
+            
+            if not lead and appt_id:
+                lead = conn.execute(
+                    "SELECT id, stage FROM crm_leads WHERE supabase_id=? LIMIT 1",
+                    (appt_id,)
+                ).fetchone()
+
             if lead:
-                print(f"[sync_crm_stage] Found lead ID {lead['id']} for plate {plate}")
+                print(f"[sync_crm_stage] Found lead ID {lead['id']} for plate {plate} / appt {appt_id}")
                 old_stage = lead["stage"]
                 if old_stage != new_stage:
                     now = datetime.now().isoformat()
@@ -1631,7 +1673,7 @@ def _sync_crm_lead_stage(plate, consig_status):
                     conn.commit()
                     print(f"[sync_crm_stage] Successfully updated lead {lead['id']} stage to {new_stage}")
             else:
-                print(f"[sync_crm_stage] No lead found for plate: {plate}")
+                print(f"[sync_crm_stage] No lead found for plate: {plate} or appt: {appt_id}")
     except Exception as e:
         print("[sync_crm_stage] Error:", e)
 
@@ -1643,10 +1685,12 @@ def _sync_crm_lead_owner_details(consig):
     Also updates owner_full_name in the consignacion if not set.
     """
     plate = (consig.get("plate") or "").strip()
-    if not plate:
+    appt_id = consig.get("appointment_supabase_id")
+    
+    if not plate and not appt_id:
         return
     
-    print(f"[sync_crm_owner] Triggered for consig ID {consig.get('id')} (plate: {plate})")
+    print(f"[sync_crm_owner] Triggered for consig ID {consig.get('id')} (plate: {plate}, appt_id: {appt_id})")
     
     fn = (consig.get("owner_first_name") or "").strip()
     ln = (consig.get("owner_last_name") or "").strip()
@@ -1677,12 +1721,21 @@ def _sync_crm_lead_owner_details(consig):
 
     try:
         with get_crm_conn() as conn:
-            lead = conn.execute(
-                "SELECT id FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
-                (plate,)
-            ).fetchone()
+            lead = None
+            if plate:
+                lead = conn.execute(
+                    "SELECT id FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
+                    (plate,)
+                ).fetchone()
+            
+            if not lead and appt_id:
+                lead = conn.execute(
+                    "SELECT id FROM crm_leads WHERE supabase_id=? LIMIT 1",
+                    (appt_id,)
+                ).fetchone()
+
             if lead:
-                print(f"[sync_crm_owner] Found matching CRM lead ID {lead['id']} for plate {plate}")
+                print(f"[sync_crm_owner] Found matching CRM lead ID {lead['id']} for plate {plate} / appt {appt_id}")
                 set_clause = ", ".join("{}=?".format(k) for k in lead_updates)
                 conn.execute(
                     "UPDATE crm_leads SET {} WHERE id=?".format(set_clause),
@@ -1691,7 +1744,7 @@ def _sync_crm_lead_owner_details(consig):
                 conn.commit()
                 print(f"[sync_crm_owner] Successfully pushed updates to CRM lead {lead['id']}: {full}")
             else:
-                print(f"[sync_crm_owner] No CRM lead found with plate: {plate}")
+                print(f"[sync_crm_owner] No CRM lead found with plate: {plate} or appt: {appt_id}")
     except Exception as e:
         print("[sync_crm_owner] Error:", e)
 
