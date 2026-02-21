@@ -415,8 +415,8 @@ def link_appraisal(cid):
     now = datetime.now().isoformat()
     with get_db() as conn:
         conn.execute(
-            "UPDATE consignaciones SET appraisal_supabase_id=?, status='parte2_completa', part2_completed_at=?, updated_at=? WHERE id=?",
-            (appraisal_id, now, now, cid)
+            "UPDATE consignaciones SET appraisal_supabase_id=?, status=?, part2_completed_at=?, updated_at=? WHERE id=?",
+            (appraisal_id, "parte2_completa", now, now, cid)
         )
         conn.commit()
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
@@ -472,9 +472,9 @@ def create_inspeccion():
         if consignacion_id and appraisal_id:
             now = datetime.now().isoformat()
             # Build the update dynamically so we only set non-None values
-            updates = ["appraisal_supabase_id=?", "status='parte2_completa'",
+            updates = ["appraisal_supabase_id=?", "status=?",
                        "part2_completed_at=?", "updated_at=?"]
-            params: list = [appraisal_id, now, now]
+            params: list = [appraisal_id, "parte2_completa", now, now]
             if ai_market_price is not None:
                 updates.append("ai_market_price=?")
                 params.append(int(ai_market_price))
