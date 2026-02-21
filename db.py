@@ -457,7 +457,7 @@ def _parse_update(sql, params):
         set_str = set_match.group(1)
         set_parts = re.split(r',\s*(?=[a-zA-Z_])', set_str)
         for part in set_parts:
-            m = re.match(r'([a-zA-Z_]+)\s*=\s*\?', part.strip())
+            m = re.match(r'([a-zA-Z0-9_]+)\s*=\s*\?', part.strip())
             if m:
                 col = m.group(1)
                 if set_params_used < len(params):
