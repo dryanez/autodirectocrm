@@ -1346,7 +1346,7 @@ def create_consignacion():
                     print("[consignacion] MATCHED funnels lead id={} with score={}, listing_price={}".format(
                         matched_lead.get("id"), matches[0]["score"], listing_price), flush=True)
 
-            print(f"[consignacion] Matching checkpoints - Plate: {plate}, SupaID: {supa_id}, RUT: {g('rut')}, Phone: {g('phone')}")
+            print(f"[consignacion] Matching checkpoints - Plate: {plate}, SupaID: {supa_id}, RUT: {g('rut')}, Phone: {g('phone')}", flush=True)
 
             # 1. Match by Supabase ID (strongest link from wizard)
             if not matched_lead and supa_id:
@@ -1355,36 +1355,34 @@ def create_consignacion():
                 ).fetchone()
                 if existing_by_supa:
                     matched_lead = existing_by_supa
-                    print(f"[consignacion] Matched by Supabase ID: {supa_id}")
+                    print(f"[consignacion] Matched by Supabase ID: {supa_id}", flush=True)
 
-            # 2. Match by plate (standard match)
+            # 2. Match by plate (standard match) - Simplified SQL for db.py
             if not matched_lead and plate:
                 existing_by_plate = crm.execute(
                     "SELECT * FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
                 ).fetchone()
                 if existing_by_plate:
                     matched_lead = existing_by_plate
-                    print(f"[consignacion] Matched by Plate: {plate}")
+                    print(f"[consignacion] Matched by Plate: {plate}", flush=True)
 
-            # 3. Match by RUT (strong contact match)
-            rut = g("rut")
-            if not matched_lead and rut:
+            # 3. Match by RUT
+            if not matched_lead and g("rut"):
                 existing_by_rut = crm.execute(
-                    "SELECT * FROM crm_leads WHERE rut=? LIMIT 1", (rut,)
+                    "SELECT * FROM crm_leads WHERE rut=? LIMIT 1", (g("rut"),)
                 ).fetchone()
                 if existing_by_rut:
                     matched_lead = existing_by_rut
-                    print(f"[consignacion] Matched by RUT: {rut}")
+                    print(f"[consignacion] Matched by RUT: {g('rut')}", flush=True)
 
-            # 4. Match by Phone (fallback contact match)
-            phone = g("phone")
-            if not matched_lead and phone:
+            # 4. Match by Phone
+            if not matched_lead and g("phone"):
                 existing_by_phone = crm.execute(
-                    "SELECT * FROM crm_leads WHERE phone=? LIMIT 1", (phone,)
+                    "SELECT * FROM crm_leads WHERE phone=? LIMIT 1", (g("phone"),)
                 ).fetchone()
                 if existing_by_phone:
                     matched_lead = existing_by_phone
-                    print(f"[consignacion] Matched by Phone: {phone}")
+                    print(f"[consignacion] Matched by Phone: {g('phone')}", flush=True)
 
             if matched_lead:
                 listing_price = matched_lead.get("listing_price") or matched_lead.get("estimated_value")
@@ -1647,7 +1645,9 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
     new_stage = status_to_stage.get(consig_status)
     plate = (plate or "").strip()
     
-    print(f"[sync_crm_stage] Triggered (plate: '{plate}', appt_id: '{appt_id}', rut: '{rut}', phone: '{phone}') -> {new_stage}")
+    msg = f"[sync_crm_stage] Triggered (plate: '{plate}', appt_id: '{appt_id}', rut: '{rut}', phone: '{phone}') -> {new_stage}"
+    print(msg, flush=True)
+    log_to_file(msg)
 
     if not any([plate, appt_id, rut, phone]):
         return
@@ -1662,15 +1662,15 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
                     "SELECT id, stage FROM crm_leads WHERE supabase_id=? LIMIT 1",
                     (appt_id,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_stage] Matched by Supabase ID: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_stage] Matched by Supabase ID: {lead['id']}")
 
-            # 2. Match by Plate
+            # 2. Match by Plate - Simplified for db.py
             if not lead and plate:
                 lead = conn.execute(
-                    "SELECT id, stage FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
+                    "SELECT id, stage FROM crm_leads WHERE plate=? LIMIT 1",
                     (plate,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_stage] Matched by Plate: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_stage] Matched by Plate: {lead['id']}")
 
             # 3. Match by RUT
             if not lead and rut:
@@ -1678,7 +1678,7 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
                     "SELECT id, stage FROM crm_leads WHERE rut=? LIMIT 1",
                     (rut,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_stage] Matched by RUT: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_stage] Matched by RUT: {lead['id']}")
 
             # 4. Match by Phone
             if not lead and phone:
@@ -1686,10 +1686,10 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
                     "SELECT id, stage FROM crm_leads WHERE phone=? LIMIT 1",
                     (phone,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_stage] Matched by Phone: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_stage] Matched by Phone: {lead['id']}")
 
             if lead:
-                print(f"[sync_crm_stage] Syncing stage for lead ID {lead['id']}")
+                log_to_file(f"[sync_crm_stage] Syncing stage for lead ID {lead['id']}")
                 old_stage = lead["stage"]
                 if old_stage != new_stage:
                     now = datetime.now().isoformat()
@@ -1705,14 +1705,15 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
                              CRM_STAGE_LABELS.get(new_stage, new_stage)))
                     )
                     conn.commit()
-                    print(f"[sync_crm_stage] Successfully updated lead {lead['id']} stage to {new_stage}")
+                    log_to_file(f"[sync_crm_stage] Successfully updated lead {lead['id']} stage to {new_stage}")
             else:
-                print(f"[sync_crm_stage] No matching CRM lead found")
+                log_to_file(f"[sync_crm_stage] No matching CRM lead found")
     except Exception as e:
-        print("[sync_crm_stage] Error:", e)
+        log_to_file(f"[sync_crm_stage] Error: {e}")
 
 def log_to_file(msg):
     log_path = os.path.join(os.path.dirname(__file__), "simply_sync.log")
+    print(f"[simply_sync] {msg}", flush=True) # Always print too
     try:
         with open(log_path, "a") as f:
             f.write(f"[{datetime.now().isoformat()}] {msg}\n")
@@ -1778,11 +1779,11 @@ def _sync_crm_lead_owner_details(consig):
                 ).fetchone()
                 if lead: log_to_file(f"[sync_crm_owner] Found match by Supabase ID: {lead['id']}")
 
-            # 2. Match by Plate
+            # 2. Match by Plate - Simplified for db.py
             if not lead and plate:
                 log_to_file(f"[sync_crm_owner] Attempting match by Plate: {plate}")
                 lead = conn.execute(
-                    "SELECT id FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
+                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1",
                     (plate,)
                 ).fetchone()
                 if lead: log_to_file(f"[sync_crm_owner] Found match by Plate: {lead['id']}")
