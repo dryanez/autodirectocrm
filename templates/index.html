@@ -3046,7 +3046,7 @@
                         aiInstantBuyPrice: c?.ai_instant_buy_price || null,
                         tasacion: c?.market_value || null,
                         precioPublicado: c?.listing_price || null,
-                        precioSugerido: c?.proposed_price || c?.market_value || null,
+                        precioSugerido: c?.ai_market_price || c?.selling_price || c?.proposed_price || c?.market_value || null,
                         comision: c?.commission || null,
                         numDuenos: null,
                         // Legal
