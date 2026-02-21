@@ -1775,7 +1775,8 @@
             <!-- List -->
             <div class="flex-1 overflow-y-auto p-6 space-y-3">
                 <template x-for="c in consignaciones" :key="c.id">
-                    <div class="glass rounded-xl p-5 border border-slate-700 hover:border-amber-500/30 transition-all cursor-pointer"
+                    <div class="glass rounded-xl p-5 transition-all cursor-pointer"
+                        :class="consigDetail?.id === c.id ? 'border-2 border-amber-500 shadow-lg shadow-amber-500/10 bg-amber-500/5' : 'border border-slate-700 hover:border-amber-500/30'"
                         @click="openConsignacion(c.id)">
                         <div class="flex items-start justify-between">
                             <div class="flex-1">
