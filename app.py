@@ -448,6 +448,12 @@ def create_inspeccion():
         "Prefer": "return=representation",
     }
 
+    # ── Extract fields that belong on consignaciones, not appraisals ──────────
+    ai_market_price = data.pop("ai_market_price", None)
+    ai_instant_buy_price = data.pop("ai_instant_buy_price", None)
+    selling_price = data.pop("precio_publicado", None)    # alias alias
+    tasacion = data.get("tasacion")                        # keep in appraisals too
+
     try:
         resp = req_lib.post(
             supabase_url + "/rest/v1/appraisals",
@@ -462,13 +468,27 @@ def create_inspeccion():
         appraisal = rows[0] if isinstance(rows, list) and rows else {}
         appraisal_id = appraisal.get("id")
 
-        # Mark consignacion as parte2_completa
+        # Mark consignacion as parte2_completa and save AI prices
         if consignacion_id and appraisal_id:
             now = datetime.now().isoformat()
+            # Build the update dynamically so we only set non-None values
+            updates = ["appraisal_supabase_id=?", "status='parte2_completa'",
+                       "part2_completed_at=?", "updated_at=?"]
+            params: list = [appraisal_id, now, now]
+            if ai_market_price is not None:
+                updates.append("ai_market_price=?")
+                params.append(int(ai_market_price))
+            if ai_instant_buy_price is not None:
+                updates.append("ai_instant_buy_price=?")
+                params.append(int(ai_instant_buy_price))
+            if selling_price is not None:
+                updates.append("selling_price=?")
+                params.append(int(selling_price))
+            params.append(consignacion_id)
             with get_db() as conn:
                 conn.execute(
-                    "UPDATE consignaciones SET appraisal_supabase_id=?, status='parte2_completa', part2_completed_at=?, updated_at=? WHERE id=?",
-                    (appraisal_id, now, now, consignacion_id)
+                    "UPDATE consignaciones SET " + ", ".join(updates) + " WHERE id=?",
+                    params
                 )
                 conn.commit()
 
