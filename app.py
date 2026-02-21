@@ -167,6 +167,40 @@ if FUNNELS_DIR.exists():
                 entry["status"] = status
                 if status == "contacted":
                     entry["contacted_at"] = now_ts
+                # ── Sync status change to CRM lead stage ──
+                crm_stage_map = {
+                    "contacted": "contactado",
+                    "new":       "nuevo",
+                    "ignored":   "descartado",
+                }
+                crm_stage = crm_stage_map.get(status)
+                if crm_stage:
+                    try:
+                        with get_crm_conn() as crm:
+                            lead = crm.execute(
+                                "SELECT id, stage FROM crm_leads WHERE source='funnels' AND funnel_url=? LIMIT 1",
+                                (url,)
+                            ).fetchone()
+                            if lead:
+                                old_stage = lead["stage"]
+                                now_iso = datetime.now().isoformat()
+                                crm.execute(
+                                    "UPDATE crm_leads SET stage=?, updated_at=? WHERE id=?",
+                                    (crm_stage, now_iso, lead["id"])
+                                )
+                                crm.execute(
+                                    "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                                    (lead["id"], "stage_change", "Etapa actualizada (Funnels)",
+                                     "{} → {} (desde Funnels)".format(
+                                         CRM_STAGE_LABELS.get(old_stage, old_stage),
+                                         CRM_STAGE_LABELS.get(crm_stage, crm_stage)))
+                                )
+                                crm.commit()
+                                print(f"[funnels_status] CRM lead #{lead['id']} stage → {crm_stage}", flush=True)
+                            else:
+                                print(f"[funnels_status] No CRM lead found for url={url}, stage not updated", flush=True)
+                    except Exception as e_crm:
+                        print(f"[funnels_status] CRM stage sync error: {e_crm}", flush=True)
             if valuation:
                 entry["valuation"] = valuation
                 # Ensure the AI price also syncs to the main CRM leads database 
