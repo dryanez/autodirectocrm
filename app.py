@@ -1922,13 +1922,12 @@ def _build_contract_pdf(consig, appraisal=None):
     num_llaves  = a.get("num_llaves","")
     tasacion    = a.get("tasacion", 0)
     # ── PRICING LOGIC FIX ──
-    # PRECIO PUBLICACIÓN (market price) should come from "precio_sugerido" in the UI
-    precio_pub = a.get("precio_sugerido", 0) or c.get("selling_price", 0)
+    # PRECIO PUBLICACIÓN (market price) should come from explicit newly mapped "ai_market_price" natively, or fallback to the appraisal's sugerido as string
+    precio_pub = c.get("ai_market_price") or c.get("selling_price") or a.get("precio_sugerido") or 0
     
     # PRECIO CLIENTE (owner payout)
-    # The owner payout is the consignacion price we calculated, which is stored in owner_price
-    # or it is calculated as market price - commission
-    precio_cli = c.get("owner_price", 0) or a.get("precio_publicado", 0)
+    # The owner payout is explicitly defined in owner_price, falling back to what they asked for publicacion
+    precio_cli = c.get("owner_price") or a.get("precio_publicado") or 0
     comision_calc = precio_pub - precio_cli if precio_pub > precio_cli else 0
     observaciones = a.get("observaciones","") or c.get("condition_notes","") or "No se registran observaciones."
     comision    = a.get("comision") or c.get("commission_pct") or 0.10
