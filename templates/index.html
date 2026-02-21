@@ -1903,33 +1903,33 @@
                                 <div>
                                     <label class="text-[10px] text-slate-500 uppercase">Nombre</label>
                                     <input type="text" :value="consigDetail?.owner_first_name"
-                                        @change="consigEdits.owner_first_name=$event.target.value"
+                                        @input="consigEdits.owner_first_name=$event.target.value"
                                         class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
                                     <label class="text-[10px] text-slate-500 uppercase">Apellido</label>
                                     <input type="text" :value="consigDetail?.owner_last_name"
-                                        @change="consigEdits.owner_last_name=$event.target.value"
+                                        @input="consigEdits.owner_last_name=$event.target.value"
                                         class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                                 </div>
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">RUT</label>
                                 <input type="text" :value="consigDetail?.owner_rut"
-                                    @change="consigEdits.owner_rut=$event.target.value"
+                                    @input="consigEdits.owner_rut=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Teléfono</label>
                                 <input type="text"
                                     :value="(consigDetail?.owner_country_code||'+56') + ' ' + (consigDetail?.owner_phone||'')"
-                                    @change="consigEdits.owner_phone=$event.target.value"
+                                    @input="consigEdits.owner_phone=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Email</label>
                                 <input type="text" :value="consigDetail?.owner_email"
-                                    @change="consigEdits.owner_email=$event.target.value"
+                                    @input="consigEdits.owner_email=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
@@ -1951,37 +1951,37 @@
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Patente</label>
                                 <input type="text" :value="consigDetail?.plate"
-                                    @change="consigEdits.plate=$event.target.value"
+                                    @input="consigEdits.plate=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Año</label>
                                 <input type="number" :value="consigDetail?.car_year"
-                                    @change="consigEdits.car_year=$event.target.value"
+                                    @input="consigEdits.car_year=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Marca</label>
                                 <input type="text" :value="consigDetail?.car_make"
-                                    @change="consigEdits.car_make=$event.target.value"
+                                    @input="consigEdits.car_make=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Modelo</label>
                                 <input type="text" :value="consigDetail?.car_model"
-                                    @change="consigEdits.car_model=$event.target.value"
+                                    @input="consigEdits.car_model=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Kilometraje</label>
                                 <input type="number" :value="consigDetail?.mileage"
-                                    @change="consigEdits.mileage=$event.target.value"
+                                    @input="consigEdits.mileage=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="text-[10px] text-slate-500 uppercase">Versión</label>
                                 <input type="text" :value="consigDetail?.version"
-                                    @change="consigEdits.version=$event.target.value"
+                                    @input="consigEdits.version=$event.target.value"
                                     class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500">
                             </div>
                         </div>

@@ -1546,7 +1546,7 @@ def update_consignacion(cid):
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
-        return jsonify({"error": "No valid fields"}), 400
+        return jsonify({"message": "No valid fields to update, ignoring", "ok": True}), 200
 
     # Auto-set completion timestamps
     now = datetime.now().isoformat()
@@ -2565,7 +2565,7 @@ def update_comprador(bid):
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
-        return jsonify({"error": "No valid fields"}), 400
+        return jsonify({"message": "No valid fields to update, ignoring", "ok": True}), 200
 
     updates["updated_at"] = datetime.now().isoformat()
     if "first_name" in updates or "last_name" in updates:
@@ -3081,7 +3081,7 @@ def crm_update_lead(lead_id):
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
-        return jsonify({"error": "No valid fields to update"}), 400
+        return jsonify({"message": "No valid fields to update, ignoring", "ok": True}), 200
 
     if isinstance(updates.get('tags'), list):
         updates['tags'] = json.dumps(updates['tags'])
