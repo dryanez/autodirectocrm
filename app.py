@@ -2424,7 +2424,7 @@ def download_contract(cid):
     # Try local cache first
     if filepath and os.path.exists(filepath):
         return send_file(filepath, mimetype="application/pdf",
-                         as_attachment=True, download_name=filename)
+                         as_attachment=False, download_name=filename)
 
     # Try Supabase Storage (for signed contracts that were persisted)
     if filename:
@@ -2435,7 +2435,7 @@ def download_contract(cid):
             with open(os.path.join(contratos_dir, filename), "wb") as f:
                 f.write(pdf_bytes)
             return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                             as_attachment=True, download_name=filename)
+                             as_attachment=False, download_name=filename)
 
     # File not found anywhere — regenerate unsigned version
     appraisal = None
@@ -2460,7 +2460,7 @@ def download_contract(cid):
 
     dl_name = filename or "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                     as_attachment=True, download_name=dl_name)
+                     as_attachment=False, download_name=dl_name)
 
 
 
