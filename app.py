@@ -1608,8 +1608,15 @@ def update_consignacion(cid):
         ).fetchone()
 
     result = row_to_dict(row)
-    log_to_file(f"[update_consignacion] cid={cid} result keys: {list(result.keys())}")
-    log_to_file(f"[update_consignacion] cid={cid} result identifiers: plate='{result.get('plate')}', supa_id='{result.get('appointment_supabase_id')}', rut='{result.get('owner_rut')}', phone='{result.get('owner_phone')}'")
+    # DEBUG identifiers in response
+    result["_debug_identifiers"] = {
+        "plate": result.get("plate"),
+        "supa_id": result.get("appointment_supabase_id"),
+        "rut": result.get("owner_rut"),
+        "phone": result.get("owner_phone"),
+        "time": datetime.now().isoformat()
+    }
+    log_to_file(f"[update_consignacion] cid={cid} result identifiers: {result['_debug_identifiers']}")
 
     # Sync CRM lead stage when consignacion status changes
     new_status = updates.get("status")
