@@ -1449,31 +1449,45 @@
                     <div class="grid grid-cols-1 gap-3">
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">🤖 Valor Mercado Real (IA) (CLP)</label>
-                            <input type="number" x-model.number="insp.aiMarketPrice" class="insp-input"
-                                placeholder="Cálculo IA del precio real">
+                            <input type="text"
+                                :value="insp.aiMarketPrice ? new Intl.NumberFormat('es-CL').format(insp.aiMarketPrice) : ''"
+                                @input="insp.aiMarketPrice = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.aiMarketPrice ? new Intl.NumberFormat('es-CL').format(insp.aiMarketPrice) : ''"
+                                class="insp-input" placeholder="Cálculo IA del precio real">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">⚡ Compra Inmediata (IA) (CLP)</label>
-                            <input type="number" x-model.number="insp.aiInstantBuyPrice" class="insp-input"
-                                placeholder="Precio de toma/compra inmediata">
+                            <input type="text"
+                                :value="insp.aiInstantBuyPrice ? new Intl.NumberFormat('es-CL').format(insp.aiInstantBuyPrice) : ''"
+                                @input="insp.aiInstantBuyPrice = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.aiInstantBuyPrice ? new Intl.NumberFormat('es-CL').format(insp.aiInstantBuyPrice) : ''"
+                                class="insp-input" placeholder="Precio de toma/compra inmediata">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Tasación Fiscal (CLP)</label>
-                            <input type="number" x-model.number="insp.tasacion" placeholder="$" class="insp-input">
+                            <input type="text"
+                                :value="insp.tasacion ? new Intl.NumberFormat('es-CL').format(insp.tasacion) : ''"
+                                @input="insp.tasacion = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.tasacion ? new Intl.NumberFormat('es-CL').format(insp.tasacion) : ''"
+                                placeholder="$" class="insp-input">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Publicación de Dueño (CLP)</label>
-                            <input type="number" x-model.number="insp.precioPublicado" class="insp-input"
-                                placeholder="Precio que pide el dueño en FB">
+                            <input type="text"
+                                :value="insp.precioPublicado ? new Intl.NumberFormat('es-CL').format(insp.precioPublicado) : ''"
+                                @input="insp.precioPublicado = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.precioPublicado ? new Intl.NumberFormat('es-CL').format(insp.precioPublicado) : ''"
+                                class="insp-input" placeholder="Precio que pide el dueño en FB">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">💰 Precio a Vender (CLP)</label>
-                            <input type="number" x-model.number="insp.precioSugerido" class="insp-input"
-                                placeholder="Precio real para publicar y contrato de venta">
+                            <input type="text"
+                                :value="insp.precioSugerido ? new Intl.NumberFormat('es-CL').format(insp.precioSugerido) : ''"
+                                @input="insp.precioSugerido = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.precioSugerido ? new Intl.NumberFormat('es-CL').format(insp.precioSugerido) : ''"
+                                class="insp-input" placeholder="Precio real para publicar y contrato de venta">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Comisión (CLP)</label>
-                            <input type="number" x-model.number="insp.comision" class="insp-input">
+                            <input type="text"
+                                :value="insp.comision ? new Intl.NumberFormat('es-CL').format(insp.comision) : ''"
+                                @input="insp.comision = parseInt($event.target.value.replace(/\D/g, '')) || null; $event.target.value = insp.comision ? new Intl.NumberFormat('es-CL').format(insp.comision) : ''"
+                                class="insp-input">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Número de Dueños</label>
