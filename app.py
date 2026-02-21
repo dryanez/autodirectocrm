@@ -1614,6 +1614,7 @@ def update_consignacion(cid):
         "supa_id": result.get("appointment_supabase_id"),
         "rut": result.get("owner_rut"),
         "phone": result.get("owner_phone"),
+        "sync_version": "v1.2-SimplifiedSQL",
         "time": datetime.now().isoformat()
     }
     log_to_file(f"[update_consignacion] cid={cid} result identifiers: {result['_debug_identifiers']}")
@@ -3858,4 +3859,4 @@ ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "Public read" ON listings FOR SELECT USING (status = 'disponible');
 CREATE POLICY IF NOT EXISTS "Service write" ON listings USING (true) WITH CHECK (true);
 """)
-    app.run(debug=False, port=8080)
+    app.run(debug=True, port=8080)
