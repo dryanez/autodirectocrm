@@ -644,7 +644,7 @@
                                 <p class="text-[10px] text-slate-500 uppercase mb-0.5">Publicación de Dueño</p>
                                 <p class="text-[9px] text-slate-600">Precio que el dueño pide en FB</p>
                             </div>
-                            <p class="text-sm text-slate-300 font-medium" x-text="formatCLP(crmDetail.listing_price)">
+                            <p class="text-sm text-slate-300 font-medium" x-text="formatCLP(crmDetail?.listing_price)">
                             </p>
                         </div>
                         <!-- Row 2: AI Market Price = what we publish & sell for (contrato de VENTA) -->
@@ -654,7 +654,8 @@
                                 <p class="text-[10px] text-green-400 uppercase font-bold mb-0.5">💰 Precio a Vender</p>
                                 <p class="text-[9px] text-green-600">Se publica en la página · Contrato de Venta</p>
                             </div>
-                            <p class="text-base text-green-400 font-bold" x-text="formatCLP(crmDetail.estimated_value)">
+                            <p class="text-base text-green-400 font-bold"
+                                x-text="formatCLP(crmDetail?.estimated_value)">
                             </p>
                         </div>
                         <!-- Row 3: Consignación price = what owner gets (contrato de consignación) -->
@@ -667,7 +668,7 @@
                                 </p>
                             </div>
                             <p class="text-base text-blue-400 font-bold"
-                                x-text="formatCLP(crmDetail.ai_consignacion_price)"></p>
+                                x-text="formatCLP(crmDetail?.ai_consignacion_price)"></p>
                         </div>
                         <!-- Commission math helper -->
                         <div x-show="crmDetail?.estimated_value && crmDetail?.ai_consignacion_price"
@@ -974,7 +975,7 @@
                     <i class="ph ph-intersect text-cyan-400"></i> Posibles coincidencias en Funnels
                 </p>
                 <div class="space-y-2">
-                    <template x-for="m in calActiveEvent.matched_funnel_leads" :key="m.id">
+                    <template x-for="m in calActiveEvent?.matched_funnel_leads" :key="m.id">
                         <a :href="m.funnel_url" target="_blank"
                             class="flex items-center justify-between p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors group">
                             <div>
@@ -3238,7 +3239,7 @@
                     { label: 'Técnico & Fotos', desc: 'Estado físico, neumáticos y galería de fotos' },
                     { label: 'Revisión & Guardar', desc: 'Confirma los datos antes de guardar' },
                 ],
-                insp: {},
+                insp: { photos: [], features: {} },
 
                 // ─── Inspection Viewer State ──────────────────────────────
                 inspViewOpen: false,

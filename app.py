@@ -3361,7 +3361,7 @@ def stats():
         rows = conn.execute(
             "SELECT selling_price, commission_pct FROM cars WHERE status IN ('sold','sent_dte')"
         ).fetchall()
-        total_commission = sum(round(r["selling_price"] * r["commission_pct"]) for r in rows)
+        total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0)) for r in rows)
         total_ventas = conn.execute(
             "SELECT COALESCE(SUM(selling_price),0) FROM cars WHERE status IN ('sold','sent_dte')"
         ).fetchone()[0]
