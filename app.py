@@ -1709,6 +1709,9 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
     except Exception as e:
         print("[sync_crm_stage] Error:", e)
 
+def log_to_file(msg):
+    with open("simply_sync.log", "a") as f:
+        f.write(f"[{datetime.now().isoformat()}] {msg}\n")
 
 def _sync_crm_lead_owner_details(consig):
     """
@@ -1722,12 +1725,13 @@ def _sync_crm_lead_owner_details(consig):
     rut = (consig.get("owner_rut") or "").strip()
     phone = (consig.get("owner_phone") or "").strip()
     
-    print(f"[sync_crm_owner] Triggered for consig ID {consig_id} (plate: '{plate}', appt_id: '{appt_id}', rut: '{rut}', phone: '{phone}')")
+    log_to_file(f"[sync_crm_owner] Triggered for consig ID {consig_id} (plate: '{plate}', appt_id: '{appt_id}', rut: '{rut}', phone: '{phone}')")
     
     if not any([plate, appt_id, rut, phone]):
-        print(f"[sync_crm_owner] No identifiers found for consig {consig_id}, skipping sync.")
+        log_to_file(f"[sync_crm_owner] No identifiers found for consig {consig_id}, skipping sync.")
         return
     
+    # ...
     fn = (consig.get("owner_first_name") or "").strip()
     ln = (consig.get("owner_last_name") or "").strip()
     full = "{} {}".format(fn, ln).strip()
@@ -1738,9 +1742,9 @@ def _sync_crm_lead_owner_details(consig):
             with get_db() as conn:
                 conn.execute("UPDATE consignaciones SET owner_full_name=? WHERE id=?", (full, consig_id))
                 conn.commit()
-                print(f"[sync_crm_owner] Updated local owner_full_name for {consig_id} to: {full}")
+                log_to_file(f"[sync_crm_owner] Updated local owner_full_name for {consig_id} to: {full}")
         except Exception as e:
-            print(f"[sync_crm_owner] Local full_name update error for {consig_id}:", e)
+            log_to_file(f"[sync_crm_owner] Local full_name update error for {consig_id}: {e}")
 
     lead_updates = {
         "first_name": fn,
@@ -1761,53 +1765,53 @@ def _sync_crm_lead_owner_details(consig):
             
             # 1. Match by Supabase ID
             if appt_id:
-                print(f"[sync_crm_owner] Attempting match by Supabase ID: {appt_id}")
+                log_to_file(f"[sync_crm_owner] Attempting match by Supabase ID: {appt_id}")
                 lead = conn.execute(
                     "SELECT id FROM crm_leads WHERE supabase_id=? LIMIT 1",
                     (appt_id,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_owner] Found match by Supabase ID: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_owner] Found match by Supabase ID: {lead['id']}")
 
             # 2. Match by Plate
             if not lead and plate:
-                print(f"[sync_crm_owner] Attempting match by Plate: {plate}")
+                log_to_file(f"[sync_crm_owner] Attempting match by Plate: {plate}")
                 lead = conn.execute(
                     "SELECT id FROM crm_leads WHERE UPPER(TRIM(plate))=UPPER(?) LIMIT 1",
                     (plate,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_owner] Found match by Plate: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_owner] Found match by Plate: {lead['id']}")
 
             # 3. Match by RUT
             if not lead and rut:
-                print(f"[sync_crm_owner] Attempting match by RUT: {rut}")
+                log_to_file(f"[sync_crm_owner] Attempting match by RUT: {rut}")
                 lead = conn.execute(
                     "SELECT id FROM crm_leads WHERE rut=? LIMIT 1",
                     (rut,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_owner] Found match by RUT: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_owner] Found match by RUT: {lead['id']}")
 
             # 4. Match by Phone
             if not lead and phone:
-                print(f"[sync_crm_owner] Attempting match by Phone: {phone}")
+                log_to_file(f"[sync_crm_owner] Attempting match by Phone: {phone}")
                 lead = conn.execute(
                     "SELECT id FROM crm_leads WHERE phone=? LIMIT 1",
                     (phone,)
                 ).fetchone()
-                if lead: print(f"[sync_crm_owner] Found match by Phone: {lead['id']}")
+                if lead: log_to_file(f"[sync_crm_owner] Found match by Phone: {lead['id']}")
 
             if lead:
-                print(f"[sync_crm_owner] Syncing to CRM lead ID {lead['id']}")
+                log_to_file(f"[sync_crm_owner] Syncing to CRM lead ID {lead['id']} (Name: {full})")
                 set_clause = ", ".join("{}=?".format(k) for k in lead_updates)
                 conn.execute(
                     "UPDATE crm_leads SET {} WHERE id=?".format(set_clause),
                     list(lead_updates.values()) + [lead["id"]]
                 )
                 conn.commit()
-                print(f"[sync_crm_owner] Successfully pushed updates to CRM lead {lead['id']}: {full}")
+                log_to_file(f"[sync_crm_owner] Successfully pushed updates to CRM lead {lead['id']}")
             else:
-                print(f"[sync_crm_owner] No matching CRM lead found for consig {consig_id}")
+                log_to_file(f"[sync_crm_owner] No matching CRM lead found for consig {consig_id}")
     except Exception as e:
-        print(f"[sync_crm_owner] Error for consig {consig_id}:", e)
+        log_to_file(f"[sync_crm_owner] Error for consig {consig_id}: {e}")
 
 
 @app.route("/api/consignaciones/<int:cid>/publicar", methods=["POST"])
