@@ -3801,11 +3801,9 @@
                         this.consigEdits = {};
                         await this.openConsignacion(id);
                         await this.loadConsignaciones();
-                        // If status changed, also refresh CRM + inventory
-                        if (data.status) {
-                            await this.loadCRM();
-                            await this.refresh();
-                        }
+                        // Always refresh CRM + inventory in case names/prices changed
+                        await this.loadCRM();
+                        await this.refresh();
                     }
                 },
 
