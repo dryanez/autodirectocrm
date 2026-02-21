@@ -1554,6 +1554,15 @@ def update_consignacion(cid):
         updates["part2_completed_at"] = now
     updates["updated_at"] = now
 
+    # Pre-calculate owner_full_name if name parts change to ensure immediate UI parity
+    if "owner_first_name" in updates or "owner_last_name" in updates:
+        with get_db() as conn:
+            current = conn.execute("SELECT owner_first_name, owner_last_name FROM consignaciones WHERE id=?", (cid,)).fetchone()
+        if current:
+            fn = updates.get("owner_first_name", current.get("owner_first_name") or "").strip()
+            ln = updates.get("owner_last_name", current.get("owner_last_name") or "").strip()
+            updates["owner_full_name"] = "{} {}".format(fn, ln).strip()
+
     set_clause = ", ".join("{}=?".format(k) for k in updates)
     with get_db() as conn:
         conn.execute("UPDATE consignaciones SET {} WHERE id=?".format(set_clause), list(updates.values()) + [cid])
