@@ -1910,9 +1910,7 @@ def _build_contract_pdf(consig, appraisal=None):
     permiso     = "Pagado" if a.get("permiso_circulacion") else "Pendiente"
     soap        = "Pagado" if a.get("soap") else "Pendiente"
     num_llaves  = a.get("num_llaves","")
-    # Appraisal data (if available from Supabase)
-    a = appraisal or {}
-    
+    tasacion    = a.get("tasacion", 0)
     # ── PRICING LOGIC FIX ──
     # PRECIO PUBLICACIÓN (market price) should come from "precio_sugerido" in the UI
     precio_pub = a.get("precio_sugerido", 0) or c.get("selling_price", 0)
