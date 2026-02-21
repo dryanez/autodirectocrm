@@ -2463,6 +2463,497 @@ def download_contract(cid):
                      as_attachment=False, download_name=dl_name)
 
 
+# ─── API: Compradores (Buyers) ────────────────────────────────────────────────
+
+COMPRADOR_STAGES = ['interesado', 'contactado', 'test_drive', 'credito', 'reservado', 'vendido', 'descartado']
+COMPRADOR_STAGE_LABELS = {
+    'interesado': 'Interesado',
+    'contactado': 'Contactado',
+    'test_drive': 'Test Drive',
+    'credito': 'Crédito',
+    'reservado': 'Reservado',
+    'vendido': 'Vendido',
+    'descartado': 'Descartado',
+}
+
+
+@app.route("/api/compradores", methods=["GET"])
+def get_compradores():
+    """List all buyer leads."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT b.*, u.name as assigned_user_name, u.color as assigned_user_color "
+            "FROM compradores b LEFT JOIN crm_users u ON b.assigned_user_id = u.id "
+            "ORDER BY b.id DESC"
+        ).fetchall()
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/compradores", methods=["POST"])
+def create_comprador():
+    """Create a new buyer lead."""
+    data = request.json or {}
+    now = datetime.now().isoformat()
+
+    first_name = data.get("first_name", "")
+    last_name = data.get("last_name", "")
+    full_name = "{} {}".format(first_name, last_name).strip()
+
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO compradores
+               (first_name, last_name, full_name, rut, phone, email,
+                region, commune, address, car_description, car_plate,
+                car_price, consignacion_id, status, assigned_user_id, notes, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (first_name, last_name, full_name,
+             data.get("rut"), data.get("phone"), data.get("email"),
+             data.get("region"), data.get("commune"), data.get("address"),
+             data.get("car_description"), data.get("car_plate"),
+             data.get("car_price"), data.get("consignacion_id"),
+             data.get("status", "interesado"), data.get("assigned_user_id"),
+             data.get("notes"), now, now)
+        )
+        conn.commit()
+        new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/compradores/<int:bid>", methods=["GET"])
+def get_comprador(bid):
+    """Get a single buyer."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM compradores WHERE id=?", (bid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Comprador no encontrado"}), 404
+    return jsonify(row_to_dict(row))
+
+
+@app.route("/api/compradores/<int:bid>", methods=["PATCH"])
+def update_comprador(bid):
+    """Update buyer fields."""
+    data = request.json or {}
+    allowed = {
+        "first_name", "last_name", "full_name", "rut", "phone", "email",
+        "region", "commune", "address",
+        "consignacion_id", "listing_id", "car_description", "car_plate", "car_price",
+        "credit_requested", "credit_status", "credit_amount", "credit_down_payment",
+        "credit_months", "credit_rate", "credit_monthly_payment", "credit_institution",
+        "credit_notes",
+        "status", "assigned_user_id", "test_drive_date", "test_drive_completed",
+        "offer_amount", "nota_compra_pdf", "nota_compra_signed_at", "notes"
+    }
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields"}), 400
+
+    updates["updated_at"] = datetime.now().isoformat()
+    if "first_name" in updates or "last_name" in updates:
+        fn = updates.get("first_name", data.get("first_name", ""))
+        ln = updates.get("last_name", data.get("last_name", ""))
+        updates["full_name"] = "{} {}".format(fn, ln).strip()
+
+    set_clause = ", ".join("{}=?".format(k) for k in updates)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE compradores SET {} WHERE id=?".format(set_clause),
+            list(updates.values()) + [bid]
+        )
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/compradores/<int:bid>", methods=["DELETE"])
+def delete_comprador(bid):
+    """Delete a buyer."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM compradores WHERE id=?", (bid,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/compradores/<int:bid>/simular-credito", methods=["POST"])
+def simular_credito(bid):
+    """
+    Simulate auto credit for a buyer.
+    Body: { "car_price": 15000000, "down_payment": 3000000, "months": 48, "annual_rate": 0.14 }
+    Returns monthly payment and saves to the buyer record.
+    """
+    data = request.json or {}
+    car_price = int(data.get("car_price", 0))
+    down_payment = int(data.get("down_payment", 0))
+    months = int(data.get("months", 48))
+    annual_rate = float(data.get("annual_rate", 0.14))  # 14% default
+    institution = data.get("institution", "")
+
+    financed = car_price - down_payment
+    if financed <= 0 or months <= 0:
+        return jsonify({"error": "Monto financiado debe ser positivo"}), 400
+
+    # Standard amortization: M = P * r / (1 - (1+r)^(-n))
+    monthly_rate = annual_rate / 12
+    if monthly_rate > 0:
+        monthly_payment = financed * monthly_rate / (1 - (1 + monthly_rate) ** (-months))
+    else:
+        monthly_payment = financed / months
+
+    monthly_payment = int(round(monthly_payment))
+    total_paid = monthly_payment * months
+    total_interest = total_paid - financed
+
+    # Save to buyer record
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE compradores SET
+               credit_requested=1, credit_status='solicitado',
+               credit_amount=?, credit_down_payment=?, credit_months=?,
+               credit_rate=?, credit_monthly_payment=?, credit_institution=?,
+               car_price=?, updated_at=?
+               WHERE id=?""",
+            (financed, down_payment, months, annual_rate,
+             monthly_payment, institution, car_price, now, bid)
+        )
+        conn.commit()
+
+    return jsonify({
+        "ok": True,
+        "car_price": car_price,
+        "down_payment": down_payment,
+        "financed": financed,
+        "months": months,
+        "annual_rate": annual_rate,
+        "monthly_rate": round(monthly_rate, 6),
+        "monthly_payment": monthly_payment,
+        "total_paid": total_paid,
+        "total_interest": total_interest,
+    })
+
+
+@app.route("/api/compradores/<int:bid>/match", methods=["POST"])
+def match_comprador(bid):
+    """
+    Match a buyer to a consignación car.
+    Body: { "consignacion_id": 20 }
+    """
+    data = request.json or {}
+    cid = data.get("consignacion_id")
+    if not cid:
+        return jsonify({"error": "Falta consignacion_id"}), 400
+
+    with get_db() as conn:
+        consig = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not consig:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    c = row_to_dict(consig)
+
+    car_desc = "{} {} {}".format(c.get("car_make", ""), c.get("car_model", ""), c.get("car_year", "")).strip()
+    car_plate = c.get("plate", "").upper()
+    car_price = c.get("ai_market_price") or c.get("selling_price") or 0
+
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE compradores SET
+               consignacion_id=?, car_description=?, car_plate=?, car_price=?, updated_at=?
+               WHERE id=?""",
+            (cid, car_desc, car_plate, car_price, now, bid)
+        )
+        conn.commit()
+
+    return jsonify({"ok": True, "car_description": car_desc, "car_plate": car_plate, "car_price": car_price})
+
+
+def _build_nota_compra_pdf(comprador, consig):
+    """Build a Nota de Compra PDF for a buyer matched to a car."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            topMargin=30, bottomMargin=30,
+                            leftMargin=40, rightMargin=40)
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='CompanyName2', fontName='Helvetica-Bold', fontSize=16,
+                              textColor=colors.HexColor('#1a1a2e'), spaceAfter=1))
+    styles.add(ParagraphStyle(name='CompanyInfo2', fontName='Helvetica', fontSize=7,
+                              textColor=colors.HexColor('#666666'), spaceAfter=0))
+    styles.add(ParagraphStyle(name='DocTitle', fontName='Helvetica-Bold', fontSize=14,
+                              alignment=TA_CENTER, textColor=colors.HexColor('#1a1a2e'),
+                              spaceBefore=8, spaceAfter=2))
+    styles.add(ParagraphStyle(name='DateRight2', fontName='Helvetica', fontSize=8,
+                              alignment=TA_RIGHT, textColor=colors.HexColor('#999999'),
+                              spaceAfter=6))
+    styles.add(ParagraphStyle(name='SectionHead', fontName='Helvetica-Bold', fontSize=10,
+                              textColor=colors.HexColor('#1a1a2e'), spaceBefore=8, spaceAfter=4))
+    styles.add(ParagraphStyle(name='Body2', fontName='Helvetica', fontSize=9,
+                              textColor=colors.HexColor('#333333'), leading=13))
+    styles.add(ParagraphStyle(name='SmallGray2', fontName='Helvetica', fontSize=6.5,
+                              textColor=colors.HexColor('#aaaaaa'), alignment=TA_CENTER))
+
+    today = datetime.now()
+    meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+    date_str = "Santiago, {} de {} de {}".format(today.day, meses[today.month-1], today.year)
+
+    b = comprador
+    c = consig or {}
+
+    buyer_name = "{} {}".format(b.get("first_name",""), b.get("last_name","")).strip() or b.get("full_name","")
+    buyer_rut = b.get("rut","")
+    buyer_phone = b.get("phone","")
+    buyer_email = b.get("email","")
+    buyer_addr = b.get("address","") or ""
+    if b.get("commune"):
+        buyer_addr += ", " + b["commune"]
+    if b.get("region"):
+        buyer_addr += ", " + b["region"]
+
+    car_desc = b.get("car_description","") or "{} {} {}".format(c.get("car_make",""), c.get("car_model",""), c.get("car_year","")).strip()
+    plate = (b.get("car_plate","") or c.get("plate","")).upper()
+    car_price = b.get("car_price") or c.get("ai_market_price") or c.get("selling_price") or 0
+    car_color = c.get("color","")
+    car_vin = c.get("vin","")
+    car_km = c.get("mileage","")
+    car_year = c.get("car_year","")
+
+    down_payment = b.get("credit_down_payment") or 0
+    financed = b.get("credit_amount") or 0
+    months = b.get("credit_months") or 0
+    monthly = b.get("credit_monthly_payment") or 0
+    rate = b.get("credit_rate") or 0
+    institution = b.get("credit_institution") or ""
+
+    def fmt_clp(val):
+        try:
+            return "${:,.0f}".format(int(val)).replace(",",".")
+        except:
+            return "$0"
+
+    company_name = "Wiackowska Group Spa"
+    company_rut = "77.895.687-3"
+
+    story = []
+
+    # ─── HEADER ───
+    story.append(Paragraph(company_name, styles['CompanyName2']))
+    story.append(Paragraph("RUT: {} · Compraventa de vehículos motorizados".format(company_rut), styles['CompanyInfo2']))
+    story.append(Paragraph("Los Militares 5953, Of. 1509, Las Condes, Santiago", styles['CompanyInfo2']))
+    story.append(Spacer(1, 2))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1a1a2e'), spaceAfter=4))
+
+    story.append(Paragraph("NOTA DE COMPRA", styles['DocTitle']))
+    story.append(Paragraph(date_str, styles['DateRight2']))
+    story.append(Spacer(1, 4))
+
+    # ─── BUYER INFO ───
+    story.append(Paragraph("DATOS DEL COMPRADOR", styles['SectionHead']))
+    buyer_data = [
+        ["Nombre", buyer_name, "RUT", buyer_rut],
+        ["Teléfono", buyer_phone, "Email", buyer_email],
+        ["Dirección", buyer_addr, "", ""],
+    ]
+    t = Table(buyer_data, colWidths=[70, 190, 70, 190])
+    t.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+        ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#333333')),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#dddddd')),
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f7f7f7')),
+        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#f7f7f7')),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 8))
+
+    # ─── VEHICLE INFO ───
+    story.append(Paragraph("DATOS DEL VEHÍCULO", styles['SectionHead']))
+    vehicle_data = [
+        ["Vehículo", car_desc, "Patente", plate],
+        ["Año", str(car_year), "Color", car_color],
+        ["Kilometraje", "{:,}".format(int(car_km)).replace(",",".") if car_km else "—", "VIN", car_vin or "—"],
+    ]
+    t2 = Table(vehicle_data, colWidths=[70, 190, 70, 190])
+    t2.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+        ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#333333')),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#dddddd')),
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f7f7f7')),
+        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#f7f7f7')),
+    ]))
+    story.append(t2)
+    story.append(Spacer(1, 8))
+
+    # ─── PRICING ───
+    story.append(Paragraph("CONDICIONES ECONÓMICAS", styles['SectionHead']))
+    price_data = [
+        ["PRECIO VEHÍCULO", fmt_clp(car_price)],
+        ["PIE (Pago Inicial)", fmt_clp(down_payment)],
+        ["MONTO FINANCIADO", fmt_clp(financed)],
+        ["PLAZO", "{} meses".format(months) if months else "—"],
+        ["TASA ANUAL", "{:.1f}%".format(float(rate)*100) if rate else "—"],
+        ["CUOTA MENSUAL", fmt_clp(monthly)],
+        ["INSTITUCIÓN", institution or "—"],
+    ]
+    t3 = Table(price_data, colWidths=[200, 320])
+    t3.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#333333')),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#dddddd')),
+        ('BACKGROUND', (0,0), (0,0), colors.HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (0,0), (0,0), colors.white),
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (1,0), (1,0), colors.white),
+        ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (1,0), 10),
+    ]))
+    story.append(t3)
+    story.append(Spacer(1, 12))
+
+    # ─── TERMS ───
+    story.append(Paragraph("CONDICIONES GENERALES", styles['SectionHead']))
+    terms = (
+        "1. La presente Nota de Compra constituye una intención formal de adquisición del vehículo descrito. "
+        "2. El precio indicado incluye IVA cuando corresponda. "
+        "3. La reserva del vehículo se hará efectiva una vez confirmado el pago del pie o la aprobación del crédito. "
+        "4. Autodirecto se compromete a entregar el vehículo en las condiciones descritas en el informe de inspección. "
+        "5. El comprador declara haber revisado el estado del vehículo y estar conforme con las condiciones."
+    )
+    story.append(Paragraph(terms, styles['Body2']))
+    story.append(Spacer(1, 16))
+
+    # ─── SIGNATURES ───
+    signer_name = "Felipe Horacio Yáñez Fernández"
+    sig_data = [
+        ["_" * 40, "_" * 40],
+        [Paragraph("<b>{}</b><br/>{}<br/>Rep. Legal".format(company_name, signer_name),
+                    ParagraphStyle('sc', fontName='Helvetica', fontSize=7, alignment=TA_CENTER,
+                                   textColor=colors.HexColor('#333333'))),
+         Paragraph("<b>{}</b><br/>RUT: {}<br/>Comprador".format(buyer_name, buyer_rut),
+                    ParagraphStyle('sc2', fontName='Helvetica', fontSize=7, alignment=TA_CENTER,
+                                   textColor=colors.HexColor('#333333')))]
+    ]
+    sig_table = Table(sig_data, colWidths=[260, 260])
+    sig_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,0), 8),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(sig_table)
+    story.append(Spacer(1, 10))
+
+    # ─── FOOTER ───
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=4))
+    footer_id = "COMPRA-{}-{}".format(b.get("id",""), today.strftime("%Y%m%d"))
+    story.append(Paragraph(
+        "Documento generado automáticamente por Autodirecto CRM · {} · ID: {}".format(
+            today.strftime("%d/%m/%Y %H:%M"), footer_id),
+        styles['SmallGray2']))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+@app.route("/api/compradores/<int:bid>/nota-compra", methods=["GET"])
+def generate_nota_compra(bid):
+    """Generate Nota de Compra PDF for a buyer."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM compradores WHERE id=?", (bid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Comprador no encontrado"}), 404
+    comprador = row_to_dict(row)
+
+    # Get matched consignacion data if available
+    consig = None
+    if comprador.get("consignacion_id"):
+        with get_db() as conn:
+            crow = conn.execute("SELECT * FROM consignaciones WHERE id=?",
+                                (comprador["consignacion_id"],)).fetchone()
+            if crow:
+                consig = row_to_dict(crow)
+
+    pdf_bytes = _build_nota_compra_pdf(comprador, consig)
+
+    # Try to digitally sign
+    try:
+        pdf_bytes = _sign_pdf_with_certificate(
+            pdf_bytes,
+            reason="Nota de Compra — {}".format(comprador.get("car_plate", "")))
+    except Exception as e:
+        print("[nota-compra] signing error:", e)
+
+    filename = "nota_compra_{}_{}.pdf".format(bid, (comprador.get("car_plate","") or "").upper().replace(" ",""))
+    try:
+        contratos_dir = os.path.join("/tmp", "contratos")
+        os.makedirs(contratos_dir, exist_ok=True)
+        with open(os.path.join(contratos_dir, filename), "wb") as f:
+            f.write(pdf_bytes)
+    except:
+        pass
+
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute("UPDATE compradores SET nota_compra_pdf=?, updated_at=? WHERE id=?",
+                     (filename, now, bid))
+        conn.commit()
+
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=False, download_name=filename)
+
+
+@app.route("/api/compradores/<int:bid>/nota-compra/descargar", methods=["GET"])
+def download_nota_compra(bid):
+    """Download/view the Nota de Compra PDF."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM compradores WHERE id=?", (bid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Comprador no encontrado"}), 404
+    comprador = row_to_dict(row)
+
+    contratos_dir = os.path.join("/tmp", "contratos")
+    filename = comprador.get("nota_compra_pdf")
+    if filename:
+        filepath = os.path.join(contratos_dir, filename)
+        if os.path.exists(filepath):
+            return send_file(filepath, mimetype="application/pdf",
+                             as_attachment=False, download_name=filename)
+        # Try Supabase Storage
+        pdf_bytes = _download_contract_from_supabase(filename)
+        if pdf_bytes:
+            os.makedirs(contratos_dir, exist_ok=True)
+            with open(os.path.join(contratos_dir, filename), "wb") as f:
+                f.write(pdf_bytes)
+            return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                             as_attachment=False, download_name=filename)
+
+    # Regenerate
+    consig = None
+    if comprador.get("consignacion_id"):
+        with get_db() as conn:
+            crow = conn.execute("SELECT * FROM consignaciones WHERE id=?",
+                                (comprador["consignacion_id"],)).fetchone()
+            if crow:
+                consig = row_to_dict(crow)
+    pdf_bytes = _build_nota_compra_pdf(comprador, consig)
+    dl_name = filename or "nota_compra_{}.pdf".format(bid)
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=False, download_name=dl_name)
+
 
 CRM_STAGES = ['nuevo', 'contactado', 'agendado', 'inspeccionado', 'en_venta', 'vendido', 'descartado']
 CRM_STAGE_LABELS = {

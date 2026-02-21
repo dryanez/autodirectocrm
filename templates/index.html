@@ -133,6 +133,14 @@
                 <span class="font-medium">Consignaciones</span>
             </a>
 
+            <a href="#" @click.prevent="currentView='compradores'; loadCompradores()"
+                :class="currentView==='compradores' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
+                <i class="ph ph-shopping-cart text-xl mr-3"
+                    :class="currentView==='compradores' ? 'text-emerald-400' : ''"></i>
+                <span class="font-medium">Compradores</span>
+            </a>
+
             <div class="border-t border-slate-700 mt-4 pt-4">
                 <a href="#" @click.prevent="currentView='usuarios'; loadUsuarios()"
                     :class="currentView==='usuarios' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
@@ -2254,6 +2262,375 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════
+         COMPRADORES VIEW
+    ════════════════════════════════════════════════════════════ -->
+    <div x-show="currentView==='compradores'" class="flex-1 flex flex-col overflow-hidden" style="display:none;">
+        <!-- Header -->
+        <div class="flex-shrink-0 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-white">Compradores</h2>
+                <p class="text-xs text-slate-500 mt-0.5" x-text="compradores.length + ' compradores'"></p>
+            </div>
+            <button @click="compradorAddOpen=true"
+                class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <i class="ph ph-plus-circle"></i> Nuevo Comprador
+            </button>
+        </div>
+
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Kanban Board -->
+            <div class="flex-1 overflow-x-auto p-4">
+                <div class="flex gap-4 h-full min-w-max">
+                    <template x-for="stage in ['interesado','contactado','test_drive','credito','reservado','vendido']"
+                        :key="stage">
+                        <div
+                            class="w-72 flex-shrink-0 flex flex-col bg-slate-900/50 rounded-xl border border-slate-800">
+                            <!-- Column Header -->
+                            <div class="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full" :class="{
+                                    'bg-yellow-400': stage==='interesado',
+                                    'bg-blue-400': stage==='contactado',
+                                    'bg-cyan-400': stage==='test_drive',
+                                    'bg-violet-400': stage==='credito',
+                                    'bg-orange-400': stage==='reservado',
+                                    'bg-green-400': stage==='vendido'
+                                }"></span>
+                                <span class="text-sm font-semibold text-white" x-text="{
+                                    'interesado':'Interesado','contactado':'Contactado',
+                                    'test_drive':'Test Drive','credito':'Crédito',
+                                    'reservado':'Reservado','vendido':'Vendido'
+                                }[stage]"></span>
+                                <span class="ml-auto text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full"
+                                    x-text="compradores.filter(b => b.status === stage).length"></span>
+                            </div>
+                            <!-- Cards -->
+                            <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                                <template x-for="buyer in compradores.filter(b => b.status === stage)" :key="buyer.id">
+                                    <div class="bg-slate-800 rounded-lg p-3 border cursor-pointer hover:border-emerald-500/50 transition-all"
+                                        :class="compradorDetail?.id === buyer.id ? 'border-emerald-400 ring-1 ring-emerald-400/30' : 'border-slate-700'"
+                                        @click="openComprador(buyer.id)">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xs font-mono text-slate-500">#<span
+                                                    x-text="buyer.id"></span></span>
+                                            <span class="text-sm font-semibold text-white truncate"
+                                                x-text="buyer.full_name || (buyer.first_name + ' ' + buyer.last_name)"></span>
+                                        </div>
+                                        <div x-show="buyer.car_description"
+                                            class="flex items-center gap-1 text-xs text-slate-400 mb-1">
+                                            <i class="ph ph-car text-emerald-400"></i>
+                                            <span x-text="buyer.car_description"></span>
+                                        </div>
+                                        <div x-show="buyer.car_plate" class="text-xs font-mono text-amber-400 mb-1"
+                                            x-text="buyer.car_plate"></div>
+                                        <div x-show="buyer.car_price" class="text-xs text-emerald-400 font-bold mb-1"
+                                            x-text="'$' + Number(buyer.car_price || 0).toLocaleString('es-CL')"></div>
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <span x-show="buyer.credit_status && buyer.credit_status !== 'none'"
+                                                class="text-[10px] px-1.5 py-0.5 rounded-full font-bold" :class="{
+                                                    'bg-blue-500/20 text-blue-400': buyer.credit_status==='solicitado',
+                                                    'bg-amber-500/20 text-amber-400': buyer.credit_status==='pre_aprobado',
+                                                    'bg-green-500/20 text-green-400': buyer.credit_status==='aprobado',
+                                                    'bg-red-500/20 text-red-400': buyer.credit_status==='rechazado'
+                                                }"
+                                                x-text="{'solicitado':'Crédito Solicitado','pre_aprobado':'Pre-Aprobado','aprobado':'Aprobado','rechazado':'Rechazado'}[buyer.credit_status]"></span>
+                                            <span x-show="buyer.assigned_user_name"
+                                                class="ml-auto flex items-center gap-1 text-[10px] text-slate-400">
+                                                <span class="w-2 h-2 rounded-full"
+                                                    :style="'background:' + (buyer.assigned_user_color || '#3b82f6')"></span>
+                                                <span x-text="buyer.assigned_user_name"></span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Detail Panel -->
+            <div x-show="compradorDetail" x-transition
+                class="w-[420px] flex-shrink-0 border-l border-slate-800 overflow-y-auto bg-slate-950 p-5">
+                <template x-if="compradorDetail">
+                    <div>
+                        <!-- Header -->
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-bold text-white">
+                                <span
+                                    x-text="compradorDetail.full_name || (compradorDetail.first_name + ' ' + compradorDetail.last_name)"></span>
+                            </h3>
+                            <button @click="compradorDetail=null" class="text-slate-400 hover:text-white">
+                                <i class="ph ph-x text-xl"></i>
+                            </button>
+                        </div>
+
+                        <!-- Stage selector -->
+                        <div class="flex flex-wrap gap-1.5 mb-5">
+                            <template
+                                x-for="s in ['interesado','contactado','test_drive','credito','reservado','vendido','descartado']"
+                                :key="s">
+                                <button @click="updateCompradorField('status', s)"
+                                    class="text-[10px] px-2 py-1 rounded-full font-bold border transition-all"
+                                    :class="compradorDetail.status === s ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300' : 'border-slate-700 text-slate-500 hover:border-slate-500'"
+                                    x-text="{'interesado':'Interesado','contactado':'Contactado','test_drive':'Test Drive','credito':'Crédito','reservado':'Reservado','vendido':'Vendido','descartado':'Descartado'}[s]"></button>
+                            </template>
+                        </div>
+
+                        <!-- Contact Info -->
+                        <div class="space-y-3 mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Información de
+                                Contacto</h4>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-slate-500">RUT</label>
+                                    <input type="text" :value="compradorDetail.rut || ''"
+                                        @change="updateCompradorField('rut', $event.target.value)"
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-500">Teléfono</label>
+                                    <input type="text" :value="compradorDetail.phone || ''"
+                                        @change="updateCompradorField('phone', $event.target.value)"
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="text-[10px] text-slate-500">Email</label>
+                                    <input type="email" :value="compradorDetail.email || ''"
+                                        @change="updateCompradorField('email', $event.target.value)"
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Vehicle Match -->
+                        <div class="mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Vehículo de
+                                Interés</h4>
+                            <div x-show="compradorDetail.car_description"
+                                class="bg-slate-900 rounded-lg p-3 border border-slate-700 mb-2">
+                                <div class="flex items-center gap-2">
+                                    <i class="ph ph-car text-emerald-400 text-lg"></i>
+                                    <div>
+                                        <span class="text-sm font-bold text-white"
+                                            x-text="compradorDetail.car_description"></span>
+                                        <span class="text-xs font-mono text-amber-400 ml-2"
+                                            x-text="compradorDetail.car_plate"></span>
+                                    </div>
+                                </div>
+                                <div x-show="compradorDetail.car_price" class="text-lg font-bold text-emerald-400 mt-1"
+                                    x-text="'$' + Number(compradorDetail.car_price || 0).toLocaleString('es-CL')"></div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="number" x-model="matchConsigId" placeholder="ID Consignación"
+                                    class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                <button @click="matchBuyerToCar()"
+                                    class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                    <i class="ph ph-link"></i> Vincular
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Credit Simulator -->
+                        <div class="mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                <i class="ph ph-calculator text-emerald-400"></i> Simulador de Crédito
+                            </h4>
+                            <div class="space-y-2 bg-slate-900 rounded-lg p-3 border border-slate-700">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-[10px] text-slate-500">Precio Vehículo</label>
+                                        <input type="number" x-model.number="creditSim.car_price"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500">Pie (Pago Inicial)</label>
+                                        <input type="number" x-model.number="creditSim.down_payment"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500">Meses</label>
+                                        <select x-model.number="creditSim.months"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                                            <option value="12">12 meses</option>
+                                            <option value="24">24 meses</option>
+                                            <option value="36">36 meses</option>
+                                            <option value="48" selected>48 meses</option>
+                                            <option value="60">60 meses</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500">Tasa Anual %</label>
+                                        <input type="number" step="0.5" x-model.number="creditSim.annual_rate_pct"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-500">Institución</label>
+                                    <input type="text" x-model="creditSim.institution"
+                                        placeholder="Autofin, BCI, Santander..."
+                                        class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                                </div>
+                                <button @click="runCreditSimulation()"
+                                    class="w-full bg-violet-600 hover:bg-violet-500 text-white py-2 rounded-lg text-xs font-bold transition-colors">
+                                    <i class="ph ph-calculator"></i> Simular Crédito
+                                </button>
+                                <div x-show="creditSimResult"
+                                    class="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
+                                    <div class="text-center">
+                                        <p class="text-[10px] text-slate-400 uppercase">Cuota Mensual</p>
+                                        <p class="text-2xl font-bold text-emerald-400"
+                                            x-text="'$' + Number(creditSimResult?.monthly_payment || 0).toLocaleString('es-CL')">
+                                        </p>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2 mt-2 text-[10px]">
+                                        <div class="text-slate-400">Financiado: <span class="text-white"
+                                                x-text="'$' + Number(creditSimResult?.financed || 0).toLocaleString('es-CL')"></span>
+                                        </div>
+                                        <div class="text-slate-400">Total Interés: <span class="text-white"
+                                                x-text="'$' + Number(creditSimResult?.total_interest || 0).toLocaleString('es-CL')"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Credit Status -->
+                        <div x-show="compradorDetail.credit_status && compradorDetail.credit_status !== 'none'"
+                            class="mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Estado del
+                                Crédito</h4>
+                            <div class="flex flex-wrap gap-1.5">
+                                <template x-for="cs in ['solicitado','pre_aprobado','aprobado','rechazado']" :key="cs">
+                                    <button @click="updateCompradorField('credit_status', cs)"
+                                        class="text-[10px] px-2 py-1 rounded-full font-bold border transition-all"
+                                        :class="compradorDetail.credit_status === cs ? {
+                                            'solicitado':'border-blue-400 bg-blue-500/20 text-blue-300',
+                                            'pre_aprobado':'border-amber-400 bg-amber-500/20 text-amber-300',
+                                            'aprobado':'border-green-400 bg-green-500/20 text-green-300',
+                                            'rechazado':'border-red-400 bg-red-500/20 text-red-300'
+                                        }[cs] : 'border-slate-700 text-slate-500 hover:border-slate-500'"
+                                        x-text="{'solicitado':'Solicitado','pre_aprobado':'Pre-Aprobado','aprobado':'Aprobado','rechazado':'Rechazado'}[cs]"></button>
+                                </template>
+                            </div>
+                            <div x-show="compradorDetail.credit_monthly_payment"
+                                class="mt-2 bg-slate-900 rounded-lg p-2 border border-slate-700 text-xs text-slate-300">
+                                <span class="font-bold text-emerald-400"
+                                    x-text="'$' + Number(compradorDetail.credit_monthly_payment || 0).toLocaleString('es-CL')"></span>/mes
+                                · <span x-text="compradorDetail.credit_months"></span> meses
+                                · <span x-text="compradorDetail.credit_institution"></span>
+                            </div>
+                        </div>
+
+                        <!-- Documents -->
+                        <div class="mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Documentos</h4>
+                            <div class="flex gap-2">
+                                <a x-show="compradorDetail.consignacion_id"
+                                    :href="'/api/compradores/' + compradorDetail.id + '/nota-compra'" target="_blank"
+                                    class="flex-1 flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold transition-colors">
+                                    <i class="ph ph-file-pdf"></i> Nota de Compra
+                                </a>
+                                <button x-show="!compradorDetail.consignacion_id" disabled
+                                    class="flex-1 flex items-center justify-center gap-1 bg-slate-700 text-slate-500 py-2 rounded-lg text-xs font-bold cursor-not-allowed">
+                                    <i class="ph ph-file-pdf"></i> Vincular auto primero
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Notes -->
+                        <div class="mb-5">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Notas</h4>
+                            <textarea :value="compradorDetail.notes || ''"
+                                @change="updateCompradorField('notes', $event.target.value)" rows="3"
+                                placeholder="Observaciones del comprador..."
+                                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white resize-none"></textarea>
+                        </div>
+
+                        <!-- Assign User -->
+                        <div class="mb-4">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Asignar a</h4>
+                            <select
+                                @change="updateCompradorField('assigned_user_id', $event.target.value ? parseInt($event.target.value) : null)"
+                                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                <option value="">Sin asignar</option>
+                                <template x-for="u in usuarios" :key="u.id">
+                                    <option :value="u.id" :selected="compradorDetail.assigned_user_id == u.id"
+                                        x-text="u.name"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <!-- Delete -->
+                        <button
+                            @click="if(confirm('¿Eliminar este comprador?')) { deleteComprador(compradorDetail.id) }"
+                            class="w-full bg-red-600/20 hover:bg-red-600/40 text-red-400 py-2 rounded-lg text-xs font-bold transition-colors">
+                            <i class="ph ph-trash"></i> Eliminar Comprador
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ New Comprador Modal ═══ -->
+    <div x-show="compradorAddOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        style="display:none;">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4"><i class="ph ph-shopping-cart text-emerald-400"></i> Nuevo
+                Comprador</h3>
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-slate-400">Nombre</label>
+                        <input type="text" x-model="newComprador.first_name"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Apellido</label>
+                        <input type="text" x-model="newComprador.last_name"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-slate-400">RUT</label>
+                        <input type="text" x-model="newComprador.rut"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Teléfono</label>
+                        <input type="text" x-model="newComprador.phone"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Email</label>
+                    <input type="email" x-model="newComprador.email"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Auto de interés (descripción)</label>
+                    <input type="text" x-model="newComprador.car_description" placeholder="Ej: Toyota Corolla 2020"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Notas</label>
+                    <textarea x-model="newComprador.notes" rows="2"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-5">
+                <button @click="compradorAddOpen=false"
+                    class="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">Cancelar</button>
+                <button @click="saveNewComprador()"
+                    class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-bold transition-colors">
+                    <i class="ph ph-check"></i> Crear
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
          USUARIOS VIEW
     ════════════════════════════════════════════════════════════ -->
     <div x-show="currentView==='usuarios'" class="flex-1 flex flex-col overflow-hidden" style="display:none;">
@@ -2873,6 +3250,136 @@
                 contractIframeSrc: '',
                 _sigCtx: null,
                 _sigDrawing: false,
+
+                // ─── Compradores (Buyers) State ─────────────────────────
+                compradores: [],
+                compradorDetail: null,
+                compradorAddOpen: false,
+                newComprador: { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' },
+                matchConsigId: '',
+                creditSim: { car_price: 0, down_payment: 0, months: 48, annual_rate_pct: 14, institution: '' },
+                creditSimResult: null,
+
+                async loadCompradores() {
+                    try {
+                        const r = await fetch('/api/compradores');
+                        this.compradores = await r.json();
+                    } catch (e) { console.error('loadCompradores', e); }
+                },
+
+                async openComprador(id) {
+                    try {
+                        const r = await fetch('/api/compradores/' + id);
+                        this.compradorDetail = await r.json();
+                        // Pre-fill credit sim with buyer's car price
+                        if (this.compradorDetail.car_price) {
+                            this.creditSim.car_price = this.compradorDetail.car_price;
+                            this.creditSim.down_payment = Math.round(this.compradorDetail.car_price * 0.2);
+                        }
+                        if (this.compradorDetail.credit_rate) {
+                            this.creditSim.annual_rate_pct = Math.round(this.compradorDetail.credit_rate * 100);
+                        }
+                        if (this.compradorDetail.credit_months) {
+                            this.creditSim.months = this.compradorDetail.credit_months;
+                        }
+                        if (this.compradorDetail.credit_institution) {
+                            this.creditSim.institution = this.compradorDetail.credit_institution;
+                        }
+                    } catch (e) { console.error('openComprador', e); }
+                },
+
+                async saveNewComprador() {
+                    try {
+                        const r = await fetch('/api/compradores', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newComprador)
+                        });
+                        const d = await r.json();
+                        if (d.ok) {
+                            this.compradorAddOpen = false;
+                            this.newComprador = { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' };
+                            await this.loadCompradores();
+                        }
+                    } catch (e) { alert('Error: ' + e.message); }
+                },
+
+                async updateCompradorField(field, value) {
+                    if (!this.compradorDetail) return;
+                    try {
+                        const body = {};
+                        body[field] = value;
+                        await fetch('/api/compradores/' + this.compradorDetail.id, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+                        this.compradorDetail[field] = value;
+                        await this.loadCompradores();
+                    } catch (e) { console.error('updateCompradorField', e); }
+                },
+
+                async matchBuyerToCar() {
+                    if (!this.compradorDetail || !this.matchConsigId) return;
+                    try {
+                        const r = await fetch('/api/compradores/' + this.compradorDetail.id + '/match', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ consignacion_id: parseInt(this.matchConsigId) })
+                        });
+                        const d = await r.json();
+                        if (d.ok) {
+                            this.compradorDetail.car_description = d.car_description;
+                            this.compradorDetail.car_plate = d.car_plate;
+                            this.compradorDetail.car_price = d.car_price;
+                            this.compradorDetail.consignacion_id = parseInt(this.matchConsigId);
+                            this.creditSim.car_price = d.car_price;
+                            this.creditSim.down_payment = Math.round(d.car_price * 0.2);
+                            this.matchConsigId = '';
+                            await this.loadCompradores();
+                            alert('✅ Auto vinculado: ' + d.car_description + ' (' + d.car_plate + ')');
+                        } else {
+                            alert('❌ ' + (d.error || 'Error'));
+                        }
+                    } catch (e) { alert('❌ Error: ' + e.message); }
+                },
+
+                async runCreditSimulation() {
+                    if (!this.compradorDetail) return;
+                    try {
+                        const r = await fetch('/api/compradores/' + this.compradorDetail.id + '/simular-credito', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                car_price: this.creditSim.car_price,
+                                down_payment: this.creditSim.down_payment,
+                                months: this.creditSim.months,
+                                annual_rate: this.creditSim.annual_rate_pct / 100,
+                                institution: this.creditSim.institution
+                            })
+                        });
+                        const d = await r.json();
+                        if (d.ok) {
+                            this.creditSimResult = d;
+                            this.compradorDetail.credit_status = 'solicitado';
+                            this.compradorDetail.credit_monthly_payment = d.monthly_payment;
+                            this.compradorDetail.credit_months = d.months;
+                            this.compradorDetail.credit_institution = this.creditSim.institution;
+                            this.compradorDetail.credit_rate = this.creditSim.annual_rate_pct / 100;
+                            await this.loadCompradores();
+                        } else {
+                            alert('❌ ' + (d.error || 'Error'));
+                        }
+                    } catch (e) { alert('❌ Error: ' + e.message); }
+                },
+
+                async deleteComprador(id) {
+                    try {
+                        await fetch('/api/compradores/' + id, { method: 'DELETE' });
+                        this.compradorDetail = null;
+                        await this.loadCompradores();
+                    } catch (e) { alert('Error: ' + e.message); }
+                },
 
                 openContract(consigId) {
                     const c = this.consigDetail || {};

@@ -209,3 +209,54 @@ CREATE POLICY "Service role full access" ON crm_leads USING (true) WITH CHECK (t
 CREATE POLICY "Service role full access" ON crm_activities USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON funnel_listings USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON funnel_lead_status USING (true) WITH CHECK (true);
+
+-- ─── Compradores (Buyers) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS compradores (
+  id SERIAL PRIMARY KEY,
+  -- Contact Info
+  first_name TEXT,
+  last_name TEXT,
+  full_name TEXT,
+  rut TEXT,
+  phone TEXT,
+  country_code TEXT DEFAULT '+56',
+  email TEXT,
+  region TEXT,
+  commune TEXT,
+  address TEXT,
+  -- Vehicle Interest (linked to consignacion/listing)
+  consignacion_id INTEGER REFERENCES consignaciones(id),
+  listing_id TEXT,
+  car_description TEXT,
+  car_plate TEXT,
+  car_price INTEGER,
+  -- Credit / Financing
+  credit_requested BOOLEAN DEFAULT FALSE,
+  credit_status TEXT DEFAULT 'none',
+  credit_amount INTEGER,
+  credit_down_payment INTEGER,
+  credit_months INTEGER,
+  credit_rate REAL,
+  credit_monthly_payment INTEGER,
+  credit_institution TEXT,
+  credit_notes TEXT,
+  -- Pipeline
+  status TEXT DEFAULT 'interesado',
+  assigned_user_id INTEGER REFERENCES crm_users(id),
+  test_drive_date TEXT,
+  test_drive_completed BOOLEAN DEFAULT FALSE,
+  offer_amount INTEGER,
+  -- Documents
+  nota_compra_pdf TEXT,
+  nota_compra_signed_at TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_compradores_status ON compradores(status);
+CREATE INDEX IF NOT EXISTS idx_compradores_rut ON compradores(rut);
+CREATE INDEX IF NOT EXISTS idx_compradores_consig ON compradores(consignacion_id);
+
+ALTER TABLE compradores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON compradores USING (true) WITH CHECK (true);
