@@ -2387,7 +2387,7 @@ def ai_generate_description():
         from google import genai
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
+            model="gemini-2.5-flash-lite",
             contents=prompt,
         )
         description = response.text.strip()
