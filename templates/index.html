@@ -2559,16 +2559,29 @@
                                 Contacto</h4>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="text-[10px] text-slate-500">RUT</label>
-                                    <input type="text" :value="compradorDetail.rut || ''"
-                                        @change="updateCompradorField('rut', $event.target.value)"
-                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                    <label class="text-[10px] text-slate-500 flex items-center gap-1">
+                                        RUT
+                                        <span x-show="compradorDetail.rut && validateRut(compradorDetail.rut)" class="text-emerald-400">✓</span>
+                                        <span x-show="compradorDetail.rut && !validateRut(compradorDetail.rut)" class="text-red-400">✗</span>
+                                    </label>
+                                    <input type="text" placeholder="12.345.678-9"
+                                        :value="compradorDetail.rut || ''"
+                                        @input="compradorDetail.rut = formatRut($event.target.value)"
+                                        @change="updateCompradorField('rut', compradorDetail.rut)"
+                                        :class="compradorDetail.rut && !validateRut(compradorDetail.rut) ? 'border-red-500/60' : (compradorDetail.rut && validateRut(compradorDetail.rut) ? 'border-emerald-500/60' : 'border-slate-700')"
+                                        class="w-full bg-slate-900 border rounded-lg px-3 py-1.5 text-xs text-white font-mono">
                                 </div>
                                 <div>
-                                    <label class="text-[10px] text-slate-500">Teléfono</label>
-                                    <input type="text" :value="compradorDetail.phone || ''"
+                                    <label class="text-[10px] text-slate-500 flex items-center gap-1">
+                                        Teléfono
+                                        <span x-show="compradorDetail.phone && validatePhone(compradorDetail.phone)" class="text-emerald-400">✓</span>
+                                        <span x-show="compradorDetail.phone && !validatePhone(compradorDetail.phone)" class="text-red-400">✗</span>
+                                    </label>
+                                    <input type="text" placeholder="9 1234 5678"
+                                        :value="compradorDetail.phone || ''"
                                         @change="updateCompradorField('phone', $event.target.value)"
-                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
+                                        :class="compradorDetail.phone && !validatePhone(compradorDetail.phone) ? 'border-red-500/60' : (compradorDetail.phone && validatePhone(compradorDetail.phone) ? 'border-emerald-500/60' : 'border-slate-700')"
+                                        class="w-full bg-slate-900 border rounded-lg px-3 py-1.5 text-xs text-white">
                                 </div>
                                 <div class="col-span-2">
                                     <label class="text-[10px] text-slate-500">Email</label>
@@ -2780,14 +2793,30 @@
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="text-xs text-slate-400">RUT</label>
-                        <input type="text" x-model="newComprador.rut"
-                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        <label class="text-xs text-slate-400 flex items-center gap-1">
+                            RUT
+                            <span x-show="newComprador.rut && validateRut(newComprador.rut)" class="text-emerald-400 text-[10px]">✓ válido</span>
+                            <span x-show="newComprador.rut && !validateRut(newComprador.rut)" class="text-red-400 text-[10px]">✗ inválido</span>
+                        </label>
+                        <input type="text" placeholder="12.345.678-9"
+                            :value="newComprador.rut"
+                            @input="newComprador.rut = formatRut($event.target.value)"
+                            :class="newComprador.rut && !validateRut(newComprador.rut) ? 'border-red-500/60' : (newComprador.rut && validateRut(newComprador.rut) ? 'border-emerald-500/60' : 'border-slate-700')"
+                            class="w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white font-mono">
                     </div>
                     <div>
-                        <label class="text-xs text-slate-400">Teléfono</label>
-                        <input type="text" x-model="newComprador.phone"
-                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        <label class="text-xs text-slate-400 flex items-center gap-1">
+                            Teléfono
+                            <span x-show="newComprador.phone && validatePhone(newComprador.phone)" class="text-emerald-400 text-[10px]">✓</span>
+                            <span x-show="newComprador.phone && !validatePhone(newComprador.phone)" class="text-red-400 text-[10px]">✗</span>
+                        </label>
+                        <div class="flex gap-1">
+                            <span class="bg-slate-700 border border-slate-600 rounded-lg px-2 py-2 text-xs text-slate-300 flex-shrink-0">+56</span>
+                            <input type="tel" placeholder="9 1234 5678"
+                                x-model="newComprador.phone"
+                                :class="newComprador.phone && !validatePhone(newComprador.phone) ? 'border-red-500/60' : (newComprador.phone && validatePhone(newComprador.phone) ? 'border-emerald-500/60' : 'border-slate-700')"
+                                class="w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -3488,6 +3517,37 @@
                 creditSim: { car_price: 0, down_payment: 0, months: 48, annual_rate_pct: 14, institution: '' },
                 creditSimResult: null,
 
+                // ─── RUT / Phone helpers (same logic as AgendarWizard) ──────
+                formatRut(value) {
+                    let clean = (value || '').replace(/[^0-9kK]/g, '');
+                    if (clean.length > 9) clean = clean.slice(0, 9);
+                    if (clean.length <= 1) return clean;
+                    const body = clean.slice(0, -1);
+                    const dv = clean.slice(-1);
+                    const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                    return `${formatted}-${dv}`;
+                },
+                validateRut(rut) {
+                    if (!rut) return false;
+                    const clean = rut.replace(/\./g, '').replace(/-/g, '');
+                    if (clean.length < 8 || clean.length > 9) return false;
+                    const body = clean.slice(0, -1);
+                    const dv = clean.slice(-1).toUpperCase();
+                    let sum = 0, mul = 2;
+                    for (let i = body.length - 1; i >= 0; i--) {
+                        sum += parseInt(body[i]) * mul;
+                        mul = mul === 7 ? 2 : mul + 1;
+                    }
+                    const expected = 11 - (sum % 11);
+                    const dvExpected = expected === 11 ? '0' : expected === 10 ? 'K' : String(expected);
+                    return dv === dvExpected;
+                },
+                validatePhone(phone) {
+                    if (!phone) return false;
+                    const digits = phone.replace(/\D/g, '');
+                    return digits.length >= 8 && digits.length <= 15;
+                },
+
                 async loadCompradores() {
                     try {
                         const r = await this.authFetch('/api/compradores');
@@ -3517,6 +3577,15 @@
                 },
 
                 async saveNewComprador() {
+                    if (!this.newComprador.first_name.trim() || !this.newComprador.last_name.trim()) {
+                        alert('⚠️ Ingresa nombre y apellido'); return;
+                    }
+                    if (this.newComprador.rut && !this.validateRut(this.newComprador.rut)) {
+                        alert('⚠️ El RUT ingresado no es válido (ej: 12.345.678-9)'); return;
+                    }
+                    if (this.newComprador.phone && !this.validatePhone(this.newComprador.phone)) {
+                        alert('⚠️ El teléfono ingresado no es válido'); return;
+                    }
                     try {
                         const r = await this.authFetch('/api/compradores', {
                             method: 'POST',
