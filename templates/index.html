@@ -496,12 +496,15 @@
             <!-- Right: Tabs panel -->
             <div class="w-1/2 xl:w-2/5 flex flex-col overflow-hidden bg-slate-950">
                 <!-- Tab bar -->
-                <div class="flex border-b border-slate-800 bg-slate-900/50 px-2 gap-0.5 flex-shrink-0">
-                    <template x-for="tab in ['ficha','inspeccion','documentos','propietario']" :key="tab">
+                <div class="flex border-b border-slate-800 bg-slate-900/50 px-2 gap-0.5 flex-shrink-0 overflow-x-auto">
+                    <template x-for="tab in ['ficha','inspeccion','documentos','propietario','compradores']" :key="tab">
                         <button @click="invTab = tab"
                             :class="invTab === tab ? 'text-cyan-400 border-b-2 border-cyan-400 bg-slate-800/50' : 'text-slate-400 hover:text-white'"
-                            class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors"
-                            x-text="tab === 'ficha' ? '📋 Ficha Técnica' : tab === 'inspeccion' ? '🔍 Inspección' : tab === 'documentos' ? '📄 Documentos' : '👤 Propietario'">
+                            class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors flex items-center gap-1">
+                            <span x-text="tab === 'ficha' ? '📋 Ficha' : tab === 'inspeccion' ? '🔍 Inspección' : tab === 'documentos' ? '📄 Docs' : tab === 'propietario' ? '👤 Propietario' : '🛒 Interesados'"></span>
+                            <span x-show="tab === 'compradores' && invCompradores.length"
+                                class="bg-cyan-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                                x-text="invCompradores.length"></span>
                         </button>
                     </template>
                 </div>
@@ -764,6 +767,52 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- ── TAB: Compradores Interesados ───────────── -->
+                    <div x-show="invTab==='compradores'" class="p-4 space-y-3">
+                        <div x-show="invCompradores.length === 0" class="flex flex-col items-center justify-center h-36 text-slate-500 gap-2">
+                            <i class="ph ph-users text-4xl text-slate-700"></i>
+                            <p class="text-sm">Ningún comprador vinculado a este vehículo</p>
+                        </div>
+                        <template x-for="buyer in invCompradores" :key="buyer.id">
+                            <div class="bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-xl p-3 transition-colors">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-bold text-white truncate" x-text="buyer.full_name || buyer.first_name + ' ' + buyer.last_name"></p>
+                                        <p class="text-xs text-slate-400 font-mono" x-text="buyer.phone || buyer.email || '—'"></p>
+                                    </div>
+                                    <span class="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                        :class="{
+                                            'bg-blue-500/20 text-blue-300': buyer.status === 'interesado',
+                                            'bg-amber-500/20 text-amber-300': buyer.status === 'negociando',
+                                            'bg-emerald-500/20 text-emerald-300': buyer.status === 'comprado',
+                                            'bg-slate-600/40 text-slate-400': !['interesado','negociando','comprado'].includes(buyer.status)
+                                        }"
+                                        x-text="buyer.status || 'interesado'"></span>
+                                </div>
+                                <!-- Credit info if available -->
+                                <div x-show="buyer.credit_monthly_payment" class="mt-2 flex items-center gap-2 text-[11px]">
+                                    <i class="ph ph-calculator text-violet-400"></i>
+                                    <span class="text-violet-300 font-bold" x-text="'$' + Number(buyer.credit_monthly_payment || 0).toLocaleString('es-CL') + '/mes'"></span>
+                                    <span class="text-slate-500" x-text="buyer.credit_months + ' meses'"></span>
+                                    <span x-show="buyer.credit_institution" class="text-slate-500" x-text="'· ' + buyer.credit_institution"></span>
+                                </div>
+                                <!-- Actions -->
+                                <div class="flex gap-2 mt-2">
+                                    <button @click="currentView='compradores'; openCompradorDetail(buyer.id)"
+                                        class="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                                        <i class="ph ph-arrow-right"></i> Ver perfil
+                                    </button>
+                                    <button x-show="buyer.consignacion_id"
+                                        @click="openNotaVenta(buyer.id)"
+                                        class="flex-1 text-[10px] bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-300 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                                        <i class="ph ph-file-pdf"></i> Nota de Venta
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -785,6 +834,53 @@
                 :src="invDetail?.listing_id ? 'https://autodirecto.cl/catalogo/' + invDetail.listing_id : ''"
                 class="flex-1 w-full border-0"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- NOTA DE VENTA — Side panel overlay with PDF preview                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div x-show="notaVentaOpen" class="fixed inset-0 z-[90] flex" style="display:none;"
+        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="notaVentaOpen = false"></div>
+        <!-- Panel -->
+        <div class="relative ml-auto w-full max-w-3xl h-full bg-slate-900 border-l border-slate-700 flex flex-col shadow-2xl"
+            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full"
+            x-transition:enter-end="translate-x-0">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <i class="ph ph-file-pdf text-xl text-emerald-400"></i>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Nota de Venta</h3>
+                        <p class="text-xs text-slate-400" x-text="compradorDetail?.full_name || ''"></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a :href="'/api/compradores/' + notaVentaId + '/nota-compra/descargar'" target="_blank"
+                        class="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg transition-colors">
+                        <i class="ph ph-download-simple"></i> Descargar
+                    </a>
+                    <button @click="notaVentaOpen = false"
+                        class="text-slate-400 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- PDF iframe -->
+            <div class="flex-1 overflow-hidden relative">
+                <div x-show="notaVentaLoading" class="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
+                    <svg class="w-8 h-8 animate-spin text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
+                <iframe x-show="notaVentaId" :src="notaVentaId ? '/api/compradores/' + notaVentaId + '/nota-compra' : ''"
+                    @load="notaVentaLoading = false"
+                    class="w-full h-full border-0" style="background:white;"></iframe>
+            </div>
         </div>
     </div>
 
@@ -3182,20 +3278,32 @@
                                 </button>
                                 <div x-show="creditSimResult"
                                     class="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
-                                    <div class="text-center">
+                                    <div class="text-center mb-2">
                                         <p class="text-[10px] text-slate-400 uppercase">Cuota Mensual</p>
                                         <p class="text-2xl font-bold text-emerald-400"
                                             x-text="'$' + Number(creditSimResult?.monthly_payment || 0).toLocaleString('es-CL')">
                                         </p>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-2 mt-2 text-[10px]">
-                                        <div class="text-slate-400">Financiado: <span class="text-white"
-                                                x-text="'$' + Number(creditSimResult?.financed || 0).toLocaleString('es-CL')"></span>
+                                    <div class="grid grid-cols-3 gap-1 text-[10px] mb-3">
+                                        <div class="text-center bg-slate-800/60 rounded p-1.5">
+                                            <div class="text-slate-500 mb-0.5">Financiado</div>
+                                            <div class="text-white font-bold" x-text="'$' + Number(creditSimResult?.financed || 0).toLocaleString('es-CL')"></div>
                                         </div>
-                                        <div class="text-slate-400">Total Interés: <span class="text-white"
-                                                x-text="'$' + Number(creditSimResult?.total_interest || 0).toLocaleString('es-CL')"></span>
+                                        <div class="text-center bg-slate-800/60 rounded p-1.5">
+                                            <div class="text-slate-500 mb-0.5">Total Interés</div>
+                                            <div class="text-amber-400 font-bold" x-text="'$' + Number(creditSimResult?.total_interest || 0).toLocaleString('es-CL')"></div>
+                                        </div>
+                                        <div class="text-center bg-slate-800/60 rounded p-1.5">
+                                            <div class="text-slate-500 mb-0.5">Total a Pagar</div>
+                                            <div class="text-white font-bold" x-text="'$' + Number(creditSimResult?.total_paid || 0).toLocaleString('es-CL')"></div>
                                         </div>
                                     </div>
+                                    <!-- Save to Nota de Venta button -->
+                                    <button @click="saveCreditSimulation()"
+                                        class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1">
+                                        <i class="ph ph-floppy-disk"></i> Guardar en Nota de Venta
+                                    </button>
+                                    <p x-show="creditSimSaved" class="text-center text-[10px] text-emerald-400 mt-1">✓ Guardado</p>
                                 </div>
                             </div>
                         </div>
@@ -3231,11 +3339,11 @@
                         <div class="mb-5">
                             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Documentos</h4>
                             <div class="flex gap-2">
-                                <a x-show="compradorDetail.consignacion_id"
-                                    :href="'/api/compradores/' + compradorDetail.id + '/nota-compra'" target="_blank"
+                                <button x-show="compradorDetail.consignacion_id"
+                                    @click="openNotaVenta(compradorDetail.id)"
                                     class="flex-1 flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold transition-colors">
-                                    <i class="ph ph-file-pdf"></i> Nota de Compra
-                                </a>
+                                    <i class="ph ph-file-pdf"></i> Nota de Venta
+                                </button>
                                 <button x-show="!compradorDetail.consignacion_id" disabled
                                     class="flex-1 flex items-center justify-center gap-1 bg-slate-700 text-slate-500 py-2 rounded-lg text-xs font-bold cursor-not-allowed">
                                     <i class="ph ph-file-pdf"></i> Vincular auto primero
@@ -4051,6 +4159,8 @@
                             } catch (_) {}
                         }
                         this.invDetail = { ...detail, photos };
+                        // Load buyers interested in this car
+                        this.invCompradores = (this.compradores || []).filter(b => b.consignacion_id == id);
                     } catch (e) { console.error('openInvDetail', e); }
                 },
 
@@ -4171,6 +4281,13 @@
                 carPickerContext: 'detail', // 'detail' | 'new'
                 creditSim: { car_price: 0, down_payment: 0, months: 48, annual_rate_pct: 14, institution: '' },
                 creditSimResult: null,
+                creditSimSaved: false,
+                // Nota de Venta panel
+                notaVentaOpen: false,
+                notaVentaId: null,
+                notaVentaLoading: false,
+                // Inventario compradores
+                invCompradores: [],
 
                 // ─── RUT / Phone helpers (same logic as AgendarWizard) ──────
                 formatRut(value) {
@@ -4366,8 +4483,39 @@
                     this.carPickerOpen = false;
                 },
 
-                async runCreditSimulation() {
-                    if (!this.compradorDetail) return;
+                runCreditSimulation() {
+                    // Just calculate locally — does NOT save anything
+                    this.creditSimSaved = false;
+                    const financed = this.creditSim.car_price - this.creditSim.down_payment;
+                    if (financed <= 0 || this.creditSim.months <= 0) {
+                        alert('El monto financiado debe ser mayor a 0');
+                        return;
+                    }
+                    const monthlyRate = (this.creditSim.annual_rate_pct / 100) / 12;
+                    let monthly;
+                    if (monthlyRate > 0) {
+                        monthly = financed * monthlyRate / (1 - Math.pow(1 + monthlyRate, -this.creditSim.months));
+                    } else {
+                        monthly = financed / this.creditSim.months;
+                    }
+                    monthly = Math.round(monthly);
+                    const totalPaid = monthly * this.creditSim.months;
+                    this.creditSimResult = {
+                        ok: true,
+                        car_price: this.creditSim.car_price,
+                        down_payment: this.creditSim.down_payment,
+                        financed,
+                        months: this.creditSim.months,
+                        annual_rate: this.creditSim.annual_rate_pct / 100,
+                        monthly_payment: monthly,
+                        total_paid: totalPaid,
+                        total_interest: totalPaid - financed,
+                    };
+                },
+
+                async saveCreditSimulation() {
+                    // Save the current simulation result to the buyer record
+                    if (!this.compradorDetail || !this.creditSimResult) return;
                     try {
                         const r = await this.authFetch('/api/compradores/' + this.compradorDetail.id + '/simular-credito', {
                             method: 'POST',
@@ -4382,19 +4530,23 @@
                         });
                         const d = await r.json();
                         if (d.ok) {
-                            this.creditSimResult = d;
+                            this.creditSimSaved = true;
                             this.compradorDetail.credit_status = 'solicitado';
-                            this.compradorDetail.credit_monthly_payment = d.monthly_payment;
-                            this.compradorDetail.credit_months = d.months;
+                            this.compradorDetail.credit_monthly_payment = this.creditSimResult.monthly_payment;
+                            this.compradorDetail.credit_months = this.creditSim.months;
                             this.compradorDetail.credit_institution = this.creditSim.institution;
                             this.compradorDetail.credit_rate = this.creditSim.annual_rate_pct / 100;
                             await this.loadCompradores();
-                            await this.loadConsignaciones();
-                            await this.refresh();
                         } else {
                             alert('❌ ' + (d.error || 'Error'));
                         }
                     } catch (e) { alert('❌ Error: ' + e.message); }
+                },
+
+                openNotaVenta(buyerId) {
+                    this.notaVentaId = buyerId;
+                    this.notaVentaLoading = true;
+                    this.notaVentaOpen = true;
                 },
 
                 async deleteComprador(id) {
