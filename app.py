@@ -810,14 +810,45 @@ def setup_db_tables():
 
     # Method 2: Return the SQL for the user to run manually, plus test if table exists
     try:
+        # Check which columns exist by trying select=*
         test_r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
-            params={"select": "id", "limit": "1"},
-            headers=headers,
+            params={"select": "*", "limit": "0"},
+            headers={**headers, "Prefer": "return=representation"},
             timeout=10,
         )
         if test_r.status_code == 200:
-            return jsonify({"ok": True, "message": "vehicle_images table already exists!"})
+            # Check which columns exist in the response headers
+            # PostgREST returns Content-Profile header and column info
+            existing_cols = []
+            if test_r.json() == [] or isinstance(test_r.json(), list):
+                # Try inserting a test row to see which columns fail
+                test_insert = req_lib.post(
+                    supabase_url + "/rest/v1/vehicle_images",
+                    json={"appraisal_id": "00000000-0000-0000-0000-000000000000", "url": "test", "storage_path": "test"},
+                    headers={**headers, "Prefer": "return=representation"},
+                    timeout=10,
+                )
+                # Clean up test row if it succeeded
+                if test_insert.status_code in (200, 201):
+                    rows = test_insert.json()
+                    if rows and isinstance(rows, list) and rows[0].get("id"):
+                        req_lib.delete(
+                            supabase_url + "/rest/v1/vehicle_images?id=eq." + rows[0]["id"],
+                            headers=headers, timeout=10,
+                        )
+                    return jsonify({"ok": True, "message": "vehicle_images table has all required columns!", "columns": list(rows[0].keys()) if rows else []})
+                else:
+                    missing_info = test_insert.text
+                    return jsonify({
+                        "ok": False,
+                        "table_exists": True,
+                        "message": "vehicle_images table exists but has WRONG columns. Run this SQL in Supabase SQL Editor to fix it.",
+                        "error": missing_info,
+                        "fix_sql": "DROP TABLE IF EXISTS vehicle_images; " + sql.strip().split("CREATE TABLE IF NOT EXISTS vehicle_images")[1].split(";")[0] + ";",
+                        "full_sql": sql.strip(),
+                    })
+            return jsonify({"ok": True, "message": "vehicle_images table exists"})
         else:
             return jsonify({
                 "ok": False,
