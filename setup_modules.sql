@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS camera_jobs (
   consignacion_id INTEGER,
   appraisal_id    TEXT,
   label           TEXT,
+  photos_uploaded INTEGER DEFAULT 0,
   created_at      TIMESTAMPTZ DEFAULT now()
 );
 

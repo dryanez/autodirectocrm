@@ -2431,10 +2431,10 @@ def update_listing(listing_id):
 
 
 # ─── API: Camera Job relay ────────────────────────────────────────────────────
-# Stores a short-lived camera job (consignacion_id + vehicle label) under a token.
-# Persisted in Supabase so it works across Vercel serverless instances.
-# The camera PWA fetches this on launch to know which vehicle to shoot,
-# even when launched from the home screen icon (where URL params are lost on iOS).
+# The camera PWA calls GET /api/camera-job/latest on every launch.
+# Returns the most recent job with 0 photos uploaded → user confirms the car.
+# Once photos are uploaded the job is "done" and won't appear again.
+# No tokens, no localStorage — works from any device, any time.
 
 @app.route("/api/camera-job", methods=["POST"])
 def create_camera_job():
@@ -2449,6 +2449,7 @@ def create_camera_job():
         "consignacion_id": data.get("consignacion_id"),
         "appraisal_id":    data.get("appraisal_id"),
         "label":           data.get("label", ""),
+        "photos_uploaded": 0,
     }
     req_lib.post(
         supabase_url + "/rest/v1/camera_jobs",
@@ -2457,6 +2458,35 @@ def create_camera_job():
         timeout=8
     )
     return jsonify({"token": token})
+
+@app.route("/api/camera-job/latest", methods=["GET"])
+def get_latest_camera_job():
+    """Return the most recent job that has 0 photos uploaded — i.e. still pending."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    r = req_lib.get(
+        supabase_url + "/rest/v1/camera_jobs",
+        params={
+            "select": "*",
+            "photos_uploaded": "eq.0",
+            "order": "created_at.desc",
+            "limit": "1"
+        },
+        headers=headers, timeout=8
+    )
+    rows = r.json() if r.status_code == 200 else []
+    if not rows:
+        return jsonify({"pending": False})
+    job = rows[0]
+    return jsonify({
+        "pending":         True,
+        "token":           job.get("token"),
+        "consignacion_id": job.get("consignacion_id"),
+        "appraisal_id":    job.get("appraisal_id"),
+        "label":           job.get("label", ""),
+    })
 
 @app.route("/api/camera-job/<token>", methods=["GET"])
 def get_camera_job(token):
@@ -2478,6 +2508,31 @@ def get_camera_job(token):
         "appraisal_id":    job.get("appraisal_id"),
         "label":           job.get("label", ""),
     })
+
+@app.route("/api/camera-job/<token>/increment", methods=["POST"])
+def increment_camera_job(token):
+    """Called by camera app each time a photo is uploaded — increments photos_uploaded."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"ok": True})
+    # Fetch current count first
+    r = req_lib.get(
+        supabase_url + "/rest/v1/camera_jobs",
+        params={"token": "eq." + token, "select": "photos_uploaded", "limit": "1"},
+        headers=headers, timeout=5
+    )
+    rows = r.json() if r.status_code == 200 else []
+    if rows:
+        new_count = (rows[0].get("photos_uploaded") or 0) + 1
+        req_lib.patch(
+            supabase_url + "/rest/v1/camera_jobs",
+            params={"token": "eq." + token},
+            json={"photos_uploaded": new_count},
+            headers={**headers, "Prefer": "return=minimal"},
+            timeout=5
+        )
+    return jsonify({"ok": True})
 
 @app.route("/api/camera-job/<token>", methods=["DELETE"])
 def delete_camera_job(token):
