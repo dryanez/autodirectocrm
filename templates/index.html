@@ -1129,10 +1129,11 @@
             <div class="flex items-center gap-2 text-emerald-400">
                 <i class="ph ph-car text-xl"></i>
                 <span class="font-bold text-white text-sm">Seleccionar Vehículo</span>
-                <span x-show="compradorDetail" class="text-slate-400 text-xs">para
+                <span x-show="carPickerContext === 'detail' && compradorDetail" class="text-slate-400 text-xs">para
                     <span class="text-emerald-300 font-semibold"
                         x-text="compradorDetail ? (compradorDetail.first_name + ' ' + compradorDetail.last_name) : ''"></span>
                 </span>
+                <span x-show="carPickerContext === 'new'" class="text-slate-400 text-xs">— Nuevo Comprador</span>
             </div>
             <!-- Search -->
             <div class="flex-1 max-w-md relative">
@@ -1172,7 +1173,7 @@
             <div x-show="!carPickerLoading && carPickerFiltered.length > 0"
                 class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 <template x-for="car in carPickerFiltered" :key="car.id">
-                    <button @click="pickCarForBuyer(car.id)"
+                    <button @click="pickCarForBuyer(car)"
                         class="bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:shadow-emerald-900/30 group focus:outline-none focus:border-emerald-400">
                         <!-- Photo -->
                         <div class="relative w-full aspect-[4/3] bg-slate-800 overflow-hidden">
@@ -2795,9 +2796,34 @@
                         class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400">Auto de interés (descripción)</label>
-                    <input type="text" x-model="newComprador.car_description" placeholder="Ej: Toyota Corolla 2020"
-                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                    <label class="text-xs text-slate-400">Auto de Interés (Inventario)</label>
+                    <!-- Selected car preview -->
+                    <div x-show="newComprador.consignacion_id"
+                        class="flex items-center gap-3 bg-slate-800 border border-emerald-700/50 rounded-lg p-2 mb-2">
+                        <img x-show="newComprador._car_photo" :src="newComprador._car_photo"
+                            class="w-14 h-10 rounded object-cover flex-shrink-0">
+                        <div x-show="!newComprador._car_photo"
+                            class="w-14 h-10 rounded bg-slate-700 flex items-center justify-center flex-shrink-0">
+                            <i class="ph ph-car text-emerald-400 text-lg"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-bold text-white truncate" x-text="newComprador.car_description"></p>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="text-[11px] font-mono text-amber-400" x-text="newComprador._car_plate"></span>
+                                <span x-show="newComprador._car_price" class="text-[11px] text-emerald-400 font-bold"
+                                    x-text="newComprador._car_price ? '$' + Number(newComprador._car_price).toLocaleString('es-CL') : ''"></span>
+                            </div>
+                        </div>
+                        <button @click="newComprador.consignacion_id=null; newComprador.car_description=''; newComprador._car_plate=''; newComprador._car_price=0; newComprador._car_photo=null"
+                            class="text-slate-500 hover:text-red-400 transition-colors ml-1">
+                            <i class="ph ph-x text-xs"></i>
+                        </button>
+                    </div>
+                    <button @click="openCarPicker('new')"
+                        class="w-full flex items-center justify-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 hover:border-emerald-500 text-emerald-400 py-2 rounded-lg text-xs font-bold transition-all">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <span x-text="newComprador.consignacion_id ? '🔄 Cambiar Vehículo' : '🚗 Buscar Vehículo en Inventario'"></span>
+                    </button>
                 </div>
                 <div>
                     <label class="text-xs text-slate-400">Notas</label>
@@ -3452,12 +3478,13 @@
                 compradores: [],
                 compradorDetail: null,
                 compradorAddOpen: false,
-                newComprador: { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' },
+                newComprador: { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '', consignacion_id: null, _car_plate: '', _car_price: 0, _car_photo: null },
                 matchConsigId: '',
                 carPickerOpen: false,
                 carPickerSearch: '',
                 carPickerCars: [],
                 carPickerLoading: false,
+                carPickerContext: 'detail', // 'detail' | 'new'
                 creditSim: { car_price: 0, down_payment: 0, months: 48, annual_rate_pct: 14, institution: '' },
                 creditSimResult: null,
 
@@ -3499,8 +3526,16 @@
                         const d = await r.json();
                         if (d.ok) {
                             this.compradorAddOpen = false;
-                            this.newComprador = { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' };
+                            const savedId = d.id;
+                            const consigId = this.newComprador.consignacion_id;
+                            this.newComprador = { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '', consignacion_id: null, _car_plate: '', _car_price: 0, _car_photo: null };
                             await this.loadCompradores();
+                            // If a car was picked, open the comprador and run the match
+                            if (savedId && consigId) {
+                                await this.openComprador(savedId);
+                                this.matchConsigId = consigId;
+                                await this.matchBuyerToCar();
+                            }
                             await this.loadConsignaciones();
                             await this.refresh();
                         }
@@ -3552,7 +3587,8 @@
                     } catch (e) { alert('❌ Error: ' + e.message); }
                 },
 
-                async openCarPicker() {
+                async openCarPicker(context = 'detail') {
+                    this.carPickerContext = context;
                     this.carPickerOpen = true;
                     this.carPickerLoading = true;
                     this.carPickerSearch = '';
@@ -3590,9 +3626,19 @@
                     });
                 },
 
-                async pickCarForBuyer(consigId) {
-                    this.matchConsigId = consigId;
-                    await this.matchBuyerToCar();
+                async pickCarForBuyer(car) {
+                    if (this.carPickerContext === 'new') {
+                        // Pre-fill the new comprador form
+                        const label = [car.car_year, car.car_make, car.car_model].filter(Boolean).join(' ');
+                        this.newComprador.consignacion_id = car.id;
+                        this.newComprador.car_description = label;
+                        this.newComprador._car_plate = car.plate || '';
+                        this.newComprador._car_price = car.selling_price || 0;
+                        this.newComprador._car_photo = car.cover_photo || null;
+                    } else {
+                        this.matchConsigId = car.id;
+                        await this.matchBuyerToCar();
+                    }
                     this.carPickerOpen = false;
                 },
 
