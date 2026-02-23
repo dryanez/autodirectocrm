@@ -678,13 +678,28 @@ def upload_inspeccion_foto():
         )
         public_url = f"{supabase_url}/storage/v1/object/public/vehicle-images/{filename}"
         # Save reference to vehicle_images table
-        req_lib.post(
+        # Try with storage_path first; if column doesn't exist, retry without it
+        insert_payload = {"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url}
+        insert_headers = {"apikey": supabase_key, "Authorization": "Bearer " + supabase_key,
+                     "Content-Type": "application/json", "Prefer": "return=representation"}
+        db_r = req_lib.post(
             supabase_url + "/rest/v1/vehicle_images",
-            json={"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url},
-            headers={"apikey": supabase_key, "Authorization": "Bearer " + supabase_key,
-                     "Content-Type": "application/json"},
+            json=insert_payload,
+            headers=insert_headers,
             timeout=10
         )
+        if db_r.status_code not in (200, 201):
+            # Probably missing storage_path column — retry without it
+            print(f"[upload_foto] insert with storage_path failed ({db_r.status_code}): {db_r.text}, retrying without it", flush=True)
+            insert_payload = {"appraisal_id": appraisal_id, "url": public_url}
+            db_r = req_lib.post(
+                supabase_url + "/rest/v1/vehicle_images",
+                json=insert_payload,
+                headers=insert_headers,
+                timeout=10
+            )
+            if db_r.status_code not in (200, 201):
+                print(f"[upload_foto] insert STILL failed ({db_r.status_code}): {db_r.text}", flush=True)
         return jsonify({"ok": True, "url": public_url})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1938,17 +1953,27 @@ def upload_consignacion_foto(cid):
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
+        # Try with storage_path first; if column doesn't exist, retry without it
+        insert_payload = {"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url}
         db_resp = req_lib.post(
             supabase_url + "/rest/v1/vehicle_images",
-            json={"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url},
+            json=insert_payload,
             headers=db_headers,
             timeout=10
         )
         if db_resp.status_code not in (200, 201):
-            print(f"[upload_foto] vehicle_images insert FAILED {db_resp.status_code}: {db_resp.text}", flush=True)
-            # Return ok anyway (file IS in storage) but include warning
-            return jsonify({"ok": True, "url": public_url, "appraisal_id": appraisal_id,
-                            "db_warning": db_resp.text})
+            print(f"[upload_foto] insert with storage_path failed ({db_resp.status_code}): {db_resp.text}, retrying without it", flush=True)
+            insert_payload = {"appraisal_id": appraisal_id, "url": public_url}
+            db_resp = req_lib.post(
+                supabase_url + "/rest/v1/vehicle_images",
+                json=insert_payload,
+                headers=db_headers,
+                timeout=10
+            )
+            if db_resp.status_code not in (200, 201):
+                print(f"[upload_foto] insert STILL failed ({db_resp.status_code}): {db_resp.text}", flush=True)
+                return jsonify({"ok": True, "url": public_url, "appraisal_id": appraisal_id,
+                                "db_warning": db_resp.text})
         return jsonify({"ok": True, "url": public_url, "appraisal_id": appraisal_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
