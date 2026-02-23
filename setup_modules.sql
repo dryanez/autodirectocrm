@@ -103,3 +103,18 @@ CREATE POLICY "Service role full access" ON company_modules USING (true) WITH CH
 CREATE INDEX IF NOT EXISTS idx_company_modules_company ON company_modules(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_modules_module ON company_modules(module_id);
 CREATE INDEX IF NOT EXISTS idx_companies_slug ON companies(slug);
+
+-- ─── Camera Jobs (serverless-safe token relay) ──────────────
+-- Short-lived tokens that link a CRM "open camera" action to the vehicle data.
+-- The camera PWA fetches these on launch to know which vehicle to photograph.
+CREATE TABLE IF NOT EXISTS camera_jobs (
+  token           TEXT PRIMARY KEY,
+  consignacion_id INTEGER,
+  appraisal_id    TEXT,
+  label           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE camera_jobs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Service role full access" ON camera_jobs;
+CREATE POLICY "Service role full access" ON camera_jobs USING (true) WITH CHECK (true);

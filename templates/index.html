@@ -4351,8 +4351,14 @@
                 },
 
                 // Open Camera Pro — creates a server-side job token so the PWA
-                // knows which vehicle to shoot even when launched from home screen icon
+                // knows which vehicle to shoot even when launched from home screen icon.
+                // IMPORTANT: iOS Safari blocks window.open() after an await (popup blocker).
+                // We must open the window SYNCHRONOUSLY on the user tap, then navigate it.
                 async openCameraPro(consignacionId, appraisalId, label) {
+                    // 1. Open window immediately — must happen in the same call stack as
+                    //    the user's click or iOS will silently block it.
+                    const fallbackUrl = 'https://cameracar.vercel.app/?consignacion_id=' + consignacionId + (appraisalId ? '&appraisal_id=' + appraisalId : '');
+                    const win = window.open('about:blank', '_blank');
                     try {
                         const r = await this.authFetch('/api/camera-job', {
                             method: 'POST',
@@ -4364,11 +4370,20 @@
                         });
                         const d = await r.json();
                         const token = d.token;
-                        // Pass token in URL — camera PWA reads it whether opened via link or home screen
-                        window.open('https://cameracar.vercel.app/?job=' + token, '_blank');
+                        // 2. Navigate the already-open tab to the camera URL with the job token
+                        if (win) {
+                            win.location.href = 'https://cameracar.vercel.app/?job=' + token;
+                        } else {
+                            // Popup was somehow blocked anyway — use location as last resort
+                            window.location.href = 'https://cameracar.vercel.app/?job=' + token;
+                        }
                     } catch (e) {
-                        // Fallback: open with direct params if job API fails
-                        window.open('https://cameracar.vercel.app/?consignacion_id=' + consignacionId + (appraisalId ? '&appraisal_id=' + appraisalId : ''), '_blank');
+                        // Fallback: navigate with direct params if job API fails
+                        if (win) {
+                            win.location.href = fallbackUrl;
+                        } else {
+                            window.location.href = fallbackUrl;
+                        }
                     }
                 },
 
