@@ -2432,39 +2432,63 @@ def update_listing(listing_id):
 
 # ─── API: Camera Job relay ────────────────────────────────────────────────────
 # Stores a short-lived camera job (consignacion_id + vehicle label) under a token.
+# Persisted in Supabase so it works across Vercel serverless instances.
 # The camera PWA fetches this on launch to know which vehicle to shoot,
 # even when launched from the home screen icon (where URL params are lost on iOS).
 
-_camera_jobs = {}  # token -> {consignacion_id, appraisal_id, label, ts}
-
 @app.route("/api/camera-job", methods=["POST"])
 def create_camera_job():
-    import secrets, time
+    import requests as req_lib, secrets
     data = request.json or {}
     token = secrets.token_urlsafe(8)
-    _camera_jobs[token] = {
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    payload = {
+        "token":           token,
         "consignacion_id": data.get("consignacion_id"),
         "appraisal_id":    data.get("appraisal_id"),
         "label":           data.get("label", ""),
-        "ts":              time.time(),
     }
-    # Prune stale jobs older than 2 hours
-    cutoff = time.time() - 7200
-    for t in list(_camera_jobs.keys()):
-        if _camera_jobs[t]["ts"] < cutoff:
-            del _camera_jobs[t]
+    req_lib.post(
+        supabase_url + "/rest/v1/camera_jobs",
+        json=payload,
+        headers={**headers, "Prefer": "return=minimal"},
+        timeout=8
+    )
     return jsonify({"token": token})
 
 @app.route("/api/camera-job/<token>", methods=["GET"])
 def get_camera_job(token):
-    job = _camera_jobs.get(token)
-    if not job:
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    r = req_lib.get(
+        supabase_url + "/rest/v1/camera_jobs",
+        params={"token": "eq." + token, "select": "*", "limit": "1"},
+        headers=headers, timeout=8
+    )
+    rows = r.json() if r.status_code == 200 else []
+    if not rows:
         return jsonify({"error": "not found"}), 404
-    return jsonify(job)
+    job = rows[0]
+    return jsonify({
+        "consignacion_id": job.get("consignacion_id"),
+        "appraisal_id":    job.get("appraisal_id"),
+        "label":           job.get("label", ""),
+    })
 
 @app.route("/api/camera-job/<token>", methods=["DELETE"])
 def delete_camera_job(token):
-    _camera_jobs.pop(token, None)
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if supabase_url:
+        req_lib.delete(
+            supabase_url + "/rest/v1/camera_jobs",
+            params={"token": "eq." + token},
+            headers=headers, timeout=8
+        )
     return jsonify({"ok": True})
 
 # ─── API: Modules (SaaS feature toggles) ──────────────────────────────────────
