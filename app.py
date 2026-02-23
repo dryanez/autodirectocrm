@@ -2373,6 +2373,224 @@ def update_listing(listing_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ─── API: Modules (SaaS feature toggles) ──────────────────────────────────────
+
+COMPANY_ID = os.environ.get("COMPANY_ID", "a0000000-0000-0000-0000-000000000001")
+
+@app.route("/api/modules", methods=["GET"])
+def get_modules():
+    """Return all modules with their enabled/disabled state for the current company."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        # Fetch master module list
+        r_mods = req_lib.get(
+            supabase_url + "/rest/v1/modules",
+            params={"select": "*", "order": "sort_order.asc"},
+            headers=headers, timeout=10
+        )
+        all_modules = r_mods.json() if r_mods.status_code == 200 else []
+
+        # Fetch this company's enabled modules
+        r_cm = req_lib.get(
+            supabase_url + "/rest/v1/company_modules",
+            params={"select": "module_id,enabled,config", "company_id": "eq.{}".format(COMPANY_ID)},
+            headers=headers, timeout=10
+        )
+        company_mods = {row["module_id"]: row for row in (r_cm.json() if r_cm.status_code == 200 else [])}
+
+        # Merge: each module gets its enabled state
+        result = []
+        for m in all_modules:
+            cm = company_mods.get(m["id"], {})
+            result.append({
+                "id": m["id"],
+                "name": m["name"],
+                "description": m.get("description", ""),
+                "icon": m.get("icon", "ph-puzzle-piece"),
+                "category": m.get("category", "general"),
+                "is_premium": m.get("is_premium", False),
+                "enabled": cm.get("enabled", False),
+                "config": cm.get("config", {}),
+            })
+        return jsonify({"modules": result, "company_id": COMPANY_ID})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/modules/<module_id>", methods=["PATCH"])
+def toggle_module(module_id):
+    """Enable or disable a module for the current company. Body: { enabled: true/false, config: {} }"""
+    import requests as req_lib
+    data = request.json or {}
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+
+    payload = {"company_id": COMPANY_ID, "module_id": module_id}
+    if "enabled" in data:
+        payload["enabled"] = data["enabled"]
+    if "config" in data:
+        payload["config"] = data["config"]
+    payload["enabled_at"] = datetime.now().isoformat()
+
+    try:
+        r = req_lib.post(
+            supabase_url + "/rest/v1/company_modules",
+            json=payload,
+            headers={**headers, "Prefer": "resolution=merge-duplicates,return=representation"},
+            timeout=10
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text)}), 502
+        return jsonify({"ok": True, "module_id": module_id, "enabled": data.get("enabled", True)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies", methods=["GET"])
+def get_companies():
+    """List all companies (super admin only)."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/companies",
+            params={"select": "*", "order": "name.asc"},
+            headers=headers, timeout=10
+        )
+        return jsonify(r.json() if r.status_code == 200 else [])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies", methods=["POST"])
+def create_company():
+    """Create a new company / automotriz tenant."""
+    import requests as req_lib
+    data = request.json or {}
+    if not data.get("name") or not data.get("slug"):
+        return jsonify({"error": "name and slug required"}), 400
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        payload = {
+            "name": data["name"],
+            "slug": data["slug"],
+            "rut": data.get("rut"),
+            "website": data.get("website"),
+            "contact_email": data.get("contact_email"),
+            "contact_phone": data.get("contact_phone"),
+            "address": data.get("address"),
+            "comuna": data.get("comuna"),
+            "ciudad": data.get("ciudad"),
+            "plan": data.get("plan", "starter"),
+        }
+        r = req_lib.post(
+            supabase_url + "/rest/v1/companies",
+            json=payload,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text)}), 502
+        company = r.json()[0] if isinstance(r.json(), list) else r.json()
+
+        # Auto-enable free modules for new company
+        r_free = req_lib.get(
+            supabase_url + "/rest/v1/modules",
+            params={"select": "id", "is_premium": "eq.false"},
+            headers=headers, timeout=10
+        )
+        free_modules = r_free.json() if r_free.status_code == 200 else []
+        for m in free_modules:
+            req_lib.post(
+                supabase_url + "/rest/v1/company_modules",
+                json={"company_id": company["id"], "module_id": m["id"], "enabled": True, "enabled_by": "auto"},
+                headers={**headers, "Prefer": "resolution=merge-duplicates"},
+                timeout=10
+            )
+
+        return jsonify(company), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies/<company_id>/modules", methods=["GET"])
+def get_company_modules(company_id):
+    """Get modules for a specific company (super admin managing other tenants)."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r_mods = req_lib.get(
+            supabase_url + "/rest/v1/modules",
+            params={"select": "*", "order": "sort_order.asc"},
+            headers=headers, timeout=10
+        )
+        all_modules = r_mods.json() if r_mods.status_code == 200 else []
+
+        r_cm = req_lib.get(
+            supabase_url + "/rest/v1/company_modules",
+            params={"select": "module_id,enabled,config", "company_id": "eq.{}".format(company_id)},
+            headers=headers, timeout=10
+        )
+        company_mods = {row["module_id"]: row for row in (r_cm.json() if r_cm.status_code == 200 else [])}
+
+        result = []
+        for m in all_modules:
+            cm = company_mods.get(m["id"], {})
+            result.append({
+                "id": m["id"],
+                "name": m["name"],
+                "description": m.get("description", ""),
+                "icon": m.get("icon", "ph-puzzle-piece"),
+                "category": m.get("category", "general"),
+                "is_premium": m.get("is_premium", False),
+                "enabled": cm.get("enabled", False),
+                "config": cm.get("config", {}),
+            })
+        return jsonify({"modules": result, "company_id": company_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies/<company_id>/modules/<module_id>", methods=["PATCH"])
+def toggle_company_module(company_id, module_id):
+    """Enable/disable a module for a specific company (super admin)."""
+    import requests as req_lib
+    data = request.json or {}
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+
+    payload = {"company_id": company_id, "module_id": module_id}
+    if "enabled" in data:
+        payload["enabled"] = data["enabled"]
+    if "config" in data:
+        payload["config"] = data["config"]
+    payload["enabled_at"] = datetime.now().isoformat()
+
+    try:
+        r = req_lib.post(
+            supabase_url + "/rest/v1/company_modules",
+            json=payload,
+            headers={**headers, "Prefer": "resolution=merge-duplicates,return=representation"},
+            timeout=10
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text)}), 502
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/ai/generate-description", methods=["POST"])
 def ai_generate_description():
     """
