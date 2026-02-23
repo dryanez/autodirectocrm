@@ -4214,6 +4214,23 @@
                                     throw new Error(errD.error || 'HTTP ' + lr.status);
                                 }
                             }
+                            // Also sync fuel/transmission/motor back to the appraisal record
+                            if (this.invDetail.appraisal_supabase_id) {
+                                const appraisalFieldMap = {
+                                    'fuel_type':    'vehicle_combustible',
+                                    'transmission': 'vehicle_transmision',
+                                    'motor':        'vehicle_motor',
+                                };
+                                if (appraisalFieldMap[field]) {
+                                    const apprBody = {};
+                                    apprBody[appraisalFieldMap[field]] = value;
+                                    this.authFetch('/api/inspecciones/' + this.invDetail.appraisal_supabase_id, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(apprBody)
+                                    }).catch(e => console.warn('sync field to appraisal', e));
+                                }
+                            }
                         } else {
                             // Update consignaciones
                             const body = {};
@@ -4264,16 +4281,27 @@
                             }
                         } catch (e) { console.warn('auto-publish for features', e); }
                     }
-                    // Save features to listing
+                    // Save features to listing AND appraisal (keep both in sync)
+                    const savePromises = [];
                     if (this.invDetail.listing_id) {
-                        try {
-                            await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                        savePromises.push(
+                            this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ features })
-                            });
-                        } catch (e) { console.warn('toggleInvFeature', e); }
+                            }).catch(e => console.warn('toggleInvFeature listing', e))
+                        );
                     }
+                    if (this.invDetail.appraisal_supabase_id) {
+                        savePromises.push(
+                            this.authFetch('/api/inspecciones/' + this.invDetail.appraisal_supabase_id, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ features })
+                            }).catch(e => console.warn('toggleInvFeature appraisal', e))
+                        );
+                    }
+                    await Promise.all(savePromises);
                     this.invSaveFlash = true;
                     setTimeout(() => { this.invSaveFlash = false; }, 1500);
                 },

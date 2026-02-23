@@ -711,6 +711,39 @@ def get_inspeccion(appraisal_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/inspecciones/<appraisal_id>", methods=["PATCH"])
+def update_inspeccion(appraisal_id):
+    """
+    Update specific fields on an appraisal record in Supabase.
+    Used by Inventario to keep features/fuel/transmission in sync with the inspection.
+    """
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+
+    data = request.json or {}
+    allowed = {"features", "vehicle_combustible", "vehicle_transmision", "vehicle_motor",
+               "precio_publicado", "observaciones", "condition_notes"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"ok": True, "message": "nothing to update"})
+
+    updates["updated_at"] = datetime.now().isoformat()
+    try:
+        r = req_lib.patch(
+            supabase_url + "/rest/v1/appraisals?id=eq.{}".format(appraisal_id),
+            json=updates,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10
+        )
+        if r.status_code not in (200, 204):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text[:300])}), 502
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/inspecciones/<appraisal_id>/pdf", methods=["GET"])
 def get_inspeccion_pdf(appraisal_id):
     """
