@@ -4268,6 +4268,9 @@
                 invLoading: false,
                 invSaveFlash: false,
                 invAiLoading: false,
+                cameraProModal: false,
+                cameraProUrl: null,
+                cameraProLoading: false,
 
                 get invFiltered() {
                     let list = this.inventarioCars;
@@ -4350,15 +4353,14 @@
                     } catch (e) { console.error('openInvDetail', e); }
                 },
 
-                // Open Camera Pro — creates a server-side job token so the PWA
-                // knows which vehicle to shoot even when launched from home screen icon.
-                // IMPORTANT: iOS Safari blocks window.open() after an await (popup blocker).
-                // We must open the window SYNCHRONOUSLY on the user tap, then navigate it.
+                // Open Camera Pro — two-step:
+                // 1. Create the job token (async — ok to await here)
+                // 2. Show a modal with a big button. User taps it → synchronous
+                //    window.location.href → iOS routes to installed PWA, not browser tab.
                 async openCameraPro(consignacionId, appraisalId, label) {
-                    // 1. Open window immediately — must happen in the same call stack as
-                    //    the user's click or iOS will silently block it.
-                    const fallbackUrl = 'https://cameracar.vercel.app/?consignacion_id=' + consignacionId + (appraisalId ? '&appraisal_id=' + appraisalId : '');
-                    const win = window.open('about:blank', '_blank');
+                    this.cameraProLoading = true;
+                    this.cameraProUrl = null;
+                    this.cameraProModal = true;
                     try {
                         const r = await this.authFetch('/api/camera-job', {
                             method: 'POST',
@@ -4369,22 +4371,11 @@
                             })
                         });
                         const d = await r.json();
-                        const token = d.token;
-                        // 2. Navigate the already-open tab to the camera URL with the job token
-                        if (win) {
-                            win.location.href = 'https://cameracar.vercel.app/?job=' + token;
-                        } else {
-                            // Popup was somehow blocked anyway — use location as last resort
-                            window.location.href = 'https://cameracar.vercel.app/?job=' + token;
-                        }
+                        this.cameraProUrl = 'https://cameracar.vercel.app/';
                     } catch (e) {
-                        // Fallback: navigate with direct params if job API fails
-                        if (win) {
-                            win.location.href = fallbackUrl;
-                        } else {
-                            window.location.href = fallbackUrl;
-                        }
+                        this.cameraProUrl = 'https://cameracar.vercel.app/';
                     }
+                    this.cameraProLoading = false;
                 },
 
                 // Refresh photos for the currently open vehicle — called when CRM tab regains focus
@@ -5400,9 +5391,15 @@
                         const res = await this.authFetch(`/api/consignaciones/${id}/publicar`, { method: 'POST' });
                         const data = await res.json();
                         if (data.ok) {
+                            // Update in-memory status immediately so the panel reflects it now
+                            if (this.invDetail && this.invDetail.id == id) {
+                                this.invDetail.status = 'en_venta';
+                                this.invDetail.listing_id = data.listing_id;
+                            }
                             // Refresh everything: detail, list, CRM, inventory
                             await this.openConsignacion(id);
                             await this.loadConsignaciones();
+                            await this.loadInventario();
                             await this.loadCRM();
                             await this.refresh();
                             const photoMsg = data.image_count > 0 ? ` con ${data.image_count} foto(s)` : '';
