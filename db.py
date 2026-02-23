@@ -206,9 +206,13 @@ def _supa_update(table, updates, filters):
     try:
         r = _req.patch(_rest(table), json=updates, params=params, headers=_headers(), timeout=10)
         if r.status_code not in (200, 204):
-            print(f"[db] UPDATE {table} {r.status_code}: {r.text[:200]}")
+            print(f"[db] UPDATE {table} {r.status_code}: {r.text[:500]}")
+            raise RuntimeError(f"Supabase UPDATE {table} failed ({r.status_code}): {r.text[:300]}")
+    except RuntimeError:
+        raise
     except Exception as e:
         print(f"[db] UPDATE {table} error: {e}")
+        raise
 
 
 def _supa_delete(table, filters):

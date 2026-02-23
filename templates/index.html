@@ -4204,21 +4204,31 @@
                             if (this.invDetail.listing_id) {
                                 const body = {};
                                 body[field] = value;
-                                await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                                const lr = await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify(body)
                                 });
+                                if (!lr.ok) {
+                                    const errD = await lr.json().catch(() => ({}));
+                                    throw new Error(errD.error || 'HTTP ' + lr.status);
+                                }
                             }
                         } else {
                             // Update consignaciones
                             const body = {};
                             body[field] = value;
-                            await this.authFetch('/api/consignaciones/' + this.invDetail.id, {
+                            const saveR = await this.authFetch('/api/consignaciones/' + this.invDetail.id, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(body)
                             });
+                            if (!saveR.ok) {
+                                const errD = await saveR.json().catch(() => ({}));
+                                throw new Error(errD.error || 'HTTP ' + saveR.status);
+                            }
+                            const saveD = await saveR.json().catch(() => ({}));
+                            if (saveD.error) throw new Error(saveD.error);
                             // If it's a listing-relevant field and published, auto-republish
                             if (this.invDetail.listing_id && republishFields.includes(field)) {
                                 this.authFetch('/api/consignaciones/' + this.invDetail.id + '/publicar', { method: 'POST' })

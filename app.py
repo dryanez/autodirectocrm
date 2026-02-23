@@ -1752,13 +1752,20 @@ def update_consignacion(cid):
             updates["owner_full_name"] = "{} {}".format(fn, ln).strip()
 
     set_clause = ", ".join("{}=?".format(k) for k in updates)
-    with get_db() as conn:
-        conn.execute("UPDATE consignaciones SET {} WHERE id=?".format(set_clause), list(updates.values()) + [cid])
-        conn.commit()
-        row = conn.execute(
-            "SELECT c.*, u.name as assigned_user_name FROM consignaciones c LEFT JOIN crm_users u ON c.assigned_user_id=u.id WHERE c.id=?",
-            (cid,)
-        ).fetchone()
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE consignaciones SET {} WHERE id=?".format(set_clause), list(updates.values()) + [cid])
+            conn.commit()
+    except Exception as e:
+        print(f"[update_consignacion] DB error: {e}", flush=True)
+        return jsonify({"error": "Error guardando: {}".format(str(e))}), 500
+
+    row = None
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    except Exception:
+        pass
 
     result = row_to_dict(row)
 
