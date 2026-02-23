@@ -2137,10 +2137,11 @@ def publicar_en_catalogo(cid):
     color  = (appraisal.get("vehicle_color") or c.get("color") or "").strip()
     km     = appraisal.get("vehicle_km") or c.get("mileage")
     plate  = (appraisal.get("vehicle_patente") or c.get("plate") or "").upper()
-    price  = appraisal.get("precio_publicado") or appraisal.get("tasacion")
-    fuel   = appraisal.get("vehicle_combustible") or "Bencina"
-    trans  = appraisal.get("vehicle_transmision") or "Manual"
-    motor  = appraisal.get("vehicle_motor") or ""
+    # Price: prefer selling_price from consignacion (set in Inventario), then inspection fields
+    price  = c.get("selling_price") or appraisal.get("precio_publicado") or appraisal.get("tasacion")
+    fuel   = appraisal.get("vehicle_combustible") or c.get("fuel_type") or "Bencina"
+    trans  = appraisal.get("vehicle_transmision") or c.get("transmission") or "Manual"
+    motor  = appraisal.get("vehicle_motor") or c.get("motor") or ""
     obs    = appraisal.get("observaciones") or appraisal.get("observations") or ""
     features = appraisal.get("features") or {}
 
@@ -2192,17 +2193,37 @@ def publicar_en_catalogo(cid):
         # Try update first
         check_r = req_lib.get(
             supabase_url + "/rest/v1/listings",
-            params={"select": "id", "consignacion_id": "eq.{}".format(cid)},
+            params={"select": "id,price,description,features", "consignacion_id": "eq.{}".format(cid)},
             headers=headers, timeout=10
         )
         existing_listings = check_r.json() if check_r.status_code == 200 else []
 
         if existing_listings:
-            # Update
+            # Update — but preserve any hand-edited price/description/features
             listing_id = existing_listings[0]["id"]
+            existing = existing_listings[0]
+            update_payload = {
+                "brand":        listing_payload["brand"],
+                "model":        listing_payload["model"],
+                "year":         listing_payload["year"],
+                "color":        listing_payload["color"],
+                "mileage_km":   listing_payload["mileage_km"],
+                "plate":        listing_payload["plate"],
+                "fuel_type":    listing_payload["fuel_type"],
+                "transmission": listing_payload["transmission"],
+                "motor":        listing_payload["motor"],
+                "image_urls":   listing_payload["image_urls"],
+                "status":       "disponible",
+                "updated_at":   datetime.now().isoformat(),
+                # Only overwrite price if not already set in listing
+                "price":        existing.get("price") or listing_payload["price"],
+                # Only overwrite description/features if not already customised
+                "description":  existing.get("description") or listing_payload["description"],
+                "features":     existing.get("features") or listing_payload["features"],
+            }
             put_r = req_lib.patch(
                 supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
-                json={**listing_payload, "updated_at": datetime.now().isoformat()},
+                json=update_payload,
                 headers={**headers, "Prefer": "return=representation"},
                 timeout=10
             )
