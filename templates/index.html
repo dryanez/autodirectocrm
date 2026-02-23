@@ -4333,6 +4333,16 @@
                                     }
                                 } catch (_) {}
                             }
+                            // Fall back to listing image_urls for cover photo
+                            if (!photo && c.listing_id) {
+                                try {
+                                    const lr = await this.authFetch('/api/listings/' + c.listing_id);
+                                    if (lr.ok) {
+                                        const listing = await lr.json();
+                                        photo = listing.image_urls?.[0] || null;
+                                    }
+                                } catch (_) {}
+                            }
                             return { ...c, cover_photo: photo };
                         }));
                     } catch (e) { console.error('loadInventario', e); this.inventarioCars = []; }
@@ -4346,7 +4356,7 @@
                     try {
                         const r = await this.authFetch('/api/consignaciones/' + id);
                         const detail = await r.json();
-                        // Fetch all photos (always try — appraisal_supabase_id may be set by camera session)
+                        // Fetch all photos from vehicle_images (Supabase storage)
                         let photos = [];
                         try {
                             const pr = await this.authFetch('/api/consignaciones/' + id + '/photos');
@@ -4355,7 +4365,7 @@
                                 photos = pd.photos || [];
                             }
                         } catch (_) {}
-                        // Fetch listing data if published (for description, features)
+                        // Fetch listing data if published (for description, features, image_urls)
                         if (detail.listing_id) {
                             try {
                                 const lr = await this.authFetch('/api/listings/' + detail.listing_id);
@@ -4366,6 +4376,10 @@
                                     detail.fuel_type = listing.fuel_type || detail.fuel_type;
                                     detail.transmission = listing.transmission || detail.transmission;
                                     detail.motor = listing.motor || detail.motor;
+                                    // Fall back to listing image_urls if no vehicle_images yet
+                                    if (photos.length === 0 && listing.image_urls?.length) {
+                                        photos = listing.image_urls.map(u => ({ url: u }));
+                                    }
                                 }
                             } catch (_) {}
                         }
