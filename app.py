@@ -2315,12 +2315,12 @@ def update_listing(listing_id):
 @app.route("/api/ai/generate-description", methods=["POST"])
 def ai_generate_description():
     """
-    Generate a short, professional car listing description using OpenAI.
+    Generate a short, professional car listing description using Google Gemini.
     Body: { brand, model, year, color, mileage, fuel_type, transmission, motor, features }
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
-        return jsonify({"error": "OPENAI_API_KEY no configurada"}), 500
+        return jsonify({"error": "GOOGLE_API_KEY no configurada"}), 500
 
     data = request.json or {}
     brand = data.get("brand", "")
@@ -2377,15 +2377,13 @@ def ai_generate_description():
     )
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
-            temperature=0.7,
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            contents=prompt,
         )
-        description = response.choices[0].message.content.strip()
+        description = response.text.strip()
         return jsonify({"ok": True, "description": description})
     except Exception as e:
         print("[ai-description] error:", e, flush=True)
