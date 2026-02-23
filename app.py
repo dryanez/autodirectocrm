@@ -2430,6 +2430,43 @@ def update_listing(listing_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ─── API: Camera Job relay ────────────────────────────────────────────────────
+# Stores a short-lived camera job (consignacion_id + vehicle label) under a token.
+# The camera PWA fetches this on launch to know which vehicle to shoot,
+# even when launched from the home screen icon (where URL params are lost on iOS).
+
+_camera_jobs = {}  # token -> {consignacion_id, appraisal_id, label, ts}
+
+@app.route("/api/camera-job", methods=["POST"])
+def create_camera_job():
+    import secrets, time
+    data = request.json or {}
+    token = secrets.token_urlsafe(8)
+    _camera_jobs[token] = {
+        "consignacion_id": data.get("consignacion_id"),
+        "appraisal_id":    data.get("appraisal_id"),
+        "label":           data.get("label", ""),
+        "ts":              time.time(),
+    }
+    # Prune stale jobs older than 2 hours
+    cutoff = time.time() - 7200
+    for t in list(_camera_jobs.keys()):
+        if _camera_jobs[t]["ts"] < cutoff:
+            del _camera_jobs[t]
+    return jsonify({"token": token})
+
+@app.route("/api/camera-job/<token>", methods=["GET"])
+def get_camera_job(token):
+    job = _camera_jobs.get(token)
+    if not job:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(job)
+
+@app.route("/api/camera-job/<token>", methods=["DELETE"])
+def delete_camera_job(token):
+    _camera_jobs.pop(token, None)
+    return jsonify({"ok": True})
+
 # ─── API: Modules (SaaS feature toggles) ──────────────────────────────────────
 
 COMPANY_ID = os.environ.get("COMPANY_ID", "a0000000-0000-0000-0000-000000000001")
