@@ -1750,6 +1750,63 @@ def get_consignacion_photos(cid):
         return jsonify({"photos": [], "error": str(e)})
 
 
+@app.route("/api/consignaciones/<int:cid>/fotos", methods=["POST"])
+def upload_consignacion_foto(cid):
+    """Upload a camera photo for a consignacion. 
+    Auto-creates appraisal_supabase_id if not yet set, then stores in vehicle_images."""
+    import requests as req_lib, uuid as uuid_lib, mimetypes
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "file required"}), 400
+
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not supabase_key:
+        return jsonify({"ok": True, "note": "Supabase not configured, photo skipped"})
+
+    # Get or create appraisal_supabase_id for this consignacion
+    with get_db() as conn:
+        row = conn.execute("SELECT appraisal_supabase_id FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify({"error": "consignacion not found"}), 404
+
+    appraisal_id = row["appraisal_supabase_id"]
+    if not appraisal_id:
+        # Auto-generate a stable UUID for this consignacion's photos
+        appraisal_id = str(uuid_lib.uuid4())
+        with get_db() as conn:
+            conn.execute("UPDATE consignaciones SET appraisal_supabase_id=? WHERE id=?", (appraisal_id, cid))
+            conn.commit()
+
+    # Upload to Supabase Storage
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    filename = f"{appraisal_id}/{uuid_lib.uuid4()}.{ext}"
+    mime = mimetypes.guess_type(file.filename)[0] or "image/jpeg"
+    supa_headers = {
+        "apikey": supabase_key,
+        "Authorization": "Bearer " + supabase_key,
+        "Content-Type": mime,
+    }
+    try:
+        upload_resp = req_lib.post(
+            f"{supabase_url}/storage/v1/object/vehicle-images/{filename}",
+            data=file.read(),
+            headers=supa_headers,
+            timeout=30
+        )
+        public_url = f"{supabase_url}/storage/v1/object/public/vehicle-images/{filename}"
+        # Save reference in vehicle_images table
+        req_lib.post(
+            supabase_url + "/rest/v1/vehicle_images",
+            json={"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url},
+            headers={**supa_headers, "Content-Type": "application/json"},
+            timeout=10
+        )
+        return jsonify({"ok": True, "url": public_url, "appraisal_id": appraisal_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/consignaciones/<int:cid>", methods=["PATCH"])
 def update_consignacion(cid):
     data = request.json

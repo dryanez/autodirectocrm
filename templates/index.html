@@ -475,7 +475,7 @@
                     <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">📸 Agregar fotos</span>
                     <!-- Camera Pro (CameraCarApp) — module-gated -->
                     <button x-show="hasModule('camera_pro')"
-                        @click="window.open('https://cameracar.vercel.app/' + (invDetail.appraisal_supabase_id ? '?appraisal_id=' + invDetail.appraisal_supabase_id : ''), '_blank')"
+                        @click="window.open('https://cameracar.vercel.app/?consignacion_id=' + invDetail.id + (invDetail.appraisal_supabase_id ? '&appraisal_id=' + invDetail.appraisal_supabase_id : ''), '_blank')"
                         class="flex items-center gap-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors"
                         title="Abrir cámara profesional con guías de superposición e IA">
                         <i class="ph ph-aperture"></i> Cámara Pro
