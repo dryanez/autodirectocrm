@@ -69,6 +69,26 @@ def log_to_file(msg):
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "autodirecto-crm-secret-2026")
 
+# ─── CORS — allow requests from Vercel/Autodirecto frontend ──────────────────
+try:
+    from flask_cors import CORS
+    _allowed_origins = [
+        "http://localhost:3000",
+        "https://autodirecto.cl",
+        "https://www.autodirecto.cl",
+    ]
+    _extra = os.environ.get("CORS_ORIGIN", "")
+    if _extra:
+        _allowed_origins += [o.strip() for o in _extra.split(",") if o.strip()]
+    CORS(app, supports_credentials=True, origins=_allowed_origins)
+except ImportError:
+    pass  # flask-cors not installed — skip (works fine for same-origin)
+
+# ─── Session cookie — must work cross-domain when deployed on Railway ─────────
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True   # required when SameSite=None
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
 # ─── Mount Funnels Dashboard as Blueprint ─────────────────────────────────────
 FUNNELS_DIR = ROOT / "Funnels" / "dashboard"
 if FUNNELS_DIR.exists():
@@ -424,6 +444,47 @@ def delete_user(user_id):
 
 
 # ─── API: Auth login (for SimplyAPI CRM itself) ───────────────────────────────
+import hmac as _hmac, hashlib as _hashlib, base64 as _base64
+
+def _make_token(user_id, email):
+    """Create a simple HMAC token: base64(user_id:email:hmac)"""
+    secret = app.secret_key.encode()
+    msg = f"{user_id}:{email}".encode()
+    sig = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
+    raw = f"{user_id}:{email}:{sig}"
+    return _base64.b64encode(raw.encode()).decode()
+
+def _verify_token(token):
+    """Verify token and return user dict or None."""
+    try:
+        raw = _base64.b64decode(token.encode()).decode()
+        parts = raw.split(":", 2)
+        if len(parts) != 3:
+            return None
+        user_id, email, sig = parts
+        secret = app.secret_key.encode()
+        msg = f"{user_id}:{email}".encode()
+        expected = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return None
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM crm_users WHERE id=? AND email=? AND active=1",
+                (int(user_id), email)
+            ).fetchone()
+        return row_to_dict(row) if row else None
+    except Exception:
+        return None
+
+def _get_current_user():
+    """Get logged-in user from token (Authorization header or session fallback)."""
+    # Try Authorization: Bearer <token> header first (stateless, works on Vercel)
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return _verify_token(auth[7:])
+    # Fallback: Flask session (local dev)
+    return session.get("user")
+
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
     data = request.json or {}
@@ -442,8 +503,11 @@ def auth_login():
     if password != stored_pw:
         return jsonify({"error": "Credenciales inválidas"}), 401
     user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal"] if k in user}
+    # Set session for local dev fallback
     session["user"] = user_out
-    return jsonify({"ok": True, "user": user_out})
+    # Return a stateless token for Vercel (serverless-safe)
+    token = _make_token(user_out["id"], user_out["email"])
+    return jsonify({"ok": True, "user": user_out, "token": token})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -454,10 +518,11 @@ def auth_logout():
 
 @app.route("/api/auth/me", methods=["GET"])
 def auth_me():
-    user = session.get("user")
+    user = _get_current_user()
     if not user:
         return jsonify({"error": "Not logged in"}), 401
-    return jsonify(user)
+    user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal"] if k in user}
+    return jsonify(user_out)
 
 
 # ─── API: Consignación → appraisal callback (called by mrcar-consignaciones) ──

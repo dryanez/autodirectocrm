@@ -2987,7 +2987,7 @@
                     if (this.currentUser) {
                         await this.refresh();
                         try {
-                            const r = await fetch('/api/crm/stats');
+                            const r = await this.authFetch('/api/crm/stats');
                             this.crmStats = await r.json();
                         } catch (e) { }
                     }
@@ -2996,9 +2996,17 @@
                 // ─── Auth ───
                 async checkAuth() {
                     try {
-                        const r = await fetch('/api/auth/me');
+                        const r = await this.authFetch('/api/auth/me');
                         if (r.ok) this.currentUser = await r.json();
                     } catch (e) { }
+                },
+
+                // Wrapper around fetch that always sends the auth token
+                authFetch(url, options = {}) {
+                    const token = localStorage.getItem('crm_token');
+                    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+                    if (token) headers['Authorization'] = 'Bearer ' + token;
+                    return fetch(url, { ...options, headers });
                 },
 
                 async doLogin() {
@@ -3012,10 +3020,12 @@
                         });
                         const d = await r.json();
                         if (d.ok) {
+                            // Save token to localStorage so all future requests are authenticated
+                            if (d.token) localStorage.setItem('crm_token', d.token);
                             this.currentUser = d.user;
                             await this.refresh();
                             try {
-                                const s = await fetch('/api/crm/stats');
+                                const s = await this.authFetch('/api/crm/stats');
                                 this.crmStats = await s.json();
                             } catch (e) { }
                         } else {
@@ -3028,6 +3038,7 @@
                 },
 
                 async doLogout() {
+                    localStorage.removeItem('crm_token');
                     await fetch('/api/auth/logout', { method: 'POST' });
                     this.currentUser = null;
                 },
@@ -3036,14 +3047,14 @@
                 async loadUsuarios() {
                     this.usuariosLoading = true;
                     try {
-                        const r = await fetch('/api/users');
+                        const r = await this.authFetch('/api/users');
                         this.usuarios = await r.json();
                     } catch (e) { }
                     this.usuariosLoading = false;
                 },
 
                 async saveNuevoUsuario() {
-                    const r = await fetch('/api/users', {
+                    const r = await this.authFetch('/api/users', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(this.newUsuario)
@@ -3060,14 +3071,14 @@
 
                 async deleteUsuario(id) {
                     if (!confirm('¿Desactivar este usuario?')) return;
-                    await fetch('/api/users/' + id, { method: 'DELETE' });
+                    await this.authFetch('/api/users/' + id, { method: 'DELETE' });
                     await this.loadUsuarios();
                 },
 
                 async refresh() {
                     const [carsRes, statsRes] = await Promise.all([
-                        fetch('/api/cars'),
-                        fetch('/api/stats')
+                        this.authFetch('/api/cars'),
+                        this.authFetch('/api/stats')
                     ]);
                     this.cars = await carsRes.json();
                     this.stats = await statsRes.json();
@@ -3102,7 +3113,7 @@
                 },
 
                 async submitCar() {
-                    const res = await fetch('/api/cars', {
+                    const res = await this.authFetch('/api/cars', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(this.newCar)
@@ -3122,7 +3133,7 @@
                     this.dteLoading = true;
                     try {
                         // 1. Generate Draft
-                        const step1 = await fetch(`/api/dte/generate/${this.activeCar.id}`, {
+                        const step1 = await this.authFetch(`/api/dte/generate/${this.activeCar.id}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' }
                         });
@@ -3131,7 +3142,7 @@
                         if (!data1.ok) throw new Error("Error generando draft DTE");
 
                         // 2. Simulate Send
-                        const step2 = await fetch(`/api/dte/simulate_send/${this.activeCar.id}`, { method: 'POST' });
+                        const step2 = await this.authFetch(`/api/dte/simulate_send/${this.activeCar.id}`, { method: 'POST' });
                         const data2 = await step2.json();
 
                         alert(data2.message);
@@ -3210,8 +3221,8 @@
 
                 async loadCalendar() {
                     const [evRes, uRes] = await Promise.all([
-                        fetch(`/api/calendar?year=${this.calYear}&month=${this.calMonth}`),
-                        fetch('/api/users')
+                        this.authFetch(`/api/calendar?year=${this.calYear}&month=${this.calMonth}`),
+                        this.authFetch('/api/users')
                     ]);
                     this.calEvents = await evRes.json();
                     this.calUsers = await uRes.json();
@@ -3240,7 +3251,7 @@
 
                 async calAssignUser(ev, userId) {
                     if (!ev?.id) return;
-                    const res = await fetch('/api/calendar/assign', {
+                    const res = await this.authFetch('/api/calendar/assign', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ supabase_id: ev.id, user_id: userId })
@@ -3256,7 +3267,7 @@
 
                 async calCreateConsignacion(ev) {
                     if (!ev?.id || !ev?.assigned_user_id) return;
-                    const res = await fetch('/api/calendar/assign', {
+                    const res = await this.authFetch('/api/calendar/assign', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ supabase_id: ev.id, user_id: ev.assigned_user_id })
@@ -3326,14 +3337,14 @@
 
                 async loadCompradores() {
                     try {
-                        const r = await fetch('/api/compradores');
+                        const r = await this.authFetch('/api/compradores');
                         this.compradores = await r.json();
                     } catch (e) { console.error('loadCompradores', e); }
                 },
 
                 async openComprador(id) {
                     try {
-                        const r = await fetch('/api/compradores/' + id);
+                        const r = await this.authFetch('/api/compradores/' + id);
                         this.compradorDetail = await r.json();
                         // Pre-fill credit sim with buyer's car price
                         if (this.compradorDetail.car_price) {
@@ -3354,7 +3365,7 @@
 
                 async saveNewComprador() {
                     try {
-                        const r = await fetch('/api/compradores', {
+                        const r = await this.authFetch('/api/compradores', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.newComprador)
@@ -3375,7 +3386,7 @@
                     try {
                         const body = {};
                         body[field] = value;
-                        await fetch('/api/compradores/' + this.compradorDetail.id, {
+                        await this.authFetch('/api/compradores/' + this.compradorDetail.id, {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(body)
@@ -3390,7 +3401,7 @@
                 async matchBuyerToCar() {
                     if (!this.compradorDetail || !this.matchConsigId) return;
                     try {
-                        const r = await fetch('/api/compradores/' + this.compradorDetail.id + '/match', {
+                        const r = await this.authFetch('/api/compradores/' + this.compradorDetail.id + '/match', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ consignacion_id: parseInt(this.matchConsigId) })
@@ -3417,7 +3428,7 @@
                 async runCreditSimulation() {
                     if (!this.compradorDetail) return;
                     try {
-                        const r = await fetch('/api/compradores/' + this.compradorDetail.id + '/simular-credito', {
+                        const r = await this.authFetch('/api/compradores/' + this.compradorDetail.id + '/simular-credito', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -3447,7 +3458,7 @@
 
                 async deleteComprador(id) {
                     try {
-                        await fetch('/api/compradores/' + id, { method: 'DELETE' });
+                        await this.authFetch('/api/compradores/' + id, { method: 'DELETE' });
                         this.compradorDetail = null;
                         await this.loadCompradores();
                         await this.loadConsignaciones();
@@ -3538,7 +3549,7 @@
                     this.contractSigning = true;
                     try {
                         const sigData = canvas.toDataURL('image/png');
-                        const res = await fetch(`/api/consignaciones/${this.contractConsigId}/contrato/firmar`, {
+                        const res = await this.authFetch(`/api/consignaciones/${this.contractConsigId}/contrato/firmar`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ signature: sigData })
@@ -3573,7 +3584,7 @@
                     this.inspEmailCc = '';
                     this.inspEmailSubject = '';
                     try {
-                        const res = await fetch('/api/inspecciones/' + appraisalId);
+                        const res = await this.authFetch('/api/inspecciones/' + appraisalId);
                         this.inspViewData = await res.json();
                     } catch (e) {
                         console.error('Error loading inspection:', e);
@@ -3584,7 +3595,7 @@
                     if (!this.inspEmailTo) return;
                     this.inspEmailSending = true;
                     try {
-                        const res = await fetch('/api/inspecciones/' + this.inspViewId + '/email', {
+                        const res = await this.authFetch('/api/inspecciones/' + this.inspViewId + '/email', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -3751,7 +3762,7 @@
                         };
 
                         // POST to SimplyAPI proxy → Supabase
-                        const res = await fetch('/api/inspecciones', {
+                        const res = await this.authFetch('/api/inspecciones', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
@@ -3766,7 +3777,7 @@
                                 const fd = new FormData();
                                 fd.append('file', photo.file);
                                 fd.append('appraisal_id', data.appraisal_id);
-                                await fetch('/api/inspecciones/fotos', { method: 'POST', body: fd });
+                                await this.authFetch('/api/inspecciones/fotos', { method: 'POST', body: fd });
                             }
                         }
 
@@ -3791,7 +3802,7 @@
                                     const sendNow = confirm('¿Enviar informe por email a ' + clientEmail + '?');
                                     if (sendNow) {
                                         try {
-                                            const emailRes = await fetch('/api/inspecciones/' + data.appraisal_id + '/email', {
+                                            const emailRes = await this.authFetch('/api/inspecciones/' + data.appraisal_id + '/email', {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({ to: clientEmail })
@@ -3847,7 +3858,7 @@
                 },
 
                 async openConsignacion(id) {
-                    const res = await fetch(`/api/consignaciones/${id}`);
+                    const res = await this.authFetch(`/api/consignaciones/${id}`);
                     this.consigDetail = await res.json();
                     this.consigEdits = {};
                     this.consigDetailOpen = true;
@@ -3857,7 +3868,7 @@
                     console.log(`[SimplyAPI] Saving Consignacion #${id}...`);
                     console.log(`[SimplyAPI] Payload:`, data);
 
-                    const res = await fetch(`/api/consignaciones/${id}`, {
+                    const res = await this.authFetch(`/api/consignaciones/${id}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
@@ -3883,7 +3894,7 @@
 
                 async promoteToInventory(id) {
                     if (!confirm('¿Promover esta consignación al inventario? Se creará un auto en el inventario.')) return;
-                    const res = await fetch(`/api/consignaciones/${id}/promote`, { method: 'POST' });
+                    const res = await this.authFetch(`/api/consignaciones/${id}/promote`, { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
                         this.consigDetailOpen = false;
@@ -3899,7 +3910,7 @@
                     if (!confirm('¿Publicar este vehículo en el catálogo de autodirecto.cl?\n\nSe publicará en el sitio web y el auto pasará a "En Venta" en el CRM e Inventario.')) return;
                     this.publishingId = id;
                     try {
-                        const res = await fetch(`/api/consignaciones/${id}/publicar`, { method: 'POST' });
+                        const res = await this.authFetch(`/api/consignaciones/${id}/publicar`, { method: 'POST' });
                         const data = await res.json();
                         if (data.ok) {
                             // Refresh everything: detail, list, CRM, inventory
@@ -3932,12 +3943,12 @@
                 },
 
                 async loadCRMStats() {
-                    const res = await fetch('/api/crm/stats');
+                    const res = await this.authFetch('/api/crm/stats');
                     this.crmStats = await res.json();
                 },
 
                 async openCRMDetail(leadId) {
-                    const res = await fetch('/api/crm/leads/' + leadId);
+                    const res = await this.authFetch('/api/crm/leads/' + leadId);
                     this.crmDetail = await res.json();
                     this.crmDetailNotes = this.crmDetail.notes || '';
                     this.addCRMNoteModal = false;
@@ -3945,7 +3956,7 @@
                 },
 
                 async updateCRMLeadStage(leadId, newStage) {
-                    await fetch('/api/crm/leads/' + leadId, {
+                    await this.authFetch('/api/crm/leads/' + leadId, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ stage: newStage })
@@ -3964,7 +3975,7 @@
                 },
 
                 async saveCRMNotes(leadId) {
-                    await fetch('/api/crm/leads/' + leadId, {
+                    await this.authFetch('/api/crm/leads/' + leadId, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ notes: this.crmDetailNotes })
@@ -3972,7 +3983,7 @@
                 },
 
                 async addCRMActivity(leadId, type, title) {
-                    await fetch('/api/crm/leads/' + leadId + '/activities', {
+                    await this.authFetch('/api/crm/leads/' + leadId + '/activities', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ type: type, title: title, created_by: 'user' })
@@ -3985,7 +3996,7 @@
 
                 async submitCRMNote(leadId) {
                     if (!this.newCRMNoteTitle.trim()) return;
-                    await fetch('/api/crm/leads/' + leadId + '/activities', {
+                    await this.authFetch('/api/crm/leads/' + leadId + '/activities', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -4003,7 +4014,7 @@
 
                 async deleteCRMLead(leadId) {
                     if (!confirm('¿Eliminar este lead permanentemente?')) return;
-                    await fetch('/api/crm/leads/' + leadId, { method: 'DELETE' });
+                    await this.authFetch('/api/crm/leads/' + leadId, { method: 'DELETE' });
                     this.crmDetailOpen = false;
                     this.crmDetail = null;
                     await this.loadCRM();
@@ -4017,7 +4028,7 @@
                 },
 
                 async submitCRMLead() {
-                    const res = await fetch('/api/crm/leads', {
+                    const res = await this.authFetch('/api/crm/leads', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(this.newCRMLead)
@@ -4034,7 +4045,7 @@
                 },
 
                 async syncFromSupabase() {
-                    const res = await fetch('/api/crm/sync', { method: 'POST' });
+                    const res = await this.authFetch('/api/crm/sync', { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
                         alert('✅ Sync completado: ' + data.imported + ' importados, ' + data.skipped + ' ya existían');
@@ -4045,7 +4056,7 @@
                 },
 
                 async importFromFunnels() {
-                    const res = await fetch('/api/crm/import-funnels', { method: 'POST' });
+                    const res = await this.authFetch('/api/crm/import-funnels', { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
                         alert('✅ Funnels importado: ' + data.imported + ' nuevos, ' + data.skipped + ' ya existían');
