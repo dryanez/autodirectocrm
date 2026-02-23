@@ -768,117 +768,23 @@
             </div>
         </div>
 
-        <!-- ═══ CLIENT PREVIEW MODE — 1:1 replica of autodirecto.cl ═══ -->
-        <div x-show="invMode==='preview'" class="flex-1 overflow-y-auto" style="background:#f8f9fa;">
-            <div style="max-width:1100px; margin:0 auto; padding:40px 24px; font-family:-apple-system,'Segoe UI',Arial,sans-serif; color:#1a1a2e;">
-                <!-- Breadcrumb -->
-                <nav style="margin-bottom:24px; font-size:0.875rem; color:#64748b;">
-                    Inicio / Catálogo /
-                    <span style="color:#1a1a2e; font-weight:600;"
-                        x-text="(invDetail?.car_make||'') + ' ' + (invDetail?.car_model||'')"></span>
-                </nav>
-
-                <div style="display:grid; grid-template-columns:1fr 380px; gap:40px; align-items:start;">
-                    <!-- Gallery -->
-                    <div>
-                        <div style="border-radius:16px; overflow:hidden; background:#e2e8f0; margin-bottom:12px;">
-                            <img x-show="invDetail?.photos?.length" :src="invDetail?.photos?.[invPhotoIdx]?.url"
-                                style="width:100%; max-height:480px; object-fit:cover; display:block;">
-                            <div x-show="!invDetail?.photos?.length"
-                                style="height:360px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:3rem;">
-                                🚗
-                            </div>
-                        </div>
-                        <!-- Thumbnails -->
-                        <div x-show="invDetail?.photos?.length > 1" style="display:flex; gap:8px; overflow-x:auto; padding:4px 0;">
-                            <template x-for="(photo, idx) in invDetail?.photos || []" :key="idx">
-                                <img :src="photo.url" @click="invPhotoIdx = idx"
-                                    :style="invPhotoIdx === idx ? 'border:2px solid #f59e0b; opacity:1;' : 'border:2px solid transparent; opacity:0.5;'"
-                                    style="width:72px; height:54px; object-fit:cover; border-radius:8px; cursor:pointer; flex-shrink:0; transition:all 0.15s;">
-                            </template>
-                        </div>
-                        <!-- Description -->
-                        <div style="margin-top:32px; padding:24px; background:white; border-radius:16px; border:1px solid #e2e8f0;">
-                            <h2 style="font-size:1.25rem; font-weight:700; margin-bottom:12px; color:#1a1a2e;">Descripción</h2>
-                            <p style="color:#475569; line-height:1.7; font-size:0.9375rem; white-space:pre-wrap;"
-                                x-text="invDetail?.description || 'Sin descripción aún.'"></p>
-                        </div>
-                    </div>
-
-                    <!-- Info Card -->
-                    <div style="position:sticky; top:24px;">
-                        <div style="background:white; border-radius:16px; padding:28px; border:1px solid #e2e8f0; box-shadow:0 4px 20px rgba(0,0,0,0.06);">
-                            <span style="display:inline-block; background:#dcfce7; color:#166534; font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:999px; margin-bottom:16px;">
-                                ✓ Disponible
-                            </span>
-                            <div style="font-size:2rem; font-weight:800; color:#1a1a2e; margin-bottom:8px;"
-                                x-text="formatCLP(invDetail?.selling_price || 0)"></div>
-                            <h1 style="font-size:1.5rem; font-weight:700; color:#1a1a2e; margin-bottom:4px;"
-                                x-text="(invDetail?.car_make||'') + ' ' + (invDetail?.car_model||'')"></h1>
-                            <p style="color:#64748b; font-size:0.875rem; margin-bottom:20px;"
-                                x-text="(invDetail?.car_year||'') + ' · ' + (invDetail?.color||'')"></p>
-
-                            <!-- Specs grid -->
-                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#e2e8f0; border-radius:12px; overflow:hidden; margin-bottom:24px;">
-                                <template x-for="spec in [
-                                    {label:'Kilometraje', value: (invDetail?.mileage ? Number(invDetail.mileage).toLocaleString('es-CL') + ' km' : '—')},
-                                    {label:'Combustible', value: invDetail?.fuel_type || '—'},
-                                    {label:'Transmisión', value: invDetail?.transmission || '—'},
-                                    {label:'Color', value: invDetail?.color || '—'},
-                                    {label:'Año', value: invDetail?.car_year || '—'},
-                                    {label:'Motor', value: invDetail?.motor || '—'}
-                                ]" :key="spec.label">
-                                    <div style="background:white; padding:12px 16px;">
-                                        <div style="font-size:0.6875rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;" x-text="spec.label"></div>
-                                        <div style="font-size:0.875rem; font-weight:600; color:#1e293b;" x-text="spec.value"></div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <!-- CTA buttons -->
-                            <div style="display:flex; flex-direction:column; gap:10px;">
-                                <a style="display:flex; align-items:center; justify-content:center; gap:8px; background:#25d366; color:white; padding:14px; border-radius:12px; font-weight:600; font-size:0.9375rem; text-decoration:none; transition:background 0.15s;"
-                                    onmouseover="this.style.background='#1ebe57'" onmouseout="this.style.background='#25d366'">
-                                    💬 Consultar por WhatsApp
-                                </a>
-                                <a style="display:flex; align-items:center; justify-content:center; gap:8px; background:#f1f5f9; color:#334155; padding:12px; border-radius:12px; font-weight:600; font-size:0.875rem; text-decoration:none; border:1px solid #e2e8f0;">
-                                    📧 Enviar Consulta
-                                </a>
-                                <a style="display:flex; align-items:center; justify-content:center; gap:8px; background:#f1f5f9; color:#334155; padding:12px; border-radius:12px; font-weight:600; font-size:0.875rem; text-decoration:none; border:1px solid #e2e8f0;">
-                                    📞 Llamar Ahora
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- Features card -->
-                        <div x-show="Object.values(invDetail?.features || {}).some(v => v)"
-                            style="background:white; border-radius:16px; padding:24px; border:1px solid #e2e8f0; margin-top:16px;">
-                            <h3 style="font-size:0.875rem; font-weight:700; color:#1a1a2e; margin-bottom:12px;">⚙️ Equipamiento</h3>
-                            <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                                <template x-for="feat in [
-                                    {key:'aireAcondicionado', label:'Aire acondicionado'},
-                                    {key:'bluetooth', label:'Bluetooth'},
-                                    {key:'carplayAndroid', label:'CarPlay/Android Auto'},
-                                    {key:'conexionUsb', label:'USB'},
-                                    {key:'gps', label:'GPS'},
-                                    {key:'isofix', label:'ISOFIX'},
-                                    {key:'smartKey', label:'Smart Key'},
-                                    {key:'lucesLed', label:'Luces LED'},
-                                    {key:'mandosVolante', label:'Mandos en volante'},
-                                    {key:'sensorEstacionamiento', label:'Sensor estacionamiento'},
-                                    {key:'sonidoPremium', label:'Sonido premium'},
-                                    {key:'techoElectrico', label:'Techo eléctrico'},
-                                    {key:'calefactorAsiento', label:'Calefactor asiento'},
-                                    {key:'ventiladorAsiento', label:'Ventilador asiento'}
-                                ].filter(f => invDetail?.features?.[f.key])" :key="feat.key">
-                                    <span style="background:#f1f5f9; color:#475569; font-size:0.75rem; padding:5px 12px; border-radius:8px; font-weight:500;"
-                                        x-text="feat.label"></span>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- ═══ CLIENT PREVIEW MODE — iframe of actual autodirecto.cl ═══ -->
+        <div x-show="invMode==='preview'" class="flex-1 flex flex-col overflow-hidden">
+            <!-- Not published yet -->
+            <div x-show="!invDetail?.listing_id" class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400">
+                <i class="ph ph-globe-x text-5xl text-slate-600"></i>
+                <p class="text-base font-semibold">Este vehículo no está publicado en autodirecto.cl</p>
+                <p class="text-sm text-slate-500">Publica el vehículo primero para ver la vista de cliente.</p>
+                <button @click="publishToWebsite(invDetail.id); invMode='edit'"
+                    class="mt-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+                    <i class="ph ph-globe"></i> Publicar ahora
+                </button>
             </div>
+            <!-- Live iframe of autodirecto.cl -->
+            <iframe x-show="invDetail?.listing_id"
+                :src="invDetail?.listing_id ? 'https://autodirecto.cl/catalogo/' + invDetail.listing_id : ''"
+                class="flex-1 w-full border-0"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
         </div>
     </div>
 
