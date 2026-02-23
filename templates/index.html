@@ -415,6 +415,11 @@
                     class="text-blue-300 hover:text-white text-xs px-2 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 transition-colors flex items-center gap-1">
                     <i class="ph ph-arrow-square-out"></i> Web
                 </a>
+                <!-- Save flash -->
+                <span x-show="invSaveFlash" x-transition
+                    class="text-emerald-400 text-xs font-bold flex items-center gap-1 animate-pulse">
+                    <i class="ph ph-check-circle"></i> Guardado
+                </span>
             </div>
         </div>
 
@@ -455,8 +460,16 @@
                 </div>
                 <!-- Description -->
                 <div class="p-5">
-                    <label class="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2 block">📝 Descripción (visible en autodirecto.cl)</label>
-                    <textarea :value="invDetail?.description || ''"
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs text-slate-400 font-semibold uppercase tracking-wider">📝 Descripción (visible en autodirecto.cl)</label>
+                        <button @click="generateAiDescription()"
+                            :disabled="invAiLoading"
+                            class="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                            <i class="ph" :class="invAiLoading ? 'ph-spinner animate-spin' : 'ph-sparkle'"></i>
+                            <span x-text="invAiLoading ? 'Generando…' : '✨ Generar con IA'"></span>
+                        </button>
+                    </div>
+                    <textarea x-ref="invDescription" :value="invDetail?.description || ''"
                         @change="updateInvField('description', $event.target.value)"
                         rows="5" placeholder="Descripción del vehículo para el sitio web…"
                         class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white resize-none focus:border-cyan-500 focus:outline-none leading-relaxed"></textarea>
@@ -4080,6 +4093,8 @@
                 invPhotoIdx: 0,
                 invMode: 'edit',
                 invLoading: false,
+                invSaveFlash: false,
+                invAiLoading: false,
 
                 get invFiltered() {
                     let list = this.inventarioCars;
@@ -4172,15 +4187,29 @@
                         // Fields on consignaciones that should trigger a silent re-publish to sync the listing
                         const republishFields = ['car_make','car_model','car_year','color','mileage','selling_price','plate','version'];
 
-                        if (listingOnlyFields.includes(field) && this.invDetail.listing_id) {
-                            // Patch listing directly in Supabase
-                            const body = {};
-                            body[field] = value;
-                            await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(body)
-                            });
+                        if (listingOnlyFields.includes(field)) {
+                            // These fields only exist on the Supabase listing, not in consignaciones
+                            if (!this.invDetail.listing_id) {
+                                // Auto-publish first so the listing exists
+                                try {
+                                    const pubR = await this.authFetch('/api/consignaciones/' + this.invDetail.id + '/publicar', { method: 'POST' });
+                                    const pubD = await pubR.json();
+                                    if (pubD.listing_id) {
+                                        this.invDetail.listing_id = pubD.listing_id;
+                                        const idx = this.inventarioCars.findIndex(c => c.id === this.invDetail.id);
+                                        if (idx !== -1) this.inventarioCars[idx].listing_id = pubD.listing_id;
+                                    }
+                                } catch (e) { console.warn('auto-publish for listing field', e); }
+                            }
+                            if (this.invDetail.listing_id) {
+                                const body = {};
+                                body[field] = value;
+                                await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(body)
+                                });
+                            }
                         } else {
                             // Update consignaciones
                             const body = {};
@@ -4202,7 +4231,10 @@
                         if (idx !== -1) {
                             this.inventarioCars[idx][field] = value;
                         }
-                    } catch (e) { console.error('updateInvField', e); }
+                        // Show brief save indicator
+                        this.invSaveFlash = true;
+                        setTimeout(() => { this.invSaveFlash = false; }, 1500);
+                    } catch (e) { console.error('updateInvField', e); alert('❌ Error guardando: ' + e.message); }
                 },
 
                 async toggleInvFeature(featureKey) {
@@ -4219,6 +4251,43 @@
                                 body: JSON.stringify({ features })
                             });
                         } catch (e) { console.warn('toggleInvFeature', e); }
+                    }
+                    this.invSaveFlash = true;
+                    setTimeout(() => { this.invSaveFlash = false; }, 1500);
+                },
+
+                async generateAiDescription() {
+                    if (!this.invDetail) return;
+                    this.invAiLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/ai/generate-description', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                brand: this.invDetail.car_make || '',
+                                model: this.invDetail.car_model || '',
+                                year: this.invDetail.car_year || '',
+                                color: this.invDetail.color || '',
+                                mileage: this.invDetail.mileage || '',
+                                fuel_type: this.invDetail.fuel_type || '',
+                                transmission: this.invDetail.transmission || '',
+                                motor: this.invDetail.motor || '',
+                                features: this.invDetail.features || {}
+                            })
+                        });
+                        const d = await r.json();
+                        if (d.ok && d.description) {
+                            // Set the description in the textarea and auto-save
+                            this.invDetail.description = d.description;
+                            this.$refs.invDescription.value = d.description;
+                            await this.updateInvField('description', d.description);
+                        } else {
+                            alert('❌ ' + (d.error || 'Error generando descripción'));
+                        }
+                    } catch (e) {
+                        alert('❌ Error: ' + e.message);
+                    } finally {
+                        this.invAiLoading = false;
                     }
                 },
 

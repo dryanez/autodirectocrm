@@ -2312,6 +2312,86 @@ def update_listing(listing_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/ai/generate-description", methods=["POST"])
+def ai_generate_description():
+    """
+    Generate a short, professional car listing description using OpenAI.
+    Body: { brand, model, year, color, mileage, fuel_type, transmission, motor, features }
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "OPENAI_API_KEY no configurada"}), 500
+
+    data = request.json or {}
+    brand = data.get("brand", "")
+    model = data.get("model", "")
+    year = data.get("year", "")
+    color = data.get("color", "")
+    mileage = data.get("mileage", "")
+    fuel_type = data.get("fuel_type", "")
+    transmission = data.get("transmission", "")
+    motor = data.get("motor", "")
+    features = data.get("features", {})
+
+    # Build active features list
+    feature_labels = {
+        "aireAcondicionado": "aire acondicionado",
+        "bluetooth": "Bluetooth",
+        "carplayAndroid": "Apple CarPlay/Android Auto",
+        "conexionUsb": "conexión USB",
+        "gps": "navegador GPS",
+        "isofix": "anclaje ISOFIX",
+        "smartKey": "Smart Key",
+        "lucesLed": "luces LED",
+        "mandosVolante": "mandos en el volante",
+        "sensorEstacionamiento": "sensores de estacionamiento",
+        "sonidoPremium": "sistema de sonido premium",
+        "techoElectrico": "techo eléctrico",
+        "calefactorAsiento": "asientos calefaccionados",
+        "ventiladorAsiento": "asientos ventilados",
+    }
+    active_features = [feature_labels[k] for k, v in features.items() if v and k in feature_labels]
+
+    km_str = "{:,}".format(int(mileage)).replace(",", ".") + " km" if mileage else "kilometraje no informado"
+    feat_str = ", ".join(active_features) if active_features else "sin equipamiento adicional informado"
+
+    prompt = (
+        "Eres un redactor profesional de una concesionaria chilena de autos usados premium. "
+        "Escribe una descripción breve y atractiva (máximo 4-5 líneas) para publicar este vehículo en un catálogo online. "
+        "Destaca lo que hace especial a este auto: su motorización, equipamiento destacado, kilometraje si es bajo, y la experiencia de conducción. "
+        "No uses exageraciones ridículas ni emojis. Sé profesional, concreto y convincente, como lo haría Automotora Chileautos, Kavak o Salfa. "
+        "No incluyas precio. Escribe solo la descripción, sin título ni encabezado.\n\n"
+        "Vehículo: {brand} {model} {year}\n"
+        "Color: {color}\n"
+        "Kilometraje: {km}\n"
+        "Combustible: {fuel}\n"
+        "Transmisión: {trans}\n"
+        "Motor: {motor}\n"
+        "Equipamiento: {features}\n"
+    ).format(
+        brand=brand, model=model, year=year, color=color,
+        km=km_str, fuel=fuel_type or "no informado",
+        trans=transmission or "no informado",
+        motor=motor or "no informado",
+        features=feat_str
+    )
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7,
+        )
+        description = response.choices[0].message.content.strip()
+        return jsonify({"ok": True, "description": description})
+    except Exception as e:
+        print("[ai-description] error:", e, flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/consignaciones/<int:cid>/promote", methods=["POST"])
 def promote_to_inventory(cid):
     """
