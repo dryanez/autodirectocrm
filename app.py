@@ -1721,8 +1721,10 @@ def get_consignacion_photos(cid):
 def update_consignacion(cid):
     data = request.json
     allowed = {
-        "owner_first_name","owner_last_name","owner_rut","owner_phone","owner_email",
-        "owner_region","owner_commune","owner_address","plate","car_make","car_model",
+        "owner_first_name","owner_last_name","owner_full_name","owner_rut","owner_phone","owner_email",
+        "owner_region","owner_commune","owner_address",
+        "address","region","commune",
+        "plate","car_make","car_model",
         "car_year","mileage","version","color","vin","owner_price","selling_price",
         "ai_market_price","ai_instant_buy_price",
         "commission_pct","condition_notes","km_verified","inspection_photos",
@@ -2254,6 +2256,58 @@ def publicar_en_catalogo(cid):
 
         return jsonify({"ok": True, "listing_id": listing_id, "image_count": len(image_urls)})
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Listings API (Supabase) ─────────────────────────────────────────────────
+
+@app.route("/api/listings/<listing_id>", methods=["GET"])
+def get_listing(listing_id):
+    """Fetch a single listing from Supabase."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/listings",
+            params={"select": "*", "id": "eq.{}".format(listing_id)},
+            headers=headers, timeout=10
+        )
+        if r.status_code != 200 or not r.json():
+            return jsonify({"error": "Listing not found"}), 404
+        return jsonify(r.json()[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/listings/<listing_id>", methods=["PATCH"])
+def update_listing(listing_id):
+    """Update listing fields in Supabase (description, features, etc.)."""
+    import requests as req_lib
+    data = request.json or {}
+    allowed = {"description", "features", "price", "fuel_type", "transmission", "motor",
+               "color", "mileage_km", "brand", "model", "year", "status", "featured", "image_urls"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields"}), 400
+
+    updates["updated_at"] = datetime.now().isoformat()
+
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = req_lib.patch(
+            supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+            json=updates,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10
+        )
+        if r.status_code not in (200, 204):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text)}), 502
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
