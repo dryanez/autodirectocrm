@@ -76,6 +76,8 @@ try:
         "http://localhost:3000",
         "https://autodirecto.cl",
         "https://www.autodirecto.cl",
+        "https://cameracar.vercel.app",      # Camera Pro PWA
+        "https://autodirectocrm.vercel.app", # CRM (self, for cross-tab calls)
     ]
     _extra = os.environ.get("CORS_ORIGIN", "")
     if _extra:
@@ -83,6 +85,26 @@ try:
     CORS(app, supports_credentials=True, origins=_allowed_origins)
 except ImportError:
     pass  # flask-cors not installed — skip (works fine for same-origin)
+
+# ─── CORS fallback — always send headers for /api/camera-job/* ───────────────
+# The camera PWA (cameracar.vercel.app) calls these endpoints cross-origin.
+# This runs even if flask-cors is not installed or misconfigured.
+@app.after_request
+def add_camera_cors(response):
+    origin = request.headers.get("Origin", "")
+    if origin in ("https://cameracar.vercel.app", "https://autodirectocrm.vercel.app",
+                  "http://localhost:3000"):
+        response.headers["Access-Control-Allow-Origin"]  = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+@app.route("/api/camera-job/latest", methods=["OPTIONS"])
+@app.route("/api/camera-job", methods=["OPTIONS"])
+@app.route("/api/camera-job/<path:token>", methods=["OPTIONS"])
+def camera_job_preflight(token=None):
+    return add_camera_cors(app.make_response(""))
 
 # ─── Session cookie — must work cross-domain when deployed on Railway ─────────
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
