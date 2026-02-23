@@ -12,7 +12,7 @@ import json
 import os
 import sys
 import time as _time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests as _requests
@@ -2664,11 +2664,24 @@ def create_camera_job():
 
 @app.route("/api/camera-job/latest", methods=["GET"])
 def get_latest_camera_job():
-    """Return the most recent job that has 0 photos uploaded — i.e. still pending."""
+    """Return the most recent job that has 0 photos uploaded AND is less than 2 hours old."""
     import requests as req_lib
+    from datetime import timezone
     supabase_url, headers = _supa_headers()
     if not supabase_url:
         return jsonify({"error": "Supabase not configured"}), 500
+
+    # Auto-purge jobs older than 2 hours — they are stale
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    try:
+        req_lib.delete(
+            supabase_url + "/rest/v1/camera_jobs",
+            params={"created_at": "lt." + cutoff},
+            headers=headers, timeout=5
+        )
+    except Exception:
+        pass
+
     r = req_lib.get(
         supabase_url + "/rest/v1/camera_jobs",
         params={
@@ -2682,7 +2695,26 @@ def get_latest_camera_job():
     rows = r.json() if r.status_code == 200 else []
     if not rows:
         return jsonify({"pending": False})
+
     job = rows[0]
+
+    # Validate: make sure the consignacion still exists in our DB
+    cid = job.get("consignacion_id")
+    if cid:
+        with get_db() as conn:
+            exists = conn.execute("SELECT id FROM consignaciones WHERE id=?", (cid,)).fetchone()
+        if not exists:
+            # Orphan job — delete it and return no pending
+            try:
+                req_lib.delete(
+                    supabase_url + "/rest/v1/camera_jobs",
+                    params={"token": "eq." + job["token"]},
+                    headers=headers, timeout=5
+                )
+            except Exception:
+                pass
+            return jsonify({"pending": False})
+
     return jsonify({
         "pending":         True,
         "token":           job.get("token"),
@@ -2690,6 +2722,23 @@ def get_latest_camera_job():
         "appraisal_id":    job.get("appraisal_id"),
         "label":           job.get("label", ""),
     })
+
+
+@app.route("/api/camera-job/purge", methods=["DELETE"])
+def purge_camera_jobs():
+    """Delete ALL pending camera jobs — useful to clear stuck/test jobs."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    r = req_lib.delete(
+        supabase_url + "/rest/v1/camera_jobs",
+        params={"photos_uploaded": "eq.0"},
+        headers={**headers, "Prefer": "return=representation"},
+        timeout=10
+    )
+    deleted = r.json() if r.status_code in (200, 204) else []
+    return jsonify({"ok": True, "deleted": len(deleted) if isinstance(deleted, list) else "all pending"})
 
 @app.route("/api/camera-job/<token>", methods=["GET"])
 def get_camera_job(token):
