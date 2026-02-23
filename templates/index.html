@@ -1115,6 +1115,118 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- ═══ CAR PICKER MODAL ═══ -->
+    <div x-show="carPickerOpen"
+        class="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-sm flex flex-col"
+        style="display:none;"
+        x-transition:enter="transition ease-out duration-150"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        @keydown.escape.window="carPickerOpen = false">
+
+        <!-- Header -->
+        <div class="h-14 flex-shrink-0 bg-slate-900 border-b border-slate-800 flex items-center px-5 gap-4">
+            <div class="flex items-center gap-2 text-emerald-400">
+                <i class="ph ph-car text-xl"></i>
+                <span class="font-bold text-white text-sm">Seleccionar Vehículo</span>
+                <span x-show="compradorDetail" class="text-slate-400 text-xs">para
+                    <span class="text-emerald-300 font-semibold"
+                        x-text="compradorDetail ? (compradorDetail.first_name + ' ' + compradorDetail.last_name) : ''"></span>
+                </span>
+            </div>
+            <!-- Search -->
+            <div class="flex-1 max-w-md relative">
+                <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" x-model="carPickerSearch" placeholder="Buscar por marca, modelo, patente, año…"
+                    x-ref="carPickerInput"
+                    class="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    @keydown.escape="carPickerOpen = false">
+            </div>
+            <button @click="carPickerOpen = false"
+                class="ml-auto p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto p-5">
+            <!-- Loading -->
+            <div x-show="carPickerLoading" class="flex items-center justify-center h-48">
+                <div class="flex flex-col items-center gap-3 text-slate-400">
+                    <svg class="w-8 h-8 animate-spin text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span class="text-sm">Cargando vehículos…</span>
+                </div>
+            </div>
+
+            <!-- Empty state -->
+            <div x-show="!carPickerLoading && carPickerFiltered.length === 0"
+                class="flex flex-col items-center justify-center h-48 text-slate-500 gap-2">
+                <i class="ph ph-car-simple text-4xl"></i>
+                <p class="text-sm">No se encontraron vehículos</p>
+            </div>
+
+            <!-- Car grid -->
+            <div x-show="!carPickerLoading && carPickerFiltered.length > 0"
+                class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <template x-for="car in carPickerFiltered" :key="car.id">
+                    <button @click="pickCarForBuyer(car.id)"
+                        class="bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:shadow-emerald-900/30 group focus:outline-none focus:border-emerald-400">
+                        <!-- Photo -->
+                        <div class="relative w-full aspect-[4/3] bg-slate-800 overflow-hidden">
+                            <img x-show="car.cover_photo" :src="car.cover_photo"
+                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                loading="lazy">
+                            <div x-show="!car.cover_photo"
+                                class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+                                <i class="ph ph-car text-4xl text-slate-600 group-hover:text-emerald-700 transition-colors"></i>
+                            </div>
+                            <!-- Status badge -->
+                            <div class="absolute top-1.5 right-1.5">
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                                    :class="{
+                                        'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40': car.status === 'en_venta',
+                                        'bg-blue-500/20 text-blue-300 border border-blue-500/40': car.status === 'parte1_completa',
+                                        'bg-violet-500/20 text-violet-300 border border-violet-500/40': car.status === 'parte2_completa',
+                                        'bg-amber-500/20 text-amber-300 border border-amber-500/40': car.status === 'pendiente',
+                                        'bg-slate-600/40 text-slate-400 border border-slate-600/40': !['en_venta','parte1_completa','parte2_completa','pendiente'].includes(car.status)
+                                    }"
+                                    x-text="car.status ? car.status.replace(/_/g,' ') : '—'">
+                                </span>
+                            </div>
+                        </div>
+                        <!-- Info -->
+                        <div class="p-3 space-y-1">
+                            <p class="text-xs font-bold text-white leading-tight line-clamp-2"
+                                x-text="[car.car_year, car.car_make, car.car_model].filter(Boolean).join(' ') || 'Vehículo #' + car.id">
+                            </p>
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded"
+                                    x-text="car.plate || '—'"></span>
+                                <span x-show="car.selling_price"
+                                    class="text-[11px] font-bold text-emerald-400"
+                                    x-text="car.selling_price ? '$' + Number(car.selling_price).toLocaleString('es-CL') : ''">
+                                </span>
+                            </div>
+                        </div>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="h-10 flex-shrink-0 bg-slate-900 border-t border-slate-800 flex items-center px-5 gap-3 text-xs text-slate-500">
+            <i class="ph ph-info text-slate-600"></i>
+            <span x-text="carPickerFiltered.length + ' vehículo' + (carPickerFiltered.length !== 1 ? 's' : '') + ' disponible' + (carPickerFiltered.length !== 1 ? 's' : '')"></span>
+            <span class="ml-auto">Presiona <kbd class="bg-slate-800 border border-slate-700 rounded px-1 py-0.5 font-mono">Esc</kbd> para cerrar</span>
+        </div>
+    </div>
+    <!-- ═══ END CAR PICKER MODAL ═══ -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- ═══ CONTRACT SIGNING OVERLAY ═══ -->
     <div x-show="contractOpen"
         class="fixed inset-0 z-[95] bg-slate-950/98 backdrop-blur-sm flex flex-col overflow-hidden"
@@ -2470,28 +2582,38 @@
                         <div class="mb-5">
                             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Vehículo de
                                 Interés</h4>
+                            <!-- Currently matched car -->
                             <div x-show="compradorDetail.car_description"
-                                class="bg-slate-900 rounded-lg p-3 border border-slate-700 mb-2">
-                                <div class="flex items-center gap-2">
-                                    <i class="ph ph-car text-emerald-400 text-lg"></i>
-                                    <div>
-                                        <span class="text-sm font-bold text-white"
-                                            x-text="compradorDetail.car_description"></span>
-                                        <span class="text-xs font-mono text-amber-400 ml-2"
-                                            x-text="compradorDetail.car_plate"></span>
+                                class="bg-slate-900 rounded-lg p-3 border border-emerald-700/50 mb-2">
+                                <div class="flex items-center gap-3">
+                                    <div x-show="compradorDetail.car_photo_url" class="w-14 h-10 rounded overflow-hidden flex-shrink-0">
+                                        <img :src="compradorDetail.car_photo_url" class="w-full h-full object-cover">
                                     </div>
+                                    <div x-show="!compradorDetail.car_photo_url" class="w-14 h-10 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
+                                        <i class="ph ph-car text-emerald-400 text-xl"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-sm font-bold text-white block truncate"
+                                            x-text="compradorDetail.car_description"></span>
+                                        <div class="flex items-center gap-2 mt-0.5">
+                                            <span class="text-xs font-mono text-amber-400"
+                                                x-text="compradorDetail.car_plate"></span>
+                                            <span x-show="compradorDetail.car_price" class="text-xs text-emerald-400 font-bold"
+                                                x-text="'$' + Number(compradorDetail.car_price || 0).toLocaleString('es-CL')"></span>
+                                        </div>
+                                    </div>
+                                    <button @click="compradorDetail.car_description=null; updateCompradorField('consignacion_id', null)"
+                                        class="text-slate-600 hover:text-red-400 transition-colors" title="Desvinvcular">
+                                        <i class="ph ph-x text-xs"></i>
+                                    </button>
                                 </div>
-                                <div x-show="compradorDetail.car_price" class="text-lg font-bold text-emerald-400 mt-1"
-                                    x-text="'$' + Number(compradorDetail.car_price || 0).toLocaleString('es-CL')"></div>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <input type="number" x-model="matchConsigId" placeholder="ID Consignación"
-                                    class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white">
-                                <button @click="matchBuyerToCar()"
-                                    class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                                    <i class="ph ph-link"></i> Vincular
-                                </button>
-                            </div>
+                            <!-- Car picker button -->
+                            <button @click="openCarPicker()"
+                                class="w-full flex items-center justify-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 hover:border-emerald-500 text-emerald-400 py-2 rounded-lg text-xs font-bold transition-all">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <span x-text="compradorDetail.car_description ? '🔄 Cambiar Vehículo' : '🚗 Buscar y Vincular Vehículo'"></span>
+                            </button>
                         </div>
 
                         <!-- Credit Simulator -->
@@ -3332,6 +3454,10 @@
                 compradorAddOpen: false,
                 newComprador: { first_name: '', last_name: '', rut: '', phone: '', email: '', car_description: '', notes: '' },
                 matchConsigId: '',
+                carPickerOpen: false,
+                carPickerSearch: '',
+                carPickerCars: [],
+                carPickerLoading: false,
                 creditSim: { car_price: 0, down_payment: 0, months: 48, annual_rate_pct: 14, institution: '' },
                 creditSimResult: null,
 
@@ -3411,6 +3537,7 @@
                             this.compradorDetail.car_description = d.car_description;
                             this.compradorDetail.car_plate = d.car_plate;
                             this.compradorDetail.car_price = d.car_price;
+                            this.compradorDetail.car_photo_url = d.car_photo_url || null;
                             this.compradorDetail.consignacion_id = parseInt(this.matchConsigId);
                             this.creditSim.car_price = d.car_price;
                             this.creditSim.down_payment = Math.round(d.car_price * 0.2);
@@ -3423,6 +3550,50 @@
                             alert('❌ ' + (d.error || 'Error'));
                         }
                     } catch (e) { alert('❌ Error: ' + e.message); }
+                },
+
+                async openCarPicker() {
+                    this.carPickerOpen = true;
+                    this.carPickerLoading = true;
+                    this.carPickerSearch = '';
+                    try {
+                        const r = await this.authFetch('/api/consignaciones');
+                        const data = await r.json();
+                        const cars = data.consignaciones || data || [];
+                        // Filter out sold/delivered and attach cover photo
+                        const active = cars.filter(c => !['vendida', 'entregada'].includes(c.status));
+                        // Fetch first photo for each car in parallel (best-effort)
+                        this.carPickerCars = await Promise.all(active.map(async c => {
+                            let photo = null;
+                            if (c.appraisal_supabase_id) {
+                                try {
+                                    const pr = await this.authFetch('/api/consignaciones/' + c.id + '/photos');
+                                    if (pr.ok) {
+                                        const pd = await pr.json();
+                                        photo = (pd.photos && pd.photos.length) ? pd.photos[0].url : null;
+                                    }
+                                } catch (_) {}
+                            }
+                            return { ...c, cover_photo: photo };
+                        }));
+                    } catch (e) { console.error('openCarPicker', e); this.carPickerCars = []; }
+                    this.carPickerLoading = false;
+                },
+
+                get carPickerFiltered() {
+                    const q = (this.carPickerSearch || '').toLowerCase().trim();
+                    if (!q) return this.carPickerCars;
+                    return this.carPickerCars.filter(c => {
+                        const haystack = [c.car_make, c.car_model, c.car_year, c.plate, c.id]
+                            .filter(Boolean).join(' ').toLowerCase();
+                        return haystack.includes(q);
+                    });
+                },
+
+                async pickCarForBuyer(consigId) {
+                    this.matchConsigId = consigId;
+                    await this.matchBuyerToCar();
+                    this.carPickerOpen = false;
                 },
 
                 async runCreditSimulation() {

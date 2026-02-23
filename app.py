@@ -1691,6 +1691,32 @@ def get_consignacion(cid):
     return jsonify(result)
 
 
+@app.route("/api/consignaciones/<int:cid>/photos", methods=["GET"])
+def get_consignacion_photos(cid):
+    """Return vehicle_images for a consignacion (via its appraisal_supabase_id)."""
+    import requests as req_lib
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT appraisal_supabase_id FROM consignaciones WHERE id=?", (cid,)
+        ).fetchone()
+    if not row or not row["appraisal_supabase_id"]:
+        return jsonify({"photos": []})
+    appraisal_id = row["appraisal_supabase_id"]
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"photos": []})
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id), "order": "id.asc"},
+            headers=headers, timeout=8
+        )
+        photos = r.json() if r.status_code == 200 else []
+        return jsonify({"photos": photos})
+    except Exception as e:
+        return jsonify({"photos": [], "error": str(e)})
+
+
 @app.route("/api/consignaciones/<int:cid>", methods=["PATCH"])
 def update_consignacion(cid):
     data = request.json
@@ -3096,7 +3122,27 @@ def match_comprador(bid):
         )
         conn.commit()
 
-    return jsonify({"ok": True, "car_description": car_desc, "car_plate": car_plate, "car_price": car_price})
+    # Fetch first photo for thumbnail
+    car_photo_url = None
+    appraisal_id = c.get("appraisal_supabase_id")
+    if appraisal_id:
+        try:
+            import requests as req_lib
+            supabase_url, supa_headers = _supa_headers()
+            if supabase_url:
+                rp = req_lib.get(
+                    supabase_url + "/rest/v1/vehicle_images",
+                    params={"select": "url", "appraisal_id": "eq.{}".format(appraisal_id),
+                            "order": "id.asc", "limit": "1"},
+                    headers=supa_headers, timeout=5
+                )
+                photos = rp.json() if rp.status_code == 200 else []
+                car_photo_url = photos[0]["url"] if photos else None
+        except Exception:
+            pass
+
+    return jsonify({"ok": True, "car_description": car_desc, "car_plate": car_plate,
+                    "car_price": car_price, "car_photo_url": car_photo_url})
 
 
 def _build_nota_compra_pdf(comprador, consig):
