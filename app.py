@@ -701,6 +701,120 @@ def _supa_headers():
     }
 
 
+@app.route("/api/setup-db", methods=["POST"])
+def setup_db_tables():
+    """Create required Supabase tables if they don't exist.
+    This uses the Supabase Management/SQL endpoint via the service role key."""
+    import requests as req_lib
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not supabase_key:
+        return jsonify({"error": "Supabase not configured"}), 500
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": "Bearer " + supabase_key,
+        "Content-Type": "application/json",
+    }
+
+    sql = """
+    CREATE TABLE IF NOT EXISTS vehicle_images (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      appraisal_id  UUID,
+      storage_path  TEXT NOT NULL,
+      url           TEXT NOT NULL,
+      label         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_vehicle_images_appraisal ON vehicle_images(appraisal_id);
+    ALTER TABLE vehicle_images ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Service role full access" ON vehicle_images;
+    CREATE POLICY "Service role full access" ON vehicle_images USING (true) WITH CHECK (true);
+
+    CREATE TABLE IF NOT EXISTS appraisals (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at    TIMESTAMPTZ DEFAULT now(),
+      updated_at    TIMESTAMPTZ DEFAULT now(),
+      car_make      TEXT,
+      car_model     TEXT,
+      car_year      INTEGER,
+      car_plate     TEXT,
+      car_color     TEXT,
+      car_km        INTEGER,
+      tasacion      NUMERIC,
+      observaciones TEXT,
+      estado        TEXT DEFAULT 'pendiente'
+    );
+    ALTER TABLE appraisals ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Service role full access" ON appraisals;
+    CREATE POLICY "Service role full access" ON appraisals USING (true) WITH CHECK (true);
+
+    CREATE TABLE IF NOT EXISTS camera_jobs (
+      token           TEXT PRIMARY KEY,
+      consignacion_id INTEGER,
+      appraisal_id    TEXT,
+      label           TEXT,
+      photos_uploaded INTEGER DEFAULT 0,
+      created_at      TIMESTAMPTZ DEFAULT now()
+    );
+    ALTER TABLE camera_jobs ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Service role full access" ON camera_jobs;
+    CREATE POLICY "Service role full access" ON camera_jobs USING (true) WITH CHECK (true);
+
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('vehicle-images', 'vehicle-images', true)
+    ON CONFLICT (id) DO NOTHING;
+
+    DROP POLICY IF EXISTS "Public read vehicle-images" ON storage.objects;
+    CREATE POLICY "Public read vehicle-images"
+      ON storage.objects FOR SELECT
+      USING (bucket_id = 'vehicle-images');
+
+    DROP POLICY IF EXISTS "Service role write vehicle-images" ON storage.objects;
+    CREATE POLICY "Service role write vehicle-images"
+      ON storage.objects FOR ALL
+      USING (bucket_id = 'vehicle-images')
+      WITH CHECK (bucket_id = 'vehicle-images');
+    """
+
+    # Try via Supabase SQL RPC (requires pg_net or direct SQL execution)
+    # The service role key can execute SQL via the /rest/v1/rpc endpoint
+    # if a helper function exists, otherwise try the /pg endpoint
+    try:
+        # Method 1: Try calling an RPC function if available
+        r = req_lib.post(
+            supabase_url + "/rest/v1/rpc/exec_sql",
+            json={"query": sql},
+            headers=headers,
+            timeout=30,
+        )
+        if r.status_code in (200, 201, 204):
+            return jsonify({"ok": True, "method": "rpc", "message": "Tables created successfully"})
+    except Exception:
+        pass
+
+    # Method 2: Return the SQL for the user to run manually, plus test if table exists
+    try:
+        test_r = req_lib.get(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"select": "id", "limit": "1"},
+            headers=headers,
+            timeout=10,
+        )
+        if test_r.status_code == 200:
+            return jsonify({"ok": True, "message": "vehicle_images table already exists!"})
+        else:
+            return jsonify({
+                "ok": False,
+                "table_exists": False,
+                "error": test_r.text,
+                "message": "vehicle_images table does NOT exist. Please run setup_storage.sql in Supabase SQL Editor.",
+                "sql": sql.strip(),
+            }), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/inspecciones/<appraisal_id>", methods=["GET"])
 def get_inspeccion(appraisal_id):
     """Fetch a full inspection (appraisal + photos) from Supabase."""
