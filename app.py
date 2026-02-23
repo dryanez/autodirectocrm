@@ -2412,12 +2412,13 @@ def get_modules():
                 "icon": m.get("icon", "ph-puzzle-piece"),
                 "category": m.get("category", "general"),
                 "is_premium": m.get("is_premium", False),
-                "enabled": cm.get("enabled", False),
+                "enabled": cm.get("enabled", True),   # default TRUE — show all until explicitly disabled
                 "config": cm.get("config", {}),
             })
         return jsonify({"modules": result, "company_id": COMPANY_ID})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Tables may not exist yet — return empty list so frontend falls back to "all enabled"
+        return jsonify({"modules": [], "company_id": COMPANY_ID})
 
 
 @app.route("/api/modules/<module_id>", methods=["PATCH"])

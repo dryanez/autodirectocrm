@@ -3916,8 +3916,11 @@
 
                 // Helper: check if a module is enabled
                 hasModule(moduleId) {
+                    // If modules haven't loaded yet (empty array), default to true
+                    // so buttons are visible until the modules system is configured
+                    if (!this.modules || this.modules.length === 0) return true;
                     const m = this.modules.find(m => m.id === moduleId);
-                    return m ? m.enabled : false;
+                    return m ? m.enabled : true;
                 },
 
                 async init() {
