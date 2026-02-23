@@ -458,6 +458,30 @@
                         </button>
                     </template>
                 </div>
+                <!-- Add Photos Bar -->
+                <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800">
+                    <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">📸 Agregar fotos</span>
+                    <!-- Camera Pro (CameraCarApp) -->
+                    <button @click="window.open('https://dryanez.github.io/cameracar/', '_blank')"
+                        class="flex items-center gap-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors"
+                        title="Abrir cámara profesional con guías de superposición e IA">
+                        <i class="ph ph-aperture"></i> Cámara Pro
+                    </button>
+                    <!-- Quick camera -->
+                    <button @click="$refs.invCameraInput.click()"
+                        class="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-camera"></i> Foto
+                    </button>
+                    <input type="file" accept="image/*" capture="environment" multiple x-ref="invCameraInput"
+                        class="hidden" @change="uploadInvPhotos($event)">
+                    <!-- File upload -->
+                    <button @click="$refs.invFileInput.click()"
+                        class="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-folder-open"></i> Archivos
+                    </button>
+                    <input type="file" accept="image/*" multiple x-ref="invFileInput"
+                        class="hidden" @change="uploadInvPhotos($event)">
+                </div>
                 <!-- Description -->
                 <div class="p-5">
                     <div class="flex items-center justify-between mb-2">
@@ -2313,7 +2337,15 @@
                     <h3 class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Fotos del Vehículo</h3>
 
                     <!-- Camera / Upload buttons -->
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-3 gap-3">
+                        <!-- 📸 Camera Pro (CameraCarApp) -->
+                        <button type="button" @click="window.open('https://dryanez.github.io/cameracar/', '_blank')"
+                            class="flex flex-col items-center justify-center gap-2 p-5 bg-red-600/20 border-2 border-red-500/40 hover:border-red-400 hover:bg-red-600/30 rounded-xl transition-all text-red-400">
+                            <i class="ph ph-aperture text-3xl"></i>
+                            <span class="text-sm font-semibold">Cámara Pro</span>
+                            <span class="text-[10px] text-red-500/70">Con guías y IA</span>
+                        </button>
+
                         <!-- 📸 Camera (mobile/webcam) -->
                         <button type="button" @click="$refs.cameraInput.click()"
                             class="flex flex-col items-center justify-center gap-2 p-5 bg-amber-600/20 border-2 border-amber-500/40 hover:border-amber-400 hover:bg-amber-600/30 rounded-xl transition-all text-amber-400">
@@ -4262,6 +4294,38 @@
                         this.invSaveFlash = true;
                         setTimeout(() => { this.invSaveFlash = false; }, 1500);
                     } catch (e) { console.error('updateInvField', e); alert('❌ Error guardando: ' + e.message); }
+                },
+
+                async uploadInvPhotos(event) {
+                    if (!this.invDetail) return;
+                    const files = Array.from(event.target.files);
+                    if (!files.length) return;
+                    const appraisalId = this.invDetail.appraisal_supabase_id;
+                    if (!appraisalId) {
+                        alert('⚠️ Este vehículo no tiene inspección asociada. Crea una inspección primero.');
+                        return;
+                    }
+                    let uploaded = 0;
+                    for (const file of files) {
+                        try {
+                            const fd = new FormData();
+                            fd.append('file', file);
+                            fd.append('appraisal_id', appraisalId);
+                            const r = await this.authFetch('/api/inspecciones/fotos', { method: 'POST', body: fd });
+                            const d = await r.json();
+                            if (d.url) {
+                                if (!this.invDetail.photos) this.invDetail.photos = [];
+                                this.invDetail.photos.push({ url: d.url, storage_path: d.storage_path || '' });
+                                uploaded++;
+                            }
+                        } catch (e) { console.error('uploadInvPhoto', e); }
+                    }
+                    event.target.value = '';
+                    if (uploaded) {
+                        this.invPhotoIdx = this.invDetail.photos.length - 1;
+                        this.invSaveFlash = true;
+                        setTimeout(() => { this.invSaveFlash = false; }, 1500);
+                    }
                 },
 
                 async toggleInvFeature(featureKey) {
