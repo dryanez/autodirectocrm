@@ -4242,7 +4242,19 @@
                     const features = { ...(this.invDetail.features || {}) };
                     features[featureKey] = !features[featureKey];
                     this.invDetail.features = features;
-                    // Save to listing if published
+                    // Auto-publish first if no listing exists
+                    if (!this.invDetail.listing_id) {
+                        try {
+                            const pubR = await this.authFetch('/api/consignaciones/' + this.invDetail.id + '/publicar', { method: 'POST' });
+                            const pubD = await pubR.json();
+                            if (pubD.listing_id) {
+                                this.invDetail.listing_id = pubD.listing_id;
+                                const idx = this.inventarioCars.findIndex(c => c.id === this.invDetail.id);
+                                if (idx !== -1) this.inventarioCars[idx].listing_id = pubD.listing_id;
+                            }
+                        } catch (e) { console.warn('auto-publish for features', e); }
+                    }
+                    // Save features to listing
                     if (this.invDetail.listing_id) {
                         try {
                             await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
