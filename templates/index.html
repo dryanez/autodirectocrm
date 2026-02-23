@@ -3938,6 +3938,13 @@
                             this.modules = modData.modules || [];
                         } catch (e) { }
                     }
+                    // When this tab regains focus (user returns from camera app),
+                    // refresh photos for the open vehicle automatically
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible' && this.invDetail) {
+                            this.refreshInvPhotos();
+                        }
+                    });
                 },
 
                 // ─── Auth ───
@@ -4314,17 +4321,15 @@
                     try {
                         const r = await this.authFetch('/api/consignaciones/' + id);
                         const detail = await r.json();
-                        // Fetch all photos
+                        // Fetch all photos (always try — appraisal_supabase_id may be set by camera session)
                         let photos = [];
-                        if (detail.appraisal_supabase_id) {
-                            try {
-                                const pr = await this.authFetch('/api/consignaciones/' + id + '/photos');
-                                if (pr.ok) {
-                                    const pd = await pr.json();
-                                    photos = pd.photos || [];
-                                }
-                            } catch (_) {}
-                        }
+                        try {
+                            const pr = await this.authFetch('/api/consignaciones/' + id + '/photos');
+                            if (pr.ok) {
+                                const pd = await pr.json();
+                                photos = pd.photos || [];
+                            }
+                        } catch (_) {}
                         // Fetch listing data if published (for description, features)
                         if (detail.listing_id) {
                             try {
@@ -4343,6 +4348,30 @@
                         // Load buyers interested in this car
                         this.invCompradores = (this.compradores || []).filter(b => b.consignacion_id == id);
                     } catch (e) { console.error('openInvDetail', e); }
+                },
+
+                // Refresh photos for the currently open vehicle — called when CRM tab regains focus
+                async refreshInvPhotos() {
+                    if (!this.invDetail) return;
+                    try {
+                        // Re-fetch the consignacion to pick up any newly set appraisal_supabase_id
+                        const r = await this.authFetch('/api/consignaciones/' + this.invDetail.id);
+                        if (r.ok) {
+                            const fresh = await r.json();
+                            if (fresh.appraisal_supabase_id) {
+                                this.invDetail.appraisal_supabase_id = fresh.appraisal_supabase_id;
+                            }
+                        }
+                        const pr = await this.authFetch('/api/consignaciones/' + this.invDetail.id + '/photos');
+                        if (pr.ok) {
+                            const pd = await pr.json();
+                            const newPhotos = pd.photos || [];
+                            if (newPhotos.length > (this.invDetail.photos || []).length) {
+                                this.invDetail.photos = newPhotos;
+                                this.invPhotoIdx = 0;
+                            }
+                        }
+                    } catch (_) {}
                 },
 
                 async updateInvField(field, value) {
