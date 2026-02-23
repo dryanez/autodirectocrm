@@ -462,7 +462,7 @@
                 <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800">
                     <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">📸 Agregar fotos</span>
                     <!-- Camera Pro (CameraCarApp) -->
-                    <button @click="window.open('https://dryanez.github.io/cameracar/', '_blank')"
+                    <button @click="window.open('https://dryanez.github.io/cameracar/' + (invDetail.appraisal_supabase_id ? '?appraisal_id=' + invDetail.appraisal_supabase_id : ''), '_blank')"
                         class="flex items-center gap-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors"
                         title="Abrir cámara profesional con guías de superposición e IA">
                         <i class="ph ph-aperture"></i> Cámara Pro
@@ -2339,7 +2339,7 @@
                     <!-- Camera / Upload buttons -->
                     <div class="grid grid-cols-3 gap-3">
                         <!-- 📸 Camera Pro (CameraCarApp) -->
-                        <button type="button" @click="window.open('https://dryanez.github.io/cameracar/', '_blank')"
+                        <button type="button" @click="window.open('https://dryanez.github.io/cameracar/' + (insp.appraisal_supabase_id || insp.id ? '?appraisal_id=' + (insp.appraisal_supabase_id || insp.id) : ''), '_blank')"
                             class="flex flex-col items-center justify-center gap-2 p-5 bg-red-600/20 border-2 border-red-500/40 hover:border-red-400 hover:bg-red-600/30 rounded-xl transition-all text-red-400">
                             <i class="ph ph-aperture text-3xl"></i>
                             <span class="text-sm font-semibold">Cámara Pro</span>
@@ -4323,6 +4323,17 @@
                     event.target.value = '';
                     if (uploaded) {
                         this.invPhotoIdx = this.invDetail.photos.length - 1;
+                        // Auto-sync image_urls to the live listing so the website updates immediately
+                        if (this.invDetail.listing_id) {
+                            try {
+                                const allUrls = (this.invDetail.photos || []).map(p => p.url).filter(Boolean);
+                                await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ image_urls: allUrls })
+                                });
+                            } catch (e) { console.warn('auto-sync listing images', e); }
+                        }
                         this.invSaveFlash = true;
                         setTimeout(() => { this.invSaveFlash = false; }, 1500);
                     }
