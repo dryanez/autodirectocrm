@@ -2019,11 +2019,11 @@ def update_consignacion(cid):
         "address","region","commune",
         "plate","car_make","car_model",
         "car_year","mileage","version","color","vin","owner_price","selling_price",
-        "ai_market_price","ai_instant_buy_price",
+        "ai_market_price","ai_instant_buy_price","body_type","doors","fuel_type","transmission","motor",
         "commission_pct","condition_notes","km_verified","inspection_photos",
         "appointment_date","appointment_time","assigned_user_id","status","notes",
         "part1_completed_at","part2_completed_at","appraisal_supabase_id",
-        "contract_signed_at","contract_pdf"
+        "contract_signed_at","contract_pdf","chileautos_id"
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
@@ -2081,6 +2081,24 @@ def update_consignacion(cid):
             _sync_crm_lead_owner_details(row_to_dict(full_consig))
     except Exception as e_sync:
         print(f"[update_consignacion] sync error: {e_sync}", flush=True)
+
+    # Auto-unpublish from ChileAutos when vehicle is sold or cancelled
+    if new_status in ("vendida", "cancelada"):
+        ca_id = result.get("chileautos_id")
+        if ca_id:
+            try:
+                import requests as _req
+                token = _chileautos_get_token()
+                seller_id = _get_setting("chileautos_seller_id")
+                base_url = _chileautos_base_url()
+                _req.delete(
+                    f"{base_url}/v1/vehicles/{ca_id}",
+                    headers={"Authorization": f"Bearer {token}", "x-seller-identifier": seller_id},
+                    timeout=15,
+                )
+                print(f"[chileautos] Auto-unpublished {ca_id} (status→{new_status})", flush=True)
+            except Exception as e_ca:
+                print(f"[chileautos] Auto-unpublish error: {e_ca}", flush=True)
 
     result["ok"] = True
     return jsonify(result)
@@ -2435,6 +2453,8 @@ def publicar_en_catalogo(cid):
     fuel   = appraisal.get("vehicle_combustible") or c.get("fuel_type") or "Bencina"
     trans  = appraisal.get("vehicle_transmision") or c.get("transmission") or "Manual"
     motor  = appraisal.get("vehicle_motor") or c.get("motor") or ""
+    body_type = appraisal.get("vehicle_body_type") or c.get("body_type") or ""
+    doors  = appraisal.get("vehicle_doors") or c.get("doors")
     obs    = appraisal.get("observaciones") or appraisal.get("observations") or ""
     features = appraisal.get("features") or {}
 
@@ -2474,6 +2494,8 @@ def publicar_en_catalogo(cid):
         "fuel_type":         fuel,
         "transmission":      trans,
         "motor":             motor,
+        "body_type":         body_type,
+        "doors":             doors,
         "description":       description,
         "features":          features,
         "image_urls":        image_urls,
@@ -3837,7 +3859,7 @@ def update_comprador(bid):
         "consignacion_id", "listing_id", "car_description", "car_plate", "car_price",
         "credit_requested", "credit_status", "credit_amount", "credit_down_payment",
         "credit_months", "credit_rate", "credit_monthly_payment", "credit_institution",
-        "credit_notes",
+        "credit_notes", "source",
         "status", "assigned_user_id", "test_drive_date", "test_drive_completed",
         "offer_amount", "nota_compra_pdf", "nota_compra_signed_at", "notes"
     }
@@ -4923,6 +4945,509 @@ def simulate_send(car_id):
     })
 
 
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  SETTINGS API — CRM configuration (WhatsApp, ChileAutos credentials)       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    """Return all CRM settings as a flat dict."""
+    try:
+        with get_db() as conn:
+            rows = conn.execute("SELECT key, value FROM crm_settings").fetchall()
+        return jsonify({row_to_dict(r)["key"]: row_to_dict(r)["value"] for r in rows})
+    except Exception as e:
+        # Table might not exist yet — return defaults
+        print(f"[settings] Error reading: {e}")
+        return jsonify({
+            "whatsapp_number": "+56976654569",
+            "chileautos_client_id": "464f4235-8052-4832-a5ea-6738021263fe",
+            "chileautos_client_secret": "Cen/5ic8fYtGbHMD4lU8VYHZ5/sJsU/N4qrl9V2DIzU=",
+            "chileautos_seller_id": "4AA0C7A3-DE66-4F21-91E8-84CA5CD8C6F4",
+            "chileautos_env": "staging",
+        })
+
+
+@app.route("/api/settings", methods=["POST"])
+def save_settings():
+    """Upsert CRM settings. Body: { "key": "value", ... }"""
+    data = request.json or {}
+    allowed_keys = {
+        "whatsapp_number", "chileautos_client_id", "chileautos_client_secret",
+        "chileautos_seller_id", "chileautos_env",
+    }
+    try:
+        with get_db() as conn:
+            for k, v in data.items():
+                if k not in allowed_keys:
+                    continue
+                existing = conn.execute("SELECT key FROM crm_settings WHERE key=?", (k,)).fetchone()
+                if existing:
+                    conn.execute("UPDATE crm_settings SET value=? WHERE key=?", (str(v), k))
+                else:
+                    conn.execute("INSERT INTO crm_settings (key, value) VALUES (?, ?)", (k, str(v)))
+            conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _get_setting(key, default=""):
+    """Get a single CRM setting value."""
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT value FROM crm_settings WHERE key=?", (key,)).fetchone()
+        return row_to_dict(row)["value"] if row else default
+    except Exception:
+        defaults = {
+            "whatsapp_number": "+56976654569",
+            "chileautos_client_id": "464f4235-8052-4832-a5ea-6738021263fe",
+            "chileautos_client_secret": "Cen/5ic8fYtGbHMD4lU8VYHZ5/sJsU/N4qrl9V2DIzU=",
+            "chileautos_seller_id": "4AA0C7A3-DE66-4F21-91E8-84CA5CD8C6F4",
+            "chileautos_env": "staging",
+        }
+        return defaults.get(key, default)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  CHILEAUTOS INTEGRATION — Global Inventory API                             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+_chileautos_token_cache = {"token": None, "expires_at": 0}
+
+
+def _chileautos_base_url():
+    env = _get_setting("chileautos_env", "staging")
+    if env == "production":
+        return "https://globalinventory-publicapi.core.csnglobal.net"
+    return "http://globalinventory-publicapi.stg.core.csnglobal.net"
+
+
+def _chileautos_get_token():
+    """Get (or reuse cached) OAuth2 token from ChileAutos."""
+    import requests as req_lib
+    now = _time.time()
+    if _chileautos_token_cache["token"] and _chileautos_token_cache["expires_at"] > now + 60:
+        return _chileautos_token_cache["token"]
+
+    client_id = _get_setting("chileautos_client_id")
+    client_secret = _get_setting("chileautos_client_secret")
+    if not client_id or not client_secret:
+        raise ValueError("ChileAutos credentials not configured")
+
+    resp = req_lib.post(
+        "https://id.s.core.csnglobal.net/connect/token",
+        data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "client_credentials",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ValueError(f"ChileAutos auth failed ({resp.status_code}): {resp.text}")
+
+    data = resp.json()
+    token = data["access_token"]
+    expires_in = data.get("expires_in", 3600)
+    _chileautos_token_cache["token"] = token
+    _chileautos_token_cache["expires_at"] = now + expires_in
+    return token
+
+
+def _build_chileautos_payload(listing, consig=None, appraisal=None):
+    """Build the ChileAutos Global Inventory API payload from a listing."""
+    import uuid
+
+    # Generate or reuse a ChileAutos inventory identifier (GUID)
+    ca_id = listing.get("chileautos_id") or str(uuid.uuid4())
+
+    seller_id = _get_setting("chileautos_seller_id")
+    whatsapp = _get_setting("whatsapp_number", "+56976654569")
+
+    brand = listing.get("brand", "")
+    model = listing.get("model", "")
+    year = listing.get("year")
+    plate = (listing.get("plate") or "").upper()
+    color = listing.get("color", "")
+    km = listing.get("mileage_km") or 0
+    price = listing.get("price") or 0
+    fuel = listing.get("fuel_type", "Bencina")
+    trans = listing.get("transmission", "Manual")
+    motor = listing.get("motor", "")
+    body_type = listing.get("body_type", "")
+    doors = listing.get("doors")
+    description = listing.get("description", "")
+
+    # Build photos array from image_urls
+    photos = []
+    image_urls = listing.get("image_urls") or []
+    if isinstance(image_urls, str):
+        try:
+            image_urls = json.loads(image_urls)
+        except Exception:
+            image_urls = []
+    for i, url in enumerate(image_urls):
+        if isinstance(url, dict):
+            url = url.get("url", "")
+        if url and not url.startswith("http"):
+            continue
+        photos.append({"Url": url, "Order": str(i + 1)})
+
+    # Map fuel type
+    fuel_map = {
+        "Bencina": "Bencina", "Diesel": "Diesel", "Eléctrico": "Eléctrico",
+        "Híbrido": "Híbrido", "GLP": "Gas",
+    }
+    ca_fuel = fuel_map.get(fuel, fuel)
+
+    # Map transmission
+    trans_map = {"Manual": "Manual", "Automático": "Automática", "CVT": "Automática"}
+    ca_trans = trans_map.get(trans, trans)
+
+    # Build title
+    title = f"{brand} {model} {year}".strip()
+    if motor:
+        title += f" {motor}"
+    short_title = f"{brand} {model} {year}".strip()
+
+    # Build attributes
+    attributes = [
+        {"Name": "Color", "Group": "Detalles", "DisplayName": "Color", "Value": color,
+         "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False},
+        {"Name": "FuelType", "Group": "Detalles", "DisplayName": "Combustible", "Value": ca_fuel,
+         "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False},
+        {"Name": "GearType", "Group": "Detalles", "DisplayName": "Transmisión", "Value": ca_trans,
+         "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False},
+        {"Name": "TipoVehiculo", "Group": "Detalles", "DisplayName": "Tipo Vehiculo",
+         "Value": "Autos, Camionetas y 4x4", "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False},
+    ]
+
+    if body_type:
+        attributes.append({"Name": "BodyStyle", "Group": "Detalles", "DisplayName": "Carrocería",
+                           "Value": body_type, "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False})
+        attributes.append({"Name": "TipoCategoria", "Group": "Detalles", "DisplayName": "Tipo Categoria",
+                           "Value": body_type, "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False})
+    if doors:
+        attributes.append({"Name": "DoorNumber", "Group": "Detalles", "DisplayName": "Puertas",
+                           "Value": str(doors), "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False})
+    if motor:
+        attributes.append({"Name": "Cilindrada", "Group": "Equipamiento", "DisplayName": "Cilindrada",
+                           "Value": motor, "DisplayOnDetailsPage": True, "IsKeyAttribute": False, "IsDeleted": False})
+
+    # Map CRM features → ChileAutos equipamiento attributes
+    features = listing.get("features") or {}
+    if isinstance(features, str):
+        try:
+            features = json.loads(features)
+        except Exception:
+            features = {}
+
+    ca_feature_map = {
+        "aireAcondicionado": "Aire Acondicionado",
+        "bluetooth": "Bluetooth",
+        "gps": "GPS",
+        "isofix": "ISOFIX",
+        "smartKey": "Alarma",  # closest equivalent
+        "lucesLed": "Luces LED",
+        "carplayAndroid": "Apple CarPlay / Android Auto",
+        "sonidoPremium": "Radio",
+        "sensorEstacionamiento": "Sensor Estacionamiento",
+    }
+    if isinstance(features, dict):
+        for fk, fv in ca_feature_map.items():
+            if features.get(fk):
+                attributes.append({
+                    "Name": fv, "Group": "Equipamiento", "DisplayName": fv,
+                    "Value": "SI", "DisplayOnDetailsPage": True,
+                    "IsKeyAttribute": False, "IsDeleted": False,
+                })
+
+    payload = {
+        "PublishingDestinations": [{"Name": "ChileAutos"}],
+        "Media": {"Photos": photos},
+        "Seller": {"Identifier": seller_id},
+        "Specification": {
+            "RecordType": "Autos, camionetas y 4x4",
+            "Make": brand,
+            "Model": model,
+            "ReleaseDate": {"Year": year},
+            "Title": title.upper(),
+            "ShortTitle": short_title.upper(),
+            "Attributes": attributes,
+        },
+        "Identifier": ca_id,
+        "Type": "Car",
+        "ListingType": "Usado",
+        "SaleStatus": "In Stock",
+        "Registration": {"Number": plate},
+        "Description": description,
+        "ExtendedProperties": [{"Name": "WhatsApp", "Value": whatsapp}],
+        "Colours": [
+            {"Location": "Exterior", "Generic": color, "Name": color},
+        ],
+        "OdometerReadings": [{"Value": km, "UnitOfMeasure": "KM"}],
+        "PriceList": [{"Currency": "CLP", "Amount": price}],
+    }
+
+    return ca_id, payload
+
+
+@app.route("/api/consignaciones/<int:cid>/publicar-chileautos", methods=["POST"])
+def publicar_en_chileautos(cid):
+    """Publish a listing to ChileAutos via their Global Inventory API."""
+    import requests as req_lib
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    c = row_to_dict(c)
+
+    listing_id = c.get("listing_id")
+    if not listing_id:
+        return jsonify({"error": "El vehículo debe estar publicado en autodirecto.cl primero"}), 400
+
+    # Fetch the listing from Supabase
+    supabase_url, headers = _supa_headers()
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/listings",
+            params={"select": "*", "id": "eq.{}".format(listing_id)},
+            headers=headers, timeout=10,
+        )
+        if r.status_code != 200 or not r.json():
+            return jsonify({"error": "Listing no encontrada en Supabase"}), 404
+        listing = r.json()[0]
+    except Exception as e:
+        return jsonify({"error": f"Error fetching listing: {e}"}), 500
+
+    # Build payload
+    try:
+        ca_id, payload = _build_chileautos_payload(listing, consig=c)
+    except Exception as e:
+        return jsonify({"error": f"Error building payload: {e}"}), 500
+
+    # Get token
+    try:
+        token = _chileautos_get_token()
+    except Exception as e:
+        return jsonify({"error": f"Error autenticación ChileAutos: {e}"}), 500
+
+    # POST to ChileAutos
+    base_url = _chileautos_base_url()
+    try:
+        resp = req_lib.post(
+            f"{base_url}/v1/vehicles/{ca_id}",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        print(f"[chileautos] POST response {resp.status_code}: {resp.text[:500]}", flush=True)
+    except Exception as e:
+        return jsonify({"error": f"Error de conexión ChileAutos: {e}"}), 500
+
+    if resp.status_code not in (200, 201, 202):
+        return jsonify({
+            "error": f"ChileAutos respondió {resp.status_code}",
+            "detail": resp.text[:1000],
+        }), 502
+
+    # Save chileautos_id in the listing
+    try:
+        req_lib.patch(
+            supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+            json={"chileautos_id": ca_id, "chileautos_status": "published"},
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[chileautos] Warning: could not save chileautos_id to listing: {e}", flush=True)
+
+    # Also store in consignacion for quick reference
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE consignaciones SET chileautos_id=?, updated_at=? WHERE id=?",
+                         (ca_id, datetime.now().isoformat(), cid))
+            conn.commit()
+    except Exception as e:
+        print(f"[chileautos] Warning: could not save chileautos_id to consignacion: {e}", flush=True)
+
+    return jsonify({"ok": True, "chileautos_id": ca_id, "status_code": resp.status_code})
+
+
+@app.route("/api/consignaciones/<int:cid>/despublicar-chileautos", methods=["POST"])
+def despublicar_de_chileautos(cid):
+    """Remove a listing from ChileAutos."""
+    import requests as req_lib
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "No encontrada"}), 404
+    c = row_to_dict(c)
+
+    ca_id = c.get("chileautos_id")
+    if not ca_id:
+        return jsonify({"error": "No está publicado en ChileAutos"}), 400
+
+    try:
+        token = _chileautos_get_token()
+    except Exception as e:
+        return jsonify({"error": f"Auth error: {e}"}), 500
+
+    seller_id = _get_setting("chileautos_seller_id")
+    base_url = _chileautos_base_url()
+    try:
+        resp = req_lib.delete(
+            f"{base_url}/v1/vehicles/{ca_id}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-seller-identifier": seller_id,
+            },
+            timeout=15,
+        )
+        print(f"[chileautos] DELETE response {resp.status_code}: {resp.text[:500]}", flush=True)
+    except Exception as e:
+        return jsonify({"error": f"Error de conexión: {e}"}), 500
+
+    # Update listing status
+    supabase_url, headers = _supa_headers()
+    listing_id = c.get("listing_id")
+    if listing_id:
+        try:
+            req_lib.patch(
+                supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+                json={"chileautos_status": "removed"},
+                headers={**headers, "Prefer": "return=representation"},
+                timeout=10,
+            )
+        except Exception:
+            pass
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/chileautos/status", methods=["GET"])
+def chileautos_status():
+    """Check ChileAutos connection and list active inventory."""
+    import requests as req_lib
+    try:
+        token = _chileautos_get_token()
+    except Exception as e:
+        return jsonify({"connected": False, "error": str(e)})
+
+    seller_id = _get_setting("chileautos_seller_id")
+    base_url = _chileautos_base_url()
+    try:
+        resp = req_lib.get(
+            f"{base_url}/v1/vehicles/active_items?page=1&limit=100",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-seller-identifier": seller_id,
+                "Content-Type": "application/merge-patch+json",
+            },
+            timeout=15,
+        )
+        items = resp.json() if resp.status_code == 200 else []
+        return jsonify({
+            "connected": True,
+            "env": _get_setting("chileautos_env", "staging"),
+            "active_count": len(items) if isinstance(items, list) else 0,
+            "items": items if isinstance(items, list) else [],
+        })
+    except Exception as e:
+        return jsonify({"connected": False, "error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  CHILEAUTOS LEAD WEBHOOK — Receive buyer leads from ChileAutos             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+@app.route("/api/webhooks/chileautos-lead", methods=["POST"])
+def chileautos_lead_webhook():
+    """
+    Receive leads from ChileAutos webhook.
+    Auto-creates a Comprador and matches to the consignación if possible.
+    """
+    data = request.json or {}
+    print(f"[chileautos_lead] Received lead: {json.dumps(data)[:500]}", flush=True)
+
+    prospect = data.get("prospect", {})
+    item = data.get("item", {})
+    environment = data.get("environment", {})
+
+    first_name = prospect.get("firstName", "")
+    last_name = prospect.get("lastName", "")
+    full_name = f"{first_name} {last_name}".strip() or prospect.get("title", "")
+    phone = prospect.get("mobilePhone") or prospect.get("homePhone") or ""
+    email = prospect.get("email", "")
+    rut_list = prospect.get("identificationNumbers", [])
+    rut = rut_list[0].get("value", "") if rut_list else ""
+    comments = data.get("comments", "")
+
+    # Vehicle info from the lead
+    car_make = item.get("make", "")
+    car_model = item.get("model", "")
+    car_year = item.get("year")
+    car_plate = (item.get("registrationNumber") or "").upper()
+    car_price = item.get("price")
+    ca_identifier = item.get("identifier", "")
+
+    # Determine source
+    source_name = environment.get("source", "chileautos")
+    lead_source = "chileautos"
+    if "whatsapp" in (data.get("source") or source_name or "").lower():
+        lead_source = "chileautos_whatsapp"
+
+    # Try to match to a consignación by plate or chileautos_id
+    consig_id = None
+    try:
+        with get_db() as conn:
+            if car_plate:
+                row = conn.execute("SELECT id FROM consignaciones WHERE plate=? LIMIT 1", (car_plate,)).fetchone()
+                if row:
+                    consig_id = row_to_dict(row)["id"]
+            if not consig_id and ca_identifier:
+                row = conn.execute("SELECT id FROM consignaciones WHERE chileautos_id=? LIMIT 1", (ca_identifier,)).fetchone()
+                if row:
+                    consig_id = row_to_dict(row)["id"]
+    except Exception as e:
+        print(f"[chileautos_lead] Match error: {e}", flush=True)
+
+    # Build car description
+    car_description = f"{car_make} {car_model} {car_year or ''}".strip()
+
+    # Create the comprador
+    now = datetime.now().isoformat()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO compradores
+                   (first_name, last_name, full_name, rut, phone, email,
+                    car_description, car_plate, car_price, consignacion_id,
+                    status, source, notes, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (first_name, last_name, full_name, rut, phone, email,
+                 car_description, car_plate, car_price, consig_id,
+                 "interesado", lead_source,
+                 f"Lead ChileAutos: {comments}\nURL: {environment.get('url', '')}",
+                 now, now)
+            )
+            conn.commit()
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        print(f"[chileautos_lead] Created comprador #{new_id} (source={lead_source}, consig={consig_id})", flush=True)
+    except Exception as e:
+        print(f"[chileautos_lead] Error creating comprador: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, "comprador_id": new_id}), 202
+
+
 if __name__ == "__main__":
     print("\n🚀 Autodirecto CRM")
     print("   http://127.0.0.1:8080\n")
@@ -4944,11 +5469,15 @@ if __name__ == "__main__":
   fuel_type TEXT DEFAULT 'Bencina',
   transmission TEXT DEFAULT 'Manual',
   motor TEXT,
+  body_type TEXT,
+  doors INTEGER,
   description TEXT,
   features JSONB DEFAULT '{}',
   image_urls JSONB DEFAULT '[]',
   status TEXT DEFAULT 'disponible',
-  featured BOOLEAN DEFAULT FALSE
+  featured BOOLEAN DEFAULT FALSE,
+  chileautos_id TEXT,
+  chileautos_status TEXT DEFAULT NULL
 );
 ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "Public read" ON listings FOR SELECT USING (status = 'disponible');
