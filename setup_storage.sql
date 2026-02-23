@@ -26,11 +26,11 @@ DROP POLICY IF EXISTS "Service role full access" ON appraisals;
 CREATE POLICY "Service role full access" ON appraisals USING (true) WITH CHECK (true);
 
 -- ─── vehicle_images ──────────────────────────────────────────
--- One row per photo. Linked to an appraisal by UUID.
--- The actual file lives in Supabase Storage bucket "vehicle-images".
+-- One row per photo. Grouped by appraisal_id UUID (no FK — the CRM
+-- auto-generates this UUID per consignacion without a parent appraisals row).
 CREATE TABLE IF NOT EXISTS vehicle_images (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  appraisal_id  UUID REFERENCES appraisals(id) ON DELETE CASCADE,
+  appraisal_id  UUID,                -- groups photos by consignacion (no FK constraint)
   storage_path  TEXT NOT NULL,       -- path inside the bucket, e.g. "abc123/frontal.jpg"
   url           TEXT NOT NULL,       -- full public URL
   label         TEXT,                -- e.g. "sedan - Frontal"
