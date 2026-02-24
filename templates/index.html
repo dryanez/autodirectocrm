@@ -5951,7 +5951,7 @@
                     </button>
                 </div>
                 <!-- WhatsApp button -->
-                <a :href="'https://wa.me/?text=' + encodeURIComponent('Hola! Para que puedas tomar las fotos de tu vehículo (' + (sendPhotoLinkLabel||'') + '), ingresa a este link desde tu celular: ' + sendPhotoLinkUrl + '\n\n📱 iPhone: cuando abras el link, toca el botón de compartir (cuadrado con flecha) → \"Agregar a pantalla de inicio\" → luego ábrelo desde tu pantalla de inicio.\n\n🤖 Android: el link se abre directo, no necesitas instalar nada.\n\nToma las fotos siguiendo las guías y cuando termines presiona \"Volver al CRM\".')"
+                <a :href="'https://wa.me/?text=' + encodeURIComponent('Hola! Para que puedas tomar las fotos de tu vehículo (' + (sendPhotoLinkLabel||'') + '), ingresa a este link desde tu celular: ' + sendPhotoLinkUrl + String.fromCharCode(10,10) + '📱 iPhone: cuando abras el link, toca el botón de compartir (cuadrado con flecha) → Agregar a pantalla de inicio → luego ábrelo desde tu pantalla de inicio.' + String.fromCharCode(10,10) + '🤖 Android: el link se abre directo, no necesitas instalar nada.' + String.fromCharCode(10,10) + 'Toma las fotos siguiendo las guías y cuando termines presiona Volver al CRM.')"
                    target="_blank"
                    class="mt-3 flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/30 text-green-400 text-sm px-4 py-2.5 rounded-xl font-semibold transition-colors w-full">
                     <i class="ph ph-whatsapp-logo text-lg"></i> Enviar por WhatsApp

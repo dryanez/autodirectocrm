@@ -398,6 +398,88 @@ if FUNNELS_DIR.exists():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @funnels_bp.route('/api/upload-har', methods=['POST'])
+    def funnels_api_upload_har():
+        """Proxy to the funnels module upload-har handler."""
+        data = request.get_json(silent=True)
+        if not data or "listings" not in data:
+            return jsonify({"error": "Expected JSON body with 'listings' array"}), 400
+
+        har_listings = data["listings"]
+        if not isinstance(har_listings, list) or not har_listings:
+            return jsonify({"error": "listings must be a non-empty array"}), 400
+
+        try:
+            existing_path = funnels_module.find_latest_apify_json()
+            existing_map = {}
+            if existing_path:
+                try:
+                    raw = json.loads(Path(existing_path).read_text(encoding="utf-8"))
+                    for item in raw:
+                        item_id = item.get("id")
+                        if item_id:
+                            existing_map[item_id] = item
+                except Exception as e:
+                    print(f"[har-upload] Warning loading existing data: {e}")
+
+            new_count = 0
+            updated_count = 0
+            for item in har_listings:
+                item_id = item.get("id")
+                if not item_id:
+                    continue
+                if item_id in existing_map:
+                    if item.get("sellerName") and not existing_map[item_id].get("sellerName"):
+                        existing_map[item_id]["sellerName"] = item["sellerName"]
+                        existing_map[item_id]["sellerId"] = item.get("sellerId", "")
+                        updated_count += 1
+                else:
+                    existing_map[item_id] = item
+                    new_count += 1
+
+            merged = list(existing_map.values())
+            sellers_count = sum(1 for r in merged if r.get("sellerName"))
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            output_path = funnels_module.BASE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+            output_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            print(f"[har-upload] {new_count} new, {updated_count} enriched → {len(merged)} total → {output_path.name}")
+
+            funnels_module._cached_listings = funnels_module.load_all_listings()
+
+            # Also sync to Supabase
+            try:
+                with get_db() as conn:
+                    for item in funnels_module._cached_listings:
+                        item_id = item.get("id") or item.get("url", "")
+                        if not item_id:
+                            continue
+                        existing = conn.execute(
+                            "SELECT id FROM funnel_listings WHERE id=?", (item_id,)
+                        ).fetchone()
+                        if not existing:
+                            cols = ", ".join(item.keys())
+                            placeholders = ", ".join("?" for _ in item)
+                            conn.execute(
+                                f"INSERT OR IGNORE INTO funnel_listings ({cols}) VALUES ({placeholders})",
+                                list(str(v) if v is not None else None for v in item.values())
+                            )
+                    conn.commit()
+            except Exception as e:
+                print(f"[har-upload] Supabase sync warning: {e}")
+
+            return jsonify({
+                "success": True,
+                "new_listings": new_count,
+                "total_listings": len(merged),
+                "with_seller_name": sellers_count,
+                "cache_reloaded": len(funnels_module._cached_listings),
+            })
+        except Exception as e:
+            print(f"[har-upload] Exception: {e}")
+            return jsonify({"error": str(e)}), 500
+
     app.register_blueprint(funnels_bp)
     print("  ✅ Funnels dashboard mounted at /funnels")
 
