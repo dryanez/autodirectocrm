@@ -441,7 +441,7 @@ if FUNNELS_DIR.exists():
             sellers_count = sum(1 for r in merged if r.get("sellerName"))
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            output_path = funnels_module.BASE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+            output_path = funnels_module.DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
             output_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 
             print(f"[har-upload] {new_count} new, {updated_count} enriched → {len(merged)} total → {output_path.name}")
