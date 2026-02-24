@@ -12,13 +12,13 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB — HAR files can
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# On read-only filesystems (Railway, Vercel) we must write to /tmp.
+# On read-only filesystems (Vercel /var/task) we must write to /tmp.
 # Allow override via WRITABLE_DIR env var; otherwise auto-detect.
 def _resolve_writable_dir() -> Path:
     env_override = os.environ.get("WRITABLE_DIR")
     if env_override:
         return Path(env_override)
-    # If running inside /var/task (Railway / serverless), always use /tmp.
+    # Vercel deploys to /var/task which is read-only; always use /tmp there.
     if str(BASE_DIR).startswith("/var/task"):
         fallback = Path("/tmp/funnels")
         fallback.mkdir(parents=True, exist_ok=True)
@@ -41,9 +41,9 @@ LEADS_JSON = TMP_DIR / "filtered_cars.json"
 STATUS_FILE = TMP_DIR / "lead_status.json"
 
 # Writable directory for saving new dataset files (HAR uploads, etc.)
-# On read-only filesystems (Railway /var/task, Vercel) fall back to /tmp/funnels_data.
+# On Vercel (/var/task is read-only) fall back to /tmp/funnels_data.
 def _resolve_data_write_dir() -> Path:
-    # If we are running inside /var/task (Railway / serverless), always use /tmp.
+    # Vercel deploys to /var/task which is read-only; always use /tmp there.
     if str(BASE_DIR).startswith("/var/task"):
         fallback = Path("/tmp/funnels_data")
         fallback.mkdir(parents=True, exist_ok=True)
