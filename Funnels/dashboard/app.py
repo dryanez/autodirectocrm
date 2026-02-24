@@ -3,9 +3,7 @@ import csv
 import json
 import os
 import sys
-import subprocess
 import glob
-import tempfile
 from pathlib import Path
 import requests
 
@@ -328,82 +326,76 @@ def api_update_status():
 @app.route("/api/upload-har", methods=["POST"])
 def api_upload_har():
     """
-    Accept a HAR file upload, parse it via parse_har.py logic,
-    merge with existing datasets (deduplicating by id), save a new
-    dataset_facebook-marketplace-scraper_*_har.json, and reload the cache.
+    Accept pre-parsed HAR listings from the browser (JSON, not the raw file).
+    The browser reads and parses the HAR locally, then sends only the
+    extracted listings here — no large file upload, no size limits.
+    Merges with existing datasets (deduplicating by id) and reloads cache.
     """
     global _cached_listings
 
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    data = request.get_json(silent=True)
+    if not data or "listings" not in data:
+        return jsonify({"error": "Expected JSON body with 'listings' array"}), 400
 
-    uploaded = request.files["file"]
-    if not uploaded.filename.endswith(".har"):
-        return jsonify({"error": "Only .har files are accepted"}), 400
-
-    # Save to a temp file so we can pass the path to the parser
-    with tempfile.NamedTemporaryFile(suffix=".har", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-        uploaded.save(tmp_path)
+    har_listings = data["listings"]
+    if not isinstance(har_listings, list) or not har_listings:
+        return jsonify({"error": "listings must be a non-empty array"}), 400
 
     try:
-        # Import parser inline to avoid circular deps
-        parse_script = BASE_DIR / "execution" / "parse_har.py"
-        if not parse_script.exists():
-            return jsonify({"error": "parse_har.py not found in execution/"}), 500
+        # Load existing Apify datasets for merging
+        existing_path = find_latest_apify_json()
+        existing_map = {}
+        if existing_path:
+            try:
+                raw = json.loads(Path(existing_path).read_text(encoding="utf-8"))
+                for item in raw:
+                    item_id = item.get("id")
+                    if item_id:
+                        existing_map[item_id] = item
+            except Exception as e:
+                print(f"[har-upload] Warning loading existing data: {e}")
 
-        # Run the parser as subprocess (keeps it isolated)
-        result = subprocess.run(
-            [sys.executable, str(parse_script), "--input", str(tmp_path), "--output", str(BASE_DIR)],
-            capture_output=True,
-            text=True,
-            cwd=str(BASE_DIR),
-        )
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
-
-        if result.returncode != 0:
-            print(f"[har-upload] Error:\n{stderr}")
-            return jsonify({"error": "HAR parsing failed", "details": stderr or stdout}), 500
-
-        print(f"[har-upload] {stdout}")
-
-        # Extract stats from stdout
+        # Merge — HAR wins for seller name, otherwise keep existing
         new_count = 0
-        total_count = 0
-        sellers_count = 0
-        for line in stdout.split("\n"):
-            if "new listings added" in line:
-                import re
-                nums = re.findall(r"\d+", line)
-                if nums:
-                    new_count = int(nums[0])
-            if "Total unique listings:" in line:
-                nums = re.findall(r"\d+", line)
-                if nums:
-                    total_count = int(nums[0])
-            if "Listings with seller name:" in line:
-                nums = re.findall(r"\d+", line)
-                if nums:
-                    sellers_count = int(nums[0])
+        updated_count = 0
+        for item in har_listings:
+            item_id = item.get("id")
+            if not item_id:
+                continue
+            if item_id in existing_map:
+                if item.get("sellerName") and not existing_map[item_id].get("sellerName"):
+                    existing_map[item_id]["sellerName"] = item["sellerName"]
+                    existing_map[item_id]["sellerId"] = item.get("sellerId", "")
+                    updated_count += 1
+            else:
+                existing_map[item_id] = item
+                new_count += 1
 
-        # Reload the dashboard cache
+        merged = list(existing_map.values())
+        sellers_count = sum(1 for r in merged if r.get("sellerName"))
+
+        # Save as new dataset file
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_path = BASE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+        output_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        print(f"[har-upload] {new_count} new, {updated_count} enriched → {len(merged)} total → {output_path.name}")
+
+        # Reload cache
         _cached_listings = load_all_listings()
 
         return jsonify({
             "success": True,
             "new_listings": new_count,
-            "total_listings": total_count,
+            "total_listings": len(merged),
             "with_seller_name": sellers_count,
             "cache_reloaded": len(_cached_listings),
-            "log": stdout,
         })
 
     except Exception as e:
         print(f"[har-upload] Exception: {e}")
         return jsonify({"error": str(e)}), 500
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
 
 @app.route("/api/valuation", methods=["POST"])

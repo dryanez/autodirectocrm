@@ -668,29 +668,105 @@ Agente de Ventas | Autodirecto.cl</textarea>
             }
             document.getElementById('har-file-name').textContent = file.name;
             document.getElementById('har-drop-zone').classList.add('border-purple-400', 'bg-purple-900/20');
-            uploadHar(file);
+            parseAndSendHar(file);
         }
 
-        async function uploadHar(file) {
+        // ── Parse HAR in the browser — no large file upload ──────────────
+        function parseHarListings(har) {
+            const listingMap = {};
+            const entries = (har.log || {}).entries || [];
+
+            for (const entry of entries) {
+                const text = (entry.response?.content?.text) || '';
+                if (!text || !text.includes('marketplace_search')) continue;
+
+                // Facebook returns newline-delimited JSON per response
+                for (const line of text.split('\n')) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+                    let obj;
+                    try { obj = JSON.parse(trimmed); } catch { continue; }
+
+                    let edges;
+                    try { edges = obj.data.marketplace_search.feed_units.edges; }
+                    catch { continue; }
+                    if (!Array.isArray(edges)) continue;
+
+                    for (const edge of edges) {
+                        const listing = edge?.node?.listing;
+                        if (!listing?.id) continue;
+
+                        const priceInfo = listing.listing_price || {};
+                        const rev = listing.location?.reverse_geocode || {};
+                        const cityPage = rev.city_page || {};
+                        const locText = cityPage.display_name ||
+                            [rev.city, rev.state].filter(Boolean).join(', ');
+
+                        const subtitles = (listing.custom_sub_titles_with_rendering_flags || [])
+                            .map(s => ({ subtitle: s.subtitle || '' }));
+
+                        const photoUri = listing.primary_listing_photo?.image?.uri || '';
+                        const seller = listing.marketplace_listing_seller || {};
+
+                        listingMap[listing.id] = {
+                            id: listing.id,
+                            itemUrl: `https://www.facebook.com/marketplace/item/${listing.id}/`,
+                            listingTitle: listing.marketplace_listing_title || listing.custom_title || '',
+                            listingPrice: {
+                                amount: priceInfo.amount || '0',
+                                formatted_amount: priceInfo.formatted_amount || '',
+                                currency: 'CLP',
+                            },
+                            locationText: { text: locText },
+                            customSubTitlesWithRenderingFlags: subtitles,
+                            primaryListingPhoto: { photo_image_url: photoUri },
+                            isSold: listing.is_sold || false,
+                            sellerName: seller.name || '',
+                            sellerId: seller.id || '',
+                            source: 'har',
+                        };
+                    }
+                }
+            }
+            return Object.values(listingMap);
+        }
+
+        async function parseAndSendHar(file) {
             const resultEl = document.getElementById('har-result');
             const btn = document.getElementById('har-upload-btn');
-            resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Procesando HAR... puede tardar unos segundos.</p>';
+            resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Leyendo HAR en el navegador...</p>';
             btn.disabled = true;
 
-            const formData = new FormData();
-            formData.append('file', file);
-
             try {
+                // Read file locally — no upload
+                const text = await file.text();
+                resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Extrayendo autos del HAR...</p>';
+
+                let har;
+                try { har = JSON.parse(text); }
+                catch { resultEl.innerHTML = '<p class="text-red-400 text-sm">❌ Archivo HAR inválido (no es JSON válido)</p>'; btn.disabled = false; return; }
+
+                const listings = parseHarListings(har);
+                if (!listings.length) {
+                    resultEl.innerHTML = '<p class="text-red-400 text-sm">❌ No se encontraron autos en este HAR. Asegúrate de navegar el Marketplace antes de guardar.</p>';
+                    btn.disabled = false;
+                    return;
+                }
+
+                resultEl.innerHTML = `<p class="text-slate-400 text-sm">⏳ Enviando ${listings.length} autos al servidor...</p>`;
+
+                // Send only the extracted listings (tiny payload, not the raw HAR)
                 const resp = await fetch(apiUrl('/api/upload-har'), {
                     method: 'POST',
-                    body: formData
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ listings })
                 });
+
                 let data;
-                try {
-                    data = await resp.json();
-                } catch (_) {
-                    const text = await resp.text().catch(() => resp.statusText);
-                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error del servidor: ${text.slice(0, 120)}</p>`;
+                try { data = await resp.json(); }
+                catch {
+                    const t = await resp.text().catch(() => resp.statusText);
+                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error del servidor: ${t.slice(0, 120)}</p>`;
                     btn.disabled = false;
                     return;
                 }
@@ -706,11 +782,10 @@ Agente de Ventas | Autodirecto.cl</textarea>
                             <p class="text-slate-300">👤 Con nombre de vendedor: <strong>${data.with_seller_name}</strong></p>
                         </div>
                     `;
-                    // Reload leads in background
                     await loadLeads();
                 }
             } catch (e) {
-                resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error de conexión: ${e.message}</p>`;
+                resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error: ${e.message}</p>`;
             } finally {
                 btn.disabled = false;
             }
