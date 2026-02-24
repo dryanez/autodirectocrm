@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB — HAR files can be large
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TMP_DIR = BASE_DIR / ".tmp"

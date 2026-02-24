@@ -685,7 +685,15 @@ Agente de Ventas | Autodirecto.cl</textarea>
                     method: 'POST',
                     body: formData
                 });
-                const data = await resp.json();
+                let data;
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    const text = await resp.text().catch(() => resp.statusText);
+                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error del servidor: ${text.slice(0, 120)}</p>`;
+                    btn.disabled = false;
+                    return;
+                }
 
                 if (!resp.ok || data.error) {
                     resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error: ${data.error || 'Unknown error'}</p>`;
