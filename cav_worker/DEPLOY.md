@@ -28,10 +28,12 @@ In Railway: Service → **Variables** tab → click **"New Variable"**
 
 Add these one by one:
 
-| Variable Name       | Value                        |
-|---------------------|------------------------------|
-| `ANTHROPIC_API_KEY` | sk-ant-... (your Anthropic key) |
-| `CAV_SECRET`        | cav-autodirecto-2026         |
+| Variable Name        | Value                        |
+|----------------------|------------------------------|
+| `TWOCAPTCHA_API_KEY` | your 2captcha.com API key    |
+| `CAV_SECRET`         | cav-autodirecto-2026         |
+
+Get your 2captcha key at: https://2captcha.com/enterpage → "API Key" in the top menu.
 
 ## Step 5 — Deploy
 Railway will automatically build the Dockerfile and deploy.

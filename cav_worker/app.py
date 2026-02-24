@@ -4,15 +4,14 @@
 # to fetch CAV (Certificado de Anotaciones Vigentes) from
 # registrocivil.cl for any given vehicle plate.
 #
-# CAPTCHA solving: Uses Claude Vision (Anthropic API) to read the
-# text-in-image CAPTCHA that registrocivil.cl presents.
+# CAPTCHA solving: Uses 2captcha.com (human solvers, ~$1/1000 CAPTCHAs).
 #
 # Deploy on Railway (needs a real server, not Vercel serverless).
 #
 # Environment variables:
-#   ANTHROPIC_API_KEY  — for CAPTCHA solving via Claude Vision
-#   CAV_SECRET         — shared secret so only your CRM can call this
-#   PORT               — defaults to 8090
+#   TWOCAPTCHA_API_KEY  — your 2captcha.com API key
+#   CAV_SECRET          — shared secret so only your CRM can call this
+#   PORT                — defaults to 8090
 #
 # Usage:
 #   POST /cav
@@ -20,20 +19,18 @@
 #   Returns: { "ok": true, "status": "clean"|"annotations", "owner": "...", "annotations": [...] }
 
 import os
-import sys
 import base64
 import re
 import time
 import traceback
-from io import BytesIO
 
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
 CAV_SECRET = os.environ.get("CAV_SECRET", "cav-autodirecto-2026")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MAX_RETRIES = 3  # retry CAPTCHA solving up to 3 times
+TWOCAPTCHA_API_KEY = os.environ.get("TWOCAPTCHA_API_KEY", "")
+MAX_RETRIES = 3
 
 # ─── Lazy-load Playwright to avoid startup cost on healthchecks ───────────────
 _browser = None
@@ -61,62 +58,35 @@ def _get_browser():
     return _browser
 
 
-def _solve_captcha_with_claude(image_bytes: bytes) -> str:
+def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
     """
-    Send the CAPTCHA image to Claude Vision and ask it to read the text.
+    Send the CAPTCHA image to 2captcha.com (human solvers).
     Returns the CAPTCHA text string.
+    Cost: ~$0.001 per solve (humans solve it in ~15-30 seconds).
     """
-    import anthropic
+    from twocaptcha import TwoCaptcha
 
-    if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY not set — cannot solve CAPTCHA")
+    if not TWOCAPTCHA_API_KEY:
+        raise RuntimeError("TWOCAPTCHA_API_KEY not set — cannot solve CAPTCHA")
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    solver = TwoCaptcha(TWOCAPTCHA_API_KEY)
 
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    # Save image bytes to a temp file (2captcha SDK needs a file path or base64)
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(image_bytes)
+        tmp_path = tmp.name
 
-    # Detect mime type
-    if image_bytes[:4] == b'\x89PNG':
-        media_type = "image/png"
-    elif image_bytes[:2] == b'\xff\xd8':
-        media_type = "image/jpeg"
-    else:
-        media_type = "image/png"  # fallback
-
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=100,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "This is a CAPTCHA image from a Chilean government website. "
-                            "Read the text/characters shown in the image and return ONLY "
-                            "the characters, nothing else. No quotes, no explanation. "
-                            "Just the exact characters you see."
-                        ),
-                    },
-                ],
-            }
-        ],
-    )
-
-    captcha_text = message.content[0].text.strip()
-    # Clean: remove quotes, spaces, etc.
-    captcha_text = captcha_text.replace('"', '').replace("'", '').replace(" ", '').strip()
-    print(f"[cav_worker] Claude read CAPTCHA as: '{captcha_text}'", flush=True)
-    return captcha_text
+    try:
+        result = solver.normal(tmp_path)
+        captcha_text = result["code"].strip()
+        print(f"[cav_worker] 2captcha solved: '{captcha_text}'", flush=True)
+        return captcha_text
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 def _fetch_cav(plate: str) -> dict:
@@ -205,8 +175,8 @@ def _fetch_cav(plate: str) -> dict:
                     "debug_screenshot": base64.b64encode(debug_shot).decode() if debug_shot else None,
                 }
 
-            # Solve the CAPTCHA with Claude Vision
-            captcha_text = _solve_captcha_with_claude(captcha_img)
+            # Solve the CAPTCHA with 2captcha (human solvers, ~15-30s)
+            captcha_text = _solve_captcha_with_2captcha(captcha_img)
 
             if not captcha_text:
                 print("[cav_worker] Claude returned empty CAPTCHA text", flush=True)

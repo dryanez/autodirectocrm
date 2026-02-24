@@ -5279,7 +5279,7 @@ def _build_chileautos_payload(listing, consig=None, appraisal=None):
 
 
 # ─── CAV — Certificado de Anotaciones Vigentes ───────────────────────────────
-# Uses the CAV Worker microservice (Playwright + Claude Vision) deployed on
+# Uses the CAV Worker microservice (Playwright + 2captcha) deployed on
 # Railway to navigate registrocivil.cl, solve the CAPTCHA, and scrape the
 # vehicle certificate data automatically.
 #
