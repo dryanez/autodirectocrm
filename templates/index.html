@@ -813,22 +813,33 @@
                         <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-3">
-                                    <i class="ph ph-shield-check text-xl" :class="invDetail?.cav_obtained_at ? 'text-emerald-400' : 'text-slate-500'"></i>
+                                    <i class="ph text-xl" :class="cavLoading ? 'ph-spinner animate-spin text-indigo-400' : (invDetail?.cav_obtained_at ? 'ph-shield-check text-emerald-400' : 'ph-shield-check text-slate-500')"></i>
                                     <div>
                                         <p class="text-sm font-bold text-white">CAV — Certificado de Anotaciones</p>
-                                        <p class="text-xs" :class="invDetail?.cav_obtained_at ? 'text-emerald-400' : 'text-slate-500'"
-                                            x-text="invDetail?.cav_obtained_at ? '✓ Obtenido el ' + new Date(invDetail.cav_obtained_at).toLocaleDateString('es-CL') : 'Pendiente — Registro Civil'"></p>
+                                        <p class="text-xs" :class="cavLoading ? 'text-indigo-400' : (invDetail?.cav_obtained_at ? 'text-emerald-400' : 'text-slate-500')"
+                                            x-text="cavLoading ? '🤖 Robot navegando registrocivil.cl…' : (invDetail?.cav_obtained_at ? '✓ Obtenido el ' + new Date(invDetail.cav_obtained_at).toLocaleDateString('es-CL') : 'Pendiente — Registro Civil')"></p>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button @click="obtenerCAV(invDetail)"
-                                        :disabled="!invDetail?.plate"
-                                        :class="invDetail?.plate ? 'bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed'"
+                                        :disabled="!invDetail?.plate || cavLoading"
+                                        :class="cavLoading ? 'bg-indigo-700/50 text-indigo-300 cursor-wait' : (invDetail?.plate ? 'bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
                                         class="text-xs px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5">
-                                        <i class="ph ph-robot"></i>
-                                        <span x-text="invDetail?.plate ? '🤖 Obtener CAV' : 'Ingrese patente'"></span>
+                                        <i class="ph" :class="cavLoading ? 'ph-spinner animate-spin' : 'ph-robot'"></i>
+                                        <span x-text="cavLoading ? 'Robot trabajando…' : (invDetail?.cav_obtained_at ? '🤖 Re-obtener CAV' : (invDetail?.plate ? '🤖 Obtener CAV' : 'Ingrese patente'))"></span>
                                     </button>
                                 </div>
+                            </div>
+                            <!-- Loading progress bar -->
+                            <div x-show="cavLoading" class="mt-3 pt-3 border-t border-slate-700">
+                                <div class="flex items-center gap-2 text-indigo-400 text-xs mb-2">
+                                    <i class="ph ph-globe text-base"></i>
+                                    <span>Navegando registrocivil.cl → Resolviendo CAPTCHA → Extrayendo datos…</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                    <div class="bg-indigo-500 h-1.5 rounded-full animate-pulse" style="width: 60%"></div>
+                                </div>
+                                <p class="text-[10px] text-slate-600 mt-1">Esto puede tomar 10-30 segundos</p>
                             </div>
                             <!-- CAV status info -->
                             <div x-show="invDetail?.cav_status" class="mt-3 pt-3 border-t border-slate-700 space-y-1.5">
@@ -5061,27 +5072,34 @@
                 },
 
                 // ─── CAV — Certificado de Anotaciones Vigentes ───────────
+                cavLoading: false,
+
                 async obtenerCAV(car) {
                     if (!car?.plate) {
                         alert('⚠️ Ingrese la patente del vehículo primero.');
                         return;
                     }
                     const plate = car.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                    this.cavLoading = true;
                     try {
                         const res = await this.authFetch(`/api/consignaciones/${car.id}/cav`, { method: 'POST' });
                         const data = await res.json();
                         if (data.ok || data.success) {
-                            // Server fetched the CAV data
+                            // Robot fetched the CAV data automatically
                             this.invDetail.cav_obtained_at = data.cav_obtained_at || new Date().toISOString();
                             this.invDetail.cav_status = data.cav_status || 'clean';
                             this.invDetail.cav_owner_name = data.cav_owner_name || '';
                             this.invDetail.cav_notes = data.cav_notes || '';
-                            alert('✅ CAV obtenido correctamente' + (data.cav_owner_name ? '\n\nPropietario: ' + data.cav_owner_name : ''));
+                            const elapsed = data.elapsed_seconds ? ` (${data.elapsed_seconds}s)` : '';
+                            let msg = `✅ CAV obtenido automáticamente${elapsed}`;
+                            if (data.cav_owner_name) msg += `\n\nPropietario: ${data.cav_owner_name}`;
+                            if (data.cav_owner_rut) msg += `\nRUT: ${data.cav_owner_rut}`;
+                            if (data.annotations?.length) msg += `\n\n⚠️ Anotaciones:\n${data.annotations.join('\n')}`;
+                            alert(msg);
                         } else if (data.action === 'manual') {
-                            // Server can't bypass CAPTCHA, open Registro Civil directly
+                            // Robot couldn't solve CAPTCHA — open Registro Civil for user
                             window.open(`https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro=${plate}`, '_blank');
-                            // Mark as manually checked after user confirms
-                            if (confirm('¿Pudiste descargar el CAV exitosamente?\n\nSi lo obtuviste, presiona OK para marcarlo como obtenido.')) {
+                            if (confirm('El robot no pudo resolver el CAPTCHA.\nSe abrió Registro Civil en una nueva pestaña.\n\n¿Pudiste obtener el CAV exitosamente?')) {
                                 const cavNotes = prompt('¿Alguna anotación importante? (dejar vacío si está limpio)', '');
                                 await this.authFetch(`/api/consignaciones/${car.id}`, {
                                     method: 'PATCH',
@@ -5100,10 +5118,9 @@
                             alert('❌ Error: ' + (data.error || 'No se pudo obtener el CAV'));
                         }
                     } catch (e) {
-                        // Fallback: open Registro Civil directly
                         window.open(`https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro=${plate}`, '_blank');
-                        if (confirm('Se abrió el Registro Civil en una nueva pestaña.\n\n¿Pudiste obtener el CAV exitosamente?')) {
-                            const cavNotes = prompt('¿Alguna anotación importante? (dejar vacío si está limpio)', '');
+                        if (confirm('Error de conexión. Se abrió Registro Civil.\n\n¿Pudiste obtener el CAV?')) {
+                            const cavNotes = prompt('¿Alguna anotación? (vacío = limpio)', '');
                             try {
                                 await this.authFetch(`/api/consignaciones/${car.id}`, {
                                     method: 'PATCH',
@@ -5119,6 +5136,8 @@
                             this.invDetail.cav_status = cavNotes ? 'annotations' : 'clean';
                             this.invDetail.cav_notes = cavNotes || '';
                         }
+                    } finally {
+                        this.cavLoading = false;
                     }
                 },
 

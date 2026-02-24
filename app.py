@@ -5279,17 +5279,25 @@ def _build_chileautos_payload(listing, consig=None, appraisal=None):
 
 
 # ─── CAV — Certificado de Anotaciones Vigentes ───────────────────────────────
+# Uses the CAV Worker microservice (Playwright + Claude Vision) deployed on
+# Railway to navigate registrocivil.cl, solve the CAPTCHA, and scrape the
+# vehicle certificate data automatically.
+#
+# Set CAV_WORKER_URL and CAV_SECRET in environment variables.
+# If the worker is not configured, falls back to manual browser flow.
+
+CAV_WORKER_URL = os.environ.get("CAV_WORKER_URL", "")  # e.g. https://cav-worker-production.up.railway.app
+CAV_WORKER_SECRET = os.environ.get("CAV_SECRET", "cav-autodirecto-2026")
+
+
 @app.route("/api/consignaciones/<int:cid>/cav", methods=["POST"])
 def obtener_cav(cid):
     """
-    Attempt to obtain a CAV (Certificado de Anotaciones Vigentes) from
-    Registro Civil for the vehicle. The site has CAPTCHA protection so
-    we try a direct request first; if blocked we tell the frontend to
-    open the page manually for the user.
+    Fetch CAV (Certificado de Anotaciones Vigentes) for a vehicle.
+    Calls the CAV Worker microservice which uses Playwright + Claude Vision
+    to navigate registrocivil.cl and solve the CAPTCHA automatically.
+    Falls back to manual browser flow if worker is not configured.
     """
-    import requests as req_lib
-    import re as _re
-
     with get_db() as conn:
         c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
     if not c:
@@ -5299,46 +5307,45 @@ def obtener_cav(cid):
     if not plate:
         return jsonify({"error": "No hay patente registrada para este vehículo"}), 400
 
-    # Attempt direct GET — Registro Civil sometimes serves without captcha
-    try:
-        url = f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
-        }
-        resp = req_lib.get(url, headers=headers, timeout=15, allow_redirects=True)
-        body = resp.text
+    # ── If CAV Worker is not configured, fall back to manual flow ──
+    if not CAV_WORKER_URL:
+        print(f"[cav] CAV_WORKER_URL not set — falling back to manual flow", flush=True)
+        return jsonify({
+            "ok": False,
+            "action": "manual",
+            "message": "Robot CAV no configurado. Se abrirá Registro Civil para hacerlo manualmente.",
+            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+        })
 
-        # If we got the CAPTCHA page, tell frontend to open manually
-        if "resolver el desafío" in body or "captcha" in body.lower() or "código de la imagen" in body.lower():
+    # ── Call the CAV Worker microservice ──
+    import requests as req_lib
+    try:
+        print(f"[cav] Calling CAV Worker for plate {plate}...", flush=True)
+        resp = req_lib.post(
+            f"{CAV_WORKER_URL.rstrip('/')}/cav",
+            json={"plate": plate, "secret": CAV_WORKER_SECRET},
+            timeout=90,  # CAPTCHA solving can take a while
+        )
+        data = resp.json()
+
+        if not data.get("ok"):
+            error_msg = data.get("error", "Error desconocido del robot CAV")
+            print(f"[cav] Worker returned error: {error_msg}", flush=True)
+            # Fall back to manual
             return jsonify({
                 "ok": False,
                 "action": "manual",
-                "message": "Registro Civil requiere CAPTCHA. Se abrirá la página para resolver manualmente.",
-                "url": url
+                "message": f"Robot CAV falló: {error_msg}. Se abrirá la página manualmente.",
+                "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
             })
 
-        # Try to parse the CAV response if no captcha
-        # Look for owner name pattern
-        cav_owner = ""
-        owner_match = _re.search(r'Nombre\s*(?:del\s*)?(?:Propietario|Dueño)\s*:?\s*</?\w+[^>]*>\s*([^<]+)', body, _re.IGNORECASE)
-        if owner_match:
-            cav_owner = owner_match.group(1).strip()
-
-        # Look for annotations
-        has_annotations = False
-        cav_notes = ""
-        if _re.search(r'(?:prenda|embargo|prohibición|alzamiento|gravamen)', body, _re.IGNORECASE):
-            has_annotations = True
-            # Extract annotation texts
-            annotations = _re.findall(r'((?:Prenda|Embargo|Prohibición|Alzamiento|Gravamen)[^<]*)', body, _re.IGNORECASE)
-            cav_notes = "; ".join(a.strip() for a in annotations[:5])
-
-        cav_status = "annotations" if has_annotations else "clean"
+        # ── Success! Save the CAV data to DB ──
+        cav_status = data.get("status", "clean")
+        cav_owner = data.get("owner_name", "")
+        cav_owner_rut = data.get("owner_rut", "")
+        cav_notes = data.get("annotations_text", "")
         now = datetime.now().isoformat()
 
-        # Save to DB
         with get_db() as conn:
             conn.execute("""
                 UPDATE consignaciones
@@ -5347,11 +5354,18 @@ def obtener_cav(cid):
             """, (now, cav_status, cav_owner, cav_notes, now, cid))
             conn.commit()
 
-        # If we also got the owner name, auto-fill it on the propietario tab
+        # Auto-fill owner info if we got it from the certificate
         if cav_owner and not c.get("owner_full_name"):
             with get_db() as conn:
                 conn.execute("UPDATE consignaciones SET owner_full_name=? WHERE id=?", (cav_owner, cid))
                 conn.commit()
+        if cav_owner_rut and not c.get("owner_rut"):
+            with get_db() as conn:
+                conn.execute("UPDATE consignaciones SET owner_rut=? WHERE id=?", (cav_owner_rut, cid))
+                conn.commit()
+
+        elapsed = data.get("elapsed_seconds", 0)
+        print(f"[cav] ✅ CAV obtained for {plate} in {elapsed}s — status: {cav_status}", flush=True)
 
         return jsonify({
             "ok": True,
@@ -5359,16 +5373,27 @@ def obtener_cav(cid):
             "cav_obtained_at": now,
             "cav_status": cav_status,
             "cav_owner_name": cav_owner,
+            "cav_owner_rut": cav_owner_rut,
             "cav_notes": cav_notes,
+            "vehicle_info": data.get("vehicle_info", {}),
+            "annotations": data.get("annotations", []),
+            "elapsed_seconds": elapsed,
         })
 
-    except Exception as e:
-        print(f"[cav] Error fetching CAV for {plate}: {e}", flush=True)
-        # Fallback: tell frontend to open manually
+    except req_lib.exceptions.Timeout:
+        print(f"[cav] Worker timed out for {plate}", flush=True)
         return jsonify({
             "ok": False,
             "action": "manual",
-            "message": f"No se pudo conectar al Registro Civil: {str(e)}",
+            "message": "El robot CAV tardó demasiado. Se abrirá la página manualmente.",
+            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+        })
+    except Exception as e:
+        print(f"[cav] Error calling CAV Worker: {e}", flush=True)
+        return jsonify({
+            "ok": False,
+            "action": "manual",
+            "message": f"Error conectando al robot CAV: {str(e)}",
             "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
         })
 
