@@ -2106,7 +2106,8 @@ def update_consignacion(cid):
         "commission_pct","condition_notes","km_verified","inspection_photos",
         "appointment_date","appointment_time","assigned_user_id","status","notes",
         "part1_completed_at","part2_completed_at","appraisal_supabase_id",
-        "contract_signed_at","contract_pdf","chileautos_id"
+        "contract_signed_at","contract_pdf","chileautos_id",
+        "cav_obtained_at","cav_status","cav_owner_name","cav_notes"
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
@@ -5275,6 +5276,101 @@ def _build_chileautos_payload(listing, consig=None, appraisal=None):
     }
 
     return ca_id, payload
+
+
+# ─── CAV — Certificado de Anotaciones Vigentes ───────────────────────────────
+@app.route("/api/consignaciones/<int:cid>/cav", methods=["POST"])
+def obtener_cav(cid):
+    """
+    Attempt to obtain a CAV (Certificado de Anotaciones Vigentes) from
+    Registro Civil for the vehicle. The site has CAPTCHA protection so
+    we try a direct request first; if blocked we tell the frontend to
+    open the page manually for the user.
+    """
+    import requests as req_lib
+    import re as _re
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    c = row_to_dict(c)
+    plate = (c.get("plate") or "").replace("-", "").replace(" ", "").upper()
+    if not plate:
+        return jsonify({"error": "No hay patente registrada para este vehículo"}), 400
+
+    # Attempt direct GET — Registro Civil sometimes serves without captcha
+    try:
+        url = f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+        }
+        resp = req_lib.get(url, headers=headers, timeout=15, allow_redirects=True)
+        body = resp.text
+
+        # If we got the CAPTCHA page, tell frontend to open manually
+        if "resolver el desafío" in body or "captcha" in body.lower() or "código de la imagen" in body.lower():
+            return jsonify({
+                "ok": False,
+                "action": "manual",
+                "message": "Registro Civil requiere CAPTCHA. Se abrirá la página para resolver manualmente.",
+                "url": url
+            })
+
+        # Try to parse the CAV response if no captcha
+        # Look for owner name pattern
+        cav_owner = ""
+        owner_match = _re.search(r'Nombre\s*(?:del\s*)?(?:Propietario|Dueño)\s*:?\s*</?\w+[^>]*>\s*([^<]+)', body, _re.IGNORECASE)
+        if owner_match:
+            cav_owner = owner_match.group(1).strip()
+
+        # Look for annotations
+        has_annotations = False
+        cav_notes = ""
+        if _re.search(r'(?:prenda|embargo|prohibición|alzamiento|gravamen)', body, _re.IGNORECASE):
+            has_annotations = True
+            # Extract annotation texts
+            annotations = _re.findall(r'((?:Prenda|Embargo|Prohibición|Alzamiento|Gravamen)[^<]*)', body, _re.IGNORECASE)
+            cav_notes = "; ".join(a.strip() for a in annotations[:5])
+
+        cav_status = "annotations" if has_annotations else "clean"
+        now = datetime.now().isoformat()
+
+        # Save to DB
+        with get_db() as conn:
+            conn.execute("""
+                UPDATE consignaciones
+                SET cav_obtained_at=?, cav_status=?, cav_owner_name=?, cav_notes=?, updated_at=?
+                WHERE id=?
+            """, (now, cav_status, cav_owner, cav_notes, now, cid))
+            conn.commit()
+
+        # If we also got the owner name, auto-fill it on the propietario tab
+        if cav_owner and not c.get("owner_full_name"):
+            with get_db() as conn:
+                conn.execute("UPDATE consignaciones SET owner_full_name=? WHERE id=?", (cav_owner, cid))
+                conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "success": True,
+            "cav_obtained_at": now,
+            "cav_status": cav_status,
+            "cav_owner_name": cav_owner,
+            "cav_notes": cav_notes,
+        })
+
+    except Exception as e:
+        print(f"[cav] Error fetching CAV for {plate}: {e}", flush=True)
+        # Fallback: tell frontend to open manually
+        return jsonify({
+            "ok": False,
+            "action": "manual",
+            "message": f"No se pudo conectar al Registro Civil: {str(e)}",
+            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+        })
 
 
 @app.route("/api/consignaciones/<int:cid>/publicar-chileautos", methods=["POST"])
