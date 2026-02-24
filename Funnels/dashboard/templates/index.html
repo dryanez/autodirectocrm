@@ -40,6 +40,10 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold text-white tracking-tight">🚗 FB Funnel Dashboard</h1>
             <div class="flex items-center space-x-3">
+                <button onclick="showHarModal()"
+                    class="bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
+                    <span>📂</span> Importar HAR
+                </button>
                 <button onclick="startScrape()"
                     class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
                     <span>🚀</span> Scrape Now
@@ -442,6 +446,17 @@ Agente de Ventas | Autodirecto.cl</textarea>
                                 <span class="w-5 text-center mr-2">📅</span> ${lead.year || '----'}
                                 ${lead.mileage ? `<span class="ml-2 text-slate-500">• ${lead.mileage}</span>` : ''}
                             </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-5 text-center mr-2">👤</span>
+                                <input
+                                    type="text"
+                                    value="${lead.seller_name || ''}"
+                                    placeholder="Nombre del vendedor..."
+                                    class="flex-1 bg-transparent text-slate-300 placeholder-slate-600 text-sm border-b border-slate-700 focus:border-blue-500 focus:outline-none py-0.5 transition-colors"
+                                    onchange="saveSellerName('${lead.url}', this.value)"
+                                    onclick="event.stopPropagation()"
+                                >
+                            </div>
                         </div>
                     </div>
                     <div class="bg-slate-800/50 px-4 py-3 border-t border-slate-700 flex justify-between items-center gap-2">
@@ -593,9 +608,160 @@ Agente de Ventas | Autodirecto.cl</textarea>
             }
         }
 
+        // ── Save seller name (HAR-sourced or manually entered) ───────────
+        async function saveSellerName(url, name) {
+            try {
+                await fetch(apiUrl('/api/leads/status'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, seller_name: name })
+                });
+                // Update local cache
+                const lead = allLeads.find(l => l.url === url);
+                if (lead) lead.seller_name = name;
+            } catch (e) {
+                console.error('Error saving seller name:', e);
+            }
+        }
+
+        // ── HAR Import Modal ─────────────────────────────────────────────
+        function showHarModal() {
+            document.getElementById('har-modal').classList.remove('hidden');
+        }
+        function hideHarModal() {
+            document.getElementById('har-modal').classList.add('hidden');
+            document.getElementById('har-drop-zone').classList.remove('border-purple-400', 'bg-purple-900/20');
+            document.getElementById('har-file-name').textContent = '';
+            document.getElementById('har-result').innerHTML = '';
+            document.getElementById('har-file-input').value = '';
+        }
+
+        // Drag & drop setup
+        document.addEventListener('DOMContentLoaded', function() {
+            const zone = document.getElementById('har-drop-zone');
+            const fileInput = document.getElementById('har-file-input');
+
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('border-purple-400', 'bg-purple-900/20');
+            });
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('border-purple-400', 'bg-purple-900/20');
+            });
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('border-purple-400', 'bg-purple-900/20');
+                const file = e.dataTransfer.files[0];
+                if (file) handleHarFile(file);
+            });
+            zone.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files[0]) handleHarFile(e.target.files[0]);
+            });
+        });
+
+        function handleHarFile(file) {
+            if (!file.name.endsWith('.har')) {
+                document.getElementById('har-result').innerHTML =
+                    '<p class="text-red-400 text-sm">Solo se aceptan archivos .har</p>';
+                return;
+            }
+            document.getElementById('har-file-name').textContent = file.name;
+            document.getElementById('har-drop-zone').classList.add('border-purple-400', 'bg-purple-900/20');
+            uploadHar(file);
+        }
+
+        async function uploadHar(file) {
+            const resultEl = document.getElementById('har-result');
+            const btn = document.getElementById('har-upload-btn');
+            resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Procesando HAR... puede tardar unos segundos.</p>';
+            btn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const resp = await fetch(apiUrl('/api/upload-har'), {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+
+                if (!resp.ok || data.error) {
+                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error: ${data.error || 'Unknown error'}</p>`;
+                } else {
+                    resultEl.innerHTML = `
+                        <div class="space-y-1 text-sm">
+                            <p class="text-green-400 font-semibold">✅ HAR importado correctamente</p>
+                            <p class="text-slate-300">📥 Nuevos autos añadidos: <strong>${data.new_listings}</strong></p>
+                            <p class="text-slate-300">📊 Total en base de datos: <strong>${data.total_listings}</strong></p>
+                            <p class="text-slate-300">👤 Con nombre de vendedor: <strong>${data.with_seller_name}</strong></p>
+                        </div>
+                    `;
+                    // Reload leads in background
+                    await loadLeads();
+                }
+            } catch (e) {
+                resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error de conexión: ${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         // Init
         loadLeads();
     </script>
+
+    <!-- HAR Import Modal -->
+    <div id="har-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div class="glass rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-5">
+                <div>
+                    <h2 class="text-xl font-bold text-white">📂 Importar archivo HAR</h2>
+                    <p class="text-slate-400 text-sm mt-1">
+                        Graba el tráfico de red mientras navegas el Marketplace y arrastra el .har aquí.
+                        Los autos repetidos no se duplican.
+                    </p>
+                </div>
+                <button onclick="hideHarModal()" class="text-slate-500 hover:text-white text-xl ml-4">✕</button>
+            </div>
+
+            <!-- Instructions -->
+            <div class="bg-slate-800/60 rounded-xl p-4 mb-5 text-sm text-slate-300 space-y-2">
+                <p class="font-medium text-white">¿Cómo grabar el HAR?</p>
+                <ol class="list-decimal list-inside space-y-1 text-slate-400">
+                    <li>Abre <strong>Chrome DevTools</strong> → pestaña <strong>Network</strong></li>
+                    <li>Navega a <strong>Facebook Marketplace → Vehículos</strong> y desplázate</li>
+                    <li>Haz click derecho en cualquier petición → <strong>Save all as HAR</strong></li>
+                    <li>Arrastra ese archivo aquí abajo</li>
+                </ol>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="har-drop-zone"
+                class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-purple-500 hover:bg-purple-900/10 mb-4">
+                <div class="text-4xl mb-2">📁</div>
+                <p class="text-slate-400 text-sm">Arrastra tu archivo <strong>.har</strong> aquí</p>
+                <p class="text-slate-600 text-xs mt-1">o haz click para seleccionar</p>
+                <p id="har-file-name" class="text-purple-400 text-sm font-medium mt-2"></p>
+                <input type="file" id="har-file-input" accept=".har" class="hidden">
+            </div>
+
+            <!-- Result -->
+            <div id="har-result" class="min-h-[40px]"></div>
+
+            <div class="flex justify-end gap-3 mt-4">
+                <button onclick="hideHarModal()"
+                    class="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors">
+                    Cerrar
+                </button>
+                <button id="har-upload-btn" disabled
+                    class="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg opacity-50 cursor-not-allowed">
+                    Procesando...
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

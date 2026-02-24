@@ -5,6 +5,7 @@ import os
 import sys
 import subprocess
 import glob
+import tempfile
 from pathlib import Path
 import requests
 
@@ -101,6 +102,14 @@ def normalize_apify_item(item):
         or ""
     )
 
+    # ── Seller name ────────────────────────────────────────────────────────
+    # From HAR-parsed records (sellerName) or Apify records (seller_name)
+    seller_name = (
+        item.get("sellerName")
+        or item.get("seller_name")
+        or ""
+    )
+
     return {
         "id": item.get("id", ""),
         "url": url,
@@ -111,6 +120,7 @@ def normalize_apify_item(item):
         "mileage": mileage,
         "photo_url": photo_url,
         "is_sold": item.get("isSold") or item.get("is_sold", False),
+        "seller_name": seller_name,
         "status": "new",
     }
 
@@ -224,8 +234,11 @@ def get_leads():
             item_copy["status"] = val.get("status", "new")
             item_copy["contacted_at"] = val.get("contacted_at")
             item_copy["valuation"] = val.get("valuation")
+            # Saved seller name overrides the one from the dataset
+            if val.get("seller_name") is not None:
+                item_copy["seller_name"] = val["seller_name"]
         else:
-            item_copy["status"] = val # assume string
+            item_copy["status"] = val  # assume string
             item_copy["contacted_at"] = None
             item_copy["valuation"] = None
             
@@ -272,6 +285,7 @@ def api_update_status():
     url = data.get("url")
     status = data.get("status")
     valuation = data.get("valuation")
+    seller_name = data.get("seller_name")
 
     if not url:
         return jsonify({"error": "Missing url"}), 400
@@ -287,7 +301,7 @@ def api_update_status():
     entry = status_map.get(url, {})
     if not isinstance(entry, dict):
         entry = {"status": entry if entry else "new"}
-    
+
     import time
     entry["updated_at"] = int(time.time())
 
@@ -296,14 +310,99 @@ def api_update_status():
         entry["status"] = status
         if status == "contacted":
             entry["contacted_at"] = int(time.time())
-    
+
     # Update valuation if provided
     if valuation:
         entry["valuation"] = valuation
 
+    # Update seller name if provided
+    if seller_name is not None:
+        entry["seller_name"] = seller_name
+
     status_map[url] = entry
     STATUS_FILE.write_text(json.dumps(status_map, indent=2))
     return jsonify({"success": True, "status": entry.get("status"), "valuation": entry.get("valuation")})
+
+
+@app.route("/api/upload-har", methods=["POST"])
+def api_upload_har():
+    """
+    Accept a HAR file upload, parse it via parse_har.py logic,
+    merge with existing datasets (deduplicating by id), save a new
+    dataset_facebook-marketplace-scraper_*_har.json, and reload the cache.
+    """
+    global _cached_listings
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename.endswith(".har"):
+        return jsonify({"error": "Only .har files are accepted"}), 400
+
+    # Save to a temp file so we can pass the path to the parser
+    with tempfile.NamedTemporaryFile(suffix=".har", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        uploaded.save(tmp_path)
+
+    try:
+        # Import parser inline to avoid circular deps
+        parse_script = BASE_DIR / "execution" / "parse_har.py"
+        if not parse_script.exists():
+            return jsonify({"error": "parse_har.py not found in execution/"}), 500
+
+        # Run the parser as subprocess (keeps it isolated)
+        result = subprocess.run(
+            [sys.executable, str(parse_script), "--input", str(tmp_path), "--output", str(BASE_DIR)],
+            capture_output=True,
+            text=True,
+            cwd=str(BASE_DIR),
+        )
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+
+        if result.returncode != 0:
+            print(f"[har-upload] Error:\n{stderr}")
+            return jsonify({"error": "HAR parsing failed", "details": stderr or stdout}), 500
+
+        print(f"[har-upload] {stdout}")
+
+        # Extract stats from stdout
+        new_count = 0
+        total_count = 0
+        sellers_count = 0
+        for line in stdout.split("\n"):
+            if "new listings added" in line:
+                import re
+                nums = re.findall(r"\d+", line)
+                if nums:
+                    new_count = int(nums[0])
+            if "Total unique listings:" in line:
+                nums = re.findall(r"\d+", line)
+                if nums:
+                    total_count = int(nums[0])
+            if "Listings with seller name:" in line:
+                nums = re.findall(r"\d+", line)
+                if nums:
+                    sellers_count = int(nums[0])
+
+        # Reload the dashboard cache
+        _cached_listings = load_all_listings()
+
+        return jsonify({
+            "success": True,
+            "new_listings": new_count,
+            "total_listings": total_count,
+            "with_seller_name": sellers_count,
+            "cache_reloaded": len(_cached_listings),
+            "log": stdout,
+        })
+
+    except Exception as e:
+        print(f"[har-upload] Exception: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 @app.route("/api/valuation", methods=["POST"])
