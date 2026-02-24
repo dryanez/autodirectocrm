@@ -68,6 +68,7 @@ def log_to_file(msg):
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "autodirecto-crm-secret-2026")
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB — needed for HAR file uploads
 
 # ─── CORS — allow requests from Vercel/Autodirecto frontend ──────────────────
 try:
