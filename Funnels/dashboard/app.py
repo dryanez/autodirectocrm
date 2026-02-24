@@ -11,10 +11,54 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB — HAR files can be large
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TMP_DIR = BASE_DIR / ".tmp"
+
+# On read-only filesystems (Railway, Vercel) we must write to /tmp.
+# Allow override via WRITABLE_DIR env var; otherwise auto-detect.
+def _resolve_writable_dir() -> Path:
+    env_override = os.environ.get("WRITABLE_DIR")
+    if env_override:
+        return Path(env_override)
+    # If running inside /var/task (Railway / serverless), always use /tmp.
+    if str(BASE_DIR).startswith("/var/task"):
+        fallback = Path("/tmp/funnels")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+    candidate = BASE_DIR / ".tmp"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        test_file = candidate / ".write_test"
+        test_file.write_text("ok")
+        test_file.unlink()
+        return candidate
+    except Exception:
+        fallback = Path("/tmp/funnels")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+TMP_DIR = _resolve_writable_dir()
 LEADS_CSV = TMP_DIR / "leads.csv"
 LEADS_JSON = TMP_DIR / "filtered_cars.json"
 STATUS_FILE = TMP_DIR / "lead_status.json"
+
+# Writable directory for saving new dataset files (HAR uploads, etc.)
+# On read-only filesystems (Railway /var/task, Vercel) fall back to /tmp/funnels_data.
+def _resolve_data_write_dir() -> Path:
+    # If we are running inside /var/task (Railway / serverless), always use /tmp.
+    if str(BASE_DIR).startswith("/var/task"):
+        fallback = Path("/tmp/funnels_data")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+    try:
+        test_file = BASE_DIR / ".write_test"
+        test_file.write_text("ok")
+        test_file.unlink()
+        return BASE_DIR
+    except Exception:
+        fallback = Path("/tmp/funnels_data")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+DATA_WRITE_DIR = _resolve_data_write_dir()
 
 # In-memory cache — loaded once at startup
 _cached_listings = []
@@ -130,6 +174,10 @@ def find_latest_apify_json():
     # Search in the Funnels folder first
     pattern = str(BASE_DIR / "dataset_facebook-marketplace-scraper_*.json")
     files = glob.glob(pattern)
+
+    # Also check the writable data dir (used when BASE_DIR is read-only, e.g. Railway)
+    if DATA_WRITE_DIR != BASE_DIR:
+        files += glob.glob(str(DATA_WRITE_DIR / "dataset_facebook-marketplace-scraper_*.json"))
 
     # Also check Downloads as a fallback
     downloads = Path.home() / "Downloads"
@@ -377,7 +425,7 @@ def api_upload_har():
         # Save as new dataset file
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_path = BASE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+        output_path = DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
         output_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 
         print(f"[har-upload] {new_count} new, {updated_count} enriched → {len(merged)} total → {output_path.name}")
