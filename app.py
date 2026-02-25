@@ -5314,7 +5314,7 @@ def obtener_cav(cid):
             "ok": False,
             "action": "manual",
             "message": "Robot CAV no configurado. Se abrirá Registro Civil para hacerlo manualmente.",
-            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+            "url": f"https://www.registrocivil.cl/OficinaInternet/"
         })
 
     # ── Call the CAV Worker microservice ──
@@ -5397,7 +5397,7 @@ def obtener_cav(cid):
             "ok": False,
             "action": "manual",
             "message": "El robot CAV tardó demasiado. Se abrirá la página manualmente.",
-            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+            "url": f"https://www.registrocivil.cl/OficinaInternet/"
         })
     except Exception as e:
         print(f"[cav] Error calling CAV Worker: {e}", flush=True)
@@ -5405,7 +5405,7 @@ def obtener_cav(cid):
             "ok": False,
             "action": "manual",
             "message": f"Error conectando al robot CAV: {str(e)}",
-            "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+            "url": f"https://www.registrocivil.cl/OficinaInternet/"
         })
 
 

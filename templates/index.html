@@ -821,33 +821,74 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <button @click="obtenerCAVDebug(invDetail)"
-                                        :disabled="!invDetail?.plate || cavLoading || cavDebugLoading"
-                                        :class="cavDebugLoading ? 'bg-yellow-700/50 text-yellow-300 cursor-wait' : (invDetail?.plate ? 'bg-yellow-700/30 hover:bg-yellow-700/50 text-yellow-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
-                                        class="text-xs px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-1"
-                                        title="Ejecutar robot y ver screenshots paso a paso">
-                                        <i class="ph" :class="cavDebugLoading ? 'ph-spinner animate-spin' : 'ph-magnifying-glass'"></i>
-                                        <span x-text="cavDebugLoading ? 'Depurando…' : '🔍 Debug'"></span>
-                                    </button>
-                                    <button @click="obtenerCAV(invDetail)"
-                                        :disabled="!invDetail?.plate || cavLoading"
-                                        :class="cavLoading ? 'bg-indigo-700/50 text-indigo-300 cursor-wait' : (invDetail?.plate ? 'bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
+                                    <button @click="obtenerCAVStream(invDetail)"
+                                        :disabled="!invDetail?.plate || cavDebugLoading"
+                                        :class="cavDebugLoading ? 'bg-indigo-700/50 text-indigo-300 cursor-wait' : (invDetail?.plate ? 'bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
                                         class="text-xs px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5">
-                                        <i class="ph" :class="cavLoading ? 'ph-spinner animate-spin' : 'ph-robot'"></i>
-                                        <span x-text="cavLoading ? 'Robot trabajando…' : (invDetail?.cav_obtained_at ? '🤖 Re-obtener CAV' : (invDetail?.plate ? '🤖 Obtener CAV' : 'Ingrese patente'))"></span>
+                                        <i class="ph" :class="cavDebugLoading ? 'ph-broadcast animate-pulse' : 'ph-robot'"></i>
+                                        <span x-text="cavDebugLoading ? '📡 Robot en vivo…' : (invDetail?.cav_obtained_at ? '🤖 Re-obtener CAV' : (invDetail?.plate ? '🤖 Obtener CAV' : 'Ingrese patente'))"></span>
                                     </button>
                                 </div>
                             </div>
-                            <!-- Loading progress bar -->
-                            <div x-show="cavLoading" class="mt-3 pt-3 border-t border-slate-700">
-                                <div class="flex items-center gap-2 text-indigo-400 text-xs mb-2">
-                                    <i class="ph ph-globe text-base"></i>
-                                    <span>Navegando registrocivil.cl → Resolviendo CAPTCHA → Extrayendo datos…</span>
+                            <!-- LIVE robot screenshots (inline, no modal) -->
+                            <div x-show="cavDebugLoading || cavDebugSteps.length > 0" class="mt-3 pt-3 border-t border-slate-700">
+                                <!-- Live indicator -->
+                                <div x-show="cavDebugLoading" class="flex items-center gap-2 mb-3">
+                                    <span class="relative flex h-2.5 w-2.5">
+                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
+                                    </span>
+                                    <span class="text-yellow-400 text-xs font-semibold">EN VIVO — Robot navegando registrocivil.cl</span>
                                 </div>
-                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                    <div class="bg-indigo-500 h-1.5 rounded-full animate-pulse" style="width: 60%"></div>
+                                <!-- Error -->
+                                <div x-show="cavDebugError" class="mb-3 bg-red-900/30 border border-red-700/50 rounded-lg px-3 py-2">
+                                    <p class="text-red-400 text-xs font-medium" x-text="cavDebugError"></p>
                                 </div>
-                                <p class="text-[10px] text-slate-600 mt-1">Esto puede tomar 10-30 segundos</p>
+                                <!-- Latest screenshot (show only the last one to save space) -->
+                                <template x-if="cavDebugSteps.length > 0">
+                                    <div class="space-y-2">
+                                        <!-- Step counter -->
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-xs text-slate-400" x-text="'Paso ' + cavDebugSteps.length + (cavDebugElapsed ? ' • ' + cavDebugElapsed + 's' : '')"></span>
+                                            <button x-show="cavDebugSteps.length > 1" @click="cavDebugShowAll = !cavDebugShowAll"
+                                                class="text-[10px] text-indigo-400 hover:text-indigo-300 underline"
+                                                x-text="cavDebugShowAll ? 'Mostrar solo último' : 'Ver todos los pasos (' + cavDebugSteps.length + ')'"></button>
+                                        </div>
+                                        <!-- All steps (expandable) -->
+                                        <template x-if="cavDebugShowAll">
+                                            <div class="space-y-2 max-h-[60vh] overflow-y-auto" id="cav-debug-steps">
+                                                <template x-for="(step, idx) in cavDebugSteps" :key="idx">
+                                                    <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden animate-fadeIn">
+                                                        <div class="flex items-center justify-between px-3 py-1.5">
+                                                            <span class="text-xs font-semibold text-white" x-text="step.step"></span>
+                                                            <span class="text-[10px] text-slate-500" x-text="step.time ? step.time + 's' : ''"></span>
+                                                        </div>
+                                                        <template x-if="step.screenshot">
+                                                            <img :src="'data:image/jpeg;base64,' + step.screenshot" class="w-full" loading="lazy">
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <!-- Last step only (default) -->
+                                        <template x-if="!cavDebugShowAll">
+                                            <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden animate-fadeIn">
+                                                <div class="flex items-center justify-between px-3 py-1.5">
+                                                    <span class="text-xs font-semibold text-white" x-text="cavDebugSteps[cavDebugSteps.length - 1].step"></span>
+                                                    <span class="text-[10px] text-slate-500" x-text="cavDebugSteps[cavDebugSteps.length - 1].time ? cavDebugSteps[cavDebugSteps.length - 1].time + 's' : ''"></span>
+                                                </div>
+                                                <template x-if="cavDebugSteps[cavDebugSteps.length - 1].screenshot">
+                                                    <img :src="'data:image/jpeg;base64,' + cavDebugSteps[cavDebugSteps.length - 1].screenshot" class="w-full" loading="lazy">
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <!-- Loading spinner when no steps yet -->
+                                <div x-show="cavDebugLoading && cavDebugSteps.length === 0" class="flex items-center gap-2 py-4 justify-center">
+                                    <i class="ph ph-spinner animate-spin text-xl text-yellow-400"></i>
+                                    <span class="text-yellow-300 text-xs">Conectando con el robot…</span>
+                                </div>
                             </div>
                             <!-- CAV status info -->
                             <div x-show="invDetail?.cav_status" class="mt-3 pt-3 border-t border-slate-700 space-y-1.5">
@@ -5087,88 +5128,21 @@
                 cavDebugError: '',
                 cavDebugPlate: '',
                 cavDebugElapsed: null,
+                cavDebugShowAll: false,
 
-                async obtenerCAV(car) {
-                    if (!car?.plate) {
-                        alert('⚠️ Ingrese la patente del vehículo primero.');
-                        return;
-                    }
-                    const plate = car.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-                    this.cavLoading = true;
-                    try {
-                        const res = await this.authFetch(`/api/consignaciones/${car.id}/cav`, { method: 'POST' });
-                        const data = await res.json();
-                        if (data.ok || data.success) {
-                            // Robot fetched the CAV data automatically
-                            this.invDetail.cav_obtained_at = data.cav_obtained_at || new Date().toISOString();
-                            this.invDetail.cav_status = data.cav_status || 'clean';
-                            this.invDetail.cav_owner_name = data.cav_owner_name || '';
-                            this.invDetail.cav_notes = data.cav_notes || '';
-                            const elapsed = data.elapsed_seconds ? ` (${data.elapsed_seconds}s)` : '';
-                            let msg = `✅ CAV obtenido automáticamente${elapsed}`;
-                            if (data.cav_owner_name) msg += `\n\nPropietario: ${data.cav_owner_name}`;
-                            if (data.cav_owner_rut) msg += `\nRUT: ${data.cav_owner_rut}`;
-                            if (data.annotations?.length) msg += `\n\n⚠️ Anotaciones:\n${data.annotations.join('\n')}`;
-                            alert(msg);
-                        } else if (data.action === 'manual') {
-                            // Robot couldn't solve CAPTCHA — open Registro Civil for user
-                            window.open(`https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro=${plate}`, '_blank');
-                            if (confirm('El robot no pudo resolver el CAPTCHA.\nSe abrió Registro Civil en una nueva pestaña.\n\n¿Pudiste obtener el CAV exitosamente?')) {
-                                const cavNotes = prompt('¿Alguna anotación importante? (dejar vacío si está limpio)', '');
-                                await this.authFetch(`/api/consignaciones/${car.id}`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        cav_obtained_at: new Date().toISOString(),
-                                        cav_status: cavNotes ? 'annotations' : 'clean',
-                                        cav_notes: cavNotes || ''
-                                    })
-                                });
-                                this.invDetail.cav_obtained_at = new Date().toISOString();
-                                this.invDetail.cav_status = cavNotes ? 'annotations' : 'clean';
-                                this.invDetail.cav_notes = cavNotes || '';
-                            }
-                        } else {
-                            alert('❌ Error: ' + (data.error || 'No se pudo obtener el CAV'));
-                        }
-                    } catch (e) {
-                        window.open(`https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro=${plate}`, '_blank');
-                        if (confirm('Error de conexión. Se abrió Registro Civil.\n\n¿Pudiste obtener el CAV?')) {
-                            const cavNotes = prompt('¿Alguna anotación? (vacío = limpio)', '');
-                            try {
-                                await this.authFetch(`/api/consignaciones/${car.id}`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        cav_obtained_at: new Date().toISOString(),
-                                        cav_status: cavNotes ? 'annotations' : 'clean',
-                                        cav_notes: cavNotes || ''
-                                    })
-                                });
-                            } catch (_) {}
-                            this.invDetail.cav_obtained_at = new Date().toISOString();
-                            this.invDetail.cav_status = cavNotes ? 'annotations' : 'clean';
-                            this.invDetail.cav_notes = cavNotes || '';
-                        }
-                    } finally {
-                        this.cavLoading = false;
-                    }
-                },
-
-                async obtenerCAVDebug(car) {
+                async obtenerCAVStream(car) {
                     if (!car?.plate) { alert('⚠️ Ingrese la patente primero.'); return; }
                     const plate = car.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
-                    // Reset & open modal immediately
+                    // Reset state — show live view inline immediately
                     this.cavDebugSteps = [];
                     this.cavDebugError = '';
                     this.cavDebugPlate = plate;
                     this.cavDebugElapsed = null;
                     this.cavDebugLoading = true;
-                    this.cavDebugModal = true;
+                    this.cavDebugShowAll = false;
 
-                    // Use SSE (Server-Sent Events) for real-time streaming
-                    const token = localStorage.getItem('ad_token') || '';
+                    // SSE stream — screenshots appear in real-time
                     const url = `/api/consignaciones/${car.id}/cav-stream`;
                     const evtSource = new EventSource(url);
 
@@ -5177,24 +5151,26 @@
                             const data = JSON.parse(event.data);
 
                             if (data.done) {
-                                // Final message — robot finished
+                                // Robot finished
                                 this.cavDebugLoading = false;
                                 this.cavDebugElapsed = data.elapsed_seconds || null;
                                 if (data.error) {
                                     this.cavDebugError = data.error;
                                 }
+                                // If robot got CAV data, update the UI
+                                if (data.ok) {
+                                    this.invDetail.cav_obtained_at = new Date().toISOString();
+                                    this.invDetail.cav_status = data.status || 'clean';
+                                    this.invDetail.cav_owner_name = data.owner_name || '';
+                                    this.invDetail.cav_notes = data.annotations_text || '';
+                                }
                                 evtSource.close();
                                 return;
                             }
 
-                            // Live step — append screenshot to modal
+                            // Live step — append screenshot
                             if (data.step) {
                                 this.cavDebugSteps.push(data);
-                                // Auto-scroll to bottom of modal
-                                this.$nextTick(() => {
-                                    const container = document.querySelector('#cav-debug-steps');
-                                    if (container) container.scrollTop = container.scrollHeight;
-                                });
                             }
                         } catch (e) {
                             console.error('SSE parse error:', e);
@@ -5203,9 +5179,9 @@
 
                     evtSource.onerror = (err) => {
                         console.error('SSE error:', err);
-                        this.cavDebugError = this.cavDebugSteps.length === 0
-                            ? 'Error de conexión con el robot'
-                            : '';
+                        if (this.cavDebugSteps.length === 0) {
+                            this.cavDebugError = 'Error de conexión con el robot. ¿Configuraste CAV_WORKER_URL en Vercel?';
+                        }
                         this.cavDebugLoading = false;
                         evtSource.close();
                     };
@@ -6185,61 +6161,6 @@
                     </div>
                 </div>
                 <p class="text-[11px] text-slate-600 mt-3 text-center">Al terminar las fotos, el propietario debe presionar <strong class="text-slate-500">"Volver al CRM"</strong> — las fotos aparecerán automáticamente aquí.</p>
-            </div>
-        </div>
-    </div>
-    <!-- ═══════ CAV Debug Modal — Real-Time Robot Vision ═══════ -->
-    <div x-show="cavDebugModal" x-cloak
-         class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-         @keydown.escape.window="cavDebugModal = false">
-        <div class="bg-slate-900 border border-slate-600 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl mx-4" @click.away="cavDebugModal = false">
-            <!-- Header -->
-            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700 shrink-0">
-                <div>
-                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="ph text-yellow-400" :class="cavDebugLoading ? 'ph-broadcast animate-pulse' : 'ph-magnifying-glass'"></i>
-                        <span x-text="cavDebugLoading ? 'Robot en vivo 📡' : 'CAV Debug — Robot Vision'"></span>
-                    </h3>
-                    <p class="text-xs text-slate-400 mt-0.5">
-                        <span x-text="'Patente: ' + (cavDebugPlate || '—')"></span>
-                        <span x-show="cavDebugElapsed" x-text="'  •  ' + cavDebugElapsed + 's'"></span>
-                        <span x-show="cavDebugLoading" class="text-yellow-400 ml-2">● EN VIVO</span>
-                    </p>
-                </div>
-                <button @click="cavDebugModal = false" class="text-slate-400 hover:text-white text-xl"><i class="ph ph-x"></i></button>
-            </div>
-            <!-- Error -->
-            <div x-show="cavDebugError" class="mx-5 mt-4 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3 shrink-0">
-                <p class="text-red-400 text-sm font-medium" x-text="cavDebugError"></p>
-            </div>
-            <!-- Steps (scrollable) -->
-            <div id="cav-debug-steps" class="p-5 space-y-4 overflow-y-auto flex-1">
-                <template x-if="cavDebugSteps.length === 0 && !cavDebugLoading && !cavDebugError">
-                    <p class="text-slate-500 text-sm text-center py-8">Sin pasos registrados.</p>
-                </template>
-                <template x-for="(step, idx) in cavDebugSteps" :key="idx">
-                    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden animate-fadeIn">
-                        <div class="flex items-center justify-between px-4 py-2 bg-slate-800/80">
-                            <span class="text-sm font-semibold text-white" x-text="step.step"></span>
-                            <div class="flex items-center gap-3 text-[10px] text-slate-500">
-                                <span x-text="step.time ? step.time + 's' : ''"></span>
-                                <span x-text="step.url ? (() => { try { return new URL(step.url).hostname; } catch(e) { return ''; } })() : ''" class="truncate max-w-[200px]"></span>
-                            </div>
-                        </div>
-                        <template x-if="step.screenshot">
-                            <img :src="'data:image/jpeg;base64,' + step.screenshot" class="w-full" loading="lazy"
-                                 :alt="step.step" style="image-rendering: auto;">
-                        </template>
-                    </div>
-                </template>
-                <!-- Loading indicator (always at bottom while streaming) -->
-                <div x-show="cavDebugLoading" class="flex items-center gap-3 py-4 px-4 bg-yellow-900/20 border border-yellow-700/30 rounded-xl">
-                    <i class="ph ph-spinner animate-spin text-2xl text-yellow-400"></i>
-                    <div>
-                        <p class="text-yellow-300 text-sm font-medium">Robot navegando…</p>
-                        <p class="text-yellow-600 text-xs">Los screenshots aparecen en tiempo real</p>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
