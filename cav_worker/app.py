@@ -110,10 +110,10 @@ def _fetch_cav(plate: str) -> dict:
     try:
         url = f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
         print(f"[cav_worker] Navigating to {url}", flush=True)
-        page.goto(url, timeout=30000, wait_until="networkidle")
+        page.goto(url, timeout=60000, wait_until="domcontentloaded")
 
         # Wait for the page to fully load
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
 
         for attempt in range(MAX_RETRIES):
             print(f"[cav_worker] CAPTCHA attempt {attempt + 1}/{MAX_RETRIES}", flush=True)
@@ -231,8 +231,8 @@ def _fetch_cav(plate: str) -> dict:
             if "código de la imagen" in result_body.lower() or "resolver el desafío" in result_body.lower():
                 print(f"[cav_worker] CAPTCHA attempt {attempt + 1} failed — wrong code", flush=True)
                 # Reload page for fresh CAPTCHA
-                page.goto(url, timeout=30000, wait_until="networkidle")
-                page.wait_for_timeout(2000)
+                page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                page.wait_for_timeout(3000)
                 continue
 
             # Check if we got CAV data
@@ -242,8 +242,8 @@ def _fetch_cav(plate: str) -> dict:
 
             # Unknown state — maybe partial load
             print(f"[cav_worker] Attempt {attempt + 1}: unclear response, retrying...", flush=True)
-            page.goto(url, timeout=30000, wait_until="networkidle")
-            page.wait_for_timeout(2000)
+            page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
 
         # All retries exhausted
         return {
