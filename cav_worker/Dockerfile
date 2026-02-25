@@ -39,4 +39,4 @@ COPY app.py .
 
 EXPOSE 8090
 
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8090} --workers 2 --timeout 120
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8090} --workers 1 --timeout 120

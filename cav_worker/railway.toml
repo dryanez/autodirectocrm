@@ -4,6 +4,6 @@ dockerfilePath = "cav_worker/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 numReplicas = 1
