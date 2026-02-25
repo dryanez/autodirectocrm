@@ -257,375 +257,451 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return fail_result
 
         # ── Step 3: Expand the "Vehículos" accordion ──
-        # CONFIRMED from local testing:
+        # Structure from local testing:
         #   <div class="titleGrupos" id="title_5"> → click to expand
         #   <div class="divListaClass" id="divLista_5" style="display:none"> → becomes visible
         #   Inside: <table id="certificadosTable">
-        # Playwright .click() works (confirmed locally). All methods work.
+        #
+        # The site uses jQuery + its own JS. The accordion click handler calls
+        # a function that toggles display AND may lazy-load certificate rows.
+        # On Railway (headless), Playwright .click() fires but the accordion
+        # doesn't expand (even though it works locally). So we use a multi-layer
+        # strategy: try clicks, then find & call the page's own JS toggle function,
+        # then as last resort force the DOM open AND check if content exists.
         print("[cav_worker] Step 3: Expanding 'Vehículos' accordion...", flush=True)
         page.wait_for_timeout(2000)
 
-        # VERIFY we're actually on the right page first
+        # VERIFY we're on the right page first
         current_url = page.url
         print(f"[cav_worker] Current URL: {current_url}", flush=True)
-        page_has_title5 = page.evaluate("() => !!document.getElementById('title_5')")
-        page_has_container = page.evaluate("() => !!document.getElementById('certContainer')")
-        page_has_captcha = page.evaluate("() => document.body.innerText.toLowerCase().includes('código de la imagen')")
-        print(f"[cav_worker] #title_5 exists: {page_has_title5}, #certContainer: {page_has_container}, still on CAPTCHA: {page_has_captcha}", flush=True)
 
-        if page_has_captcha:
-            print("[cav_worker] ❌ STILL ON CAPTCHA PAGE! CAPTCHA was not actually solved!", flush=True)
+        page_state = page.evaluate("""() => {
+            const hasCaptcha = document.body.innerText.toLowerCase().includes('código de la imagen');
+            const title5 = document.getElementById('title_5');
+            const divLista5 = document.getElementById('divLista_5');
+            const certTable = document.getElementById('certificadosTable');
+            const allTitleGrupos = Array.from(document.querySelectorAll('.titleGrupos')).map(
+                el => ({ id: el.id, text: el.innerText.trim().substring(0,50) })
+            );
+            // Find all global functions that contain "grupo" or "lista" or "accordion"
+            const fnNames = Object.getOwnPropertyNames(window).filter(n => {
+                try {
+                    return typeof window[n] === 'function' &&
+                        /grupo|lista|accordion|toggle|expand|mostrar|cert/i.test(n);
+                } catch(e) { return false; }
+            });
+            // Check for onclick handler on title_5
+            let onclickStr = '';
+            if (title5) {
+                onclickStr = title5.getAttribute('onclick') || '';
+                if (!onclickStr && title5.onclick) onclickStr = title5.onclick.toString().substring(0,200);
+            }
+            return {
+                hasCaptcha,
+                hasTitle5: !!title5,
+                title5Onclick: onclickStr,
+                hasDivLista5: !!divLista5,
+                divLista5Display: divLista5 ? window.getComputedStyle(divLista5).display : null,
+                divLista5ChildCount: divLista5 ? divLista5.children.length : 0,
+                hasCertTable: !!certTable,
+                certTableRows: certTable ? certTable.querySelectorAll('tr').length : 0,
+                titleGrupos: allTitleGrupos,
+                relevantFunctions: fnNames.slice(0,20),
+                jqueryLoaded: typeof jQuery !== 'undefined',
+                bodyLen: document.body.innerHTML.length,
+            };
+        }""")
+        print(f"[cav_worker] Page state: {json.dumps(page_state, indent=2)}", flush=True)
+
+        if page_state.get("hasCaptcha"):
+            print("[cav_worker] ❌ STILL ON CAPTCHA PAGE!", flush=True)
             _snap(page, "❌ Todavía en página CAPTCHA")
-            # Don't continue — abort
             result = {"ok": False, "error": "CAPTCHA was not solved — still on challenge page"}
             if debug:
                 result["steps"] = steps
             return result
 
-        # Dump page diagnostics
-        page_diag = page.evaluate("""() => {
-            const allIds = Array.from(document.querySelectorAll('[id]')).slice(0, 40).map(e => e.id);
-            const bodyText = document.body.innerText.substring(0, 500);
-            return { url: location.href, title: document.title, ids: allIds, bodyPreview: bodyText };
-        }""")
-        print(f"[cav_worker] Page diagnostics: {page_diag}", flush=True)
-
         _snap(page, "5. Página post-CAPTCHA (buscando accordion Vehículos)")
 
-        vehiculos_expanded = False
+        # ── Helper to check if accordion is expanded ──
+        def _is_vehiculos_expanded():
+            return page.evaluate("""() => {
+                const d = document.getElementById('divLista_5');
+                if (!d) return { expanded: false, reason: 'divLista_5 not found' };
+                const display = window.getComputedStyle(d).display;
+                const hasContent = d.children.length > 0;
+                const certTable = document.getElementById('certificadosTable');
+                const hasRows = certTable ? certTable.querySelectorAll('tr').length > 0 : false;
+                return {
+                    expanded: display !== 'none',
+                    display,
+                    hasContent,
+                    childCount: d.children.length,
+                    hasCertTable: !!certTable,
+                    certRows: hasRows ? certTable.querySelectorAll('tr').length : 0,
+                };
+            }""")
 
-        # Primary: Playwright click on #title_5 (confirmed working locally)
+        # ── Method 1: Playwright click on #title_5 ──
         try:
             el = page.locator("#title_5")
             if el.count() > 0:
                 el.scroll_into_view_if_needed()
-                el.click()  # Normal click, not force — this works locally
-                vehiculos_expanded = True
-                print("[cav_worker] ✅ Clicked #title_5", flush=True)
+                el.click()
+                page.wait_for_timeout(2000)
+                state = _is_vehiculos_expanded()
+                print(f"[cav_worker] Method 1 (Playwright click #title_5): {state}", flush=True)
+                if state.get("expanded"):
+                    print("[cav_worker] ✅ Method 1 worked!", flush=True)
         except Exception as e:
-            print(f"[cav_worker] #title_5 click failed: {e}", flush=True)
+            print(f"[cav_worker] Method 1 failed: {e}", flush=True)
 
-        # Verify: check if divLista_5 became visible
-        if vehiculos_expanded:
-            page.wait_for_timeout(2000)
-            div_visible = page.evaluate("""() => {
-                const d = document.getElementById('divLista_5');
-                if (!d) return 'divLista_5 NOT FOUND';
-                return { display: d.style.display, computed: window.getComputedStyle(d).display };
-            }""")
-            print(f"[cav_worker] divLista_5 state after click: {div_visible}", flush=True)
-            if isinstance(div_visible, dict) and div_visible.get("computed") == "none":
-                print("[cav_worker] ⚠️ divLista_5 still hidden! Click didn't expand. Trying again...", flush=True)
-                vehiculos_expanded = False
-
-        # Retry with force
-        if not vehiculos_expanded:
+        state = _is_vehiculos_expanded()
+        if not state.get("expanded"):
+            # ── Method 2: Call the page's own onclick handler ──
             try:
-                el = page.locator("#title_5")
-                if el.count() > 0:
-                    el.scroll_into_view_if_needed()
-                    el.click(force=True)
+                onclick_attr = page_state.get("title5Onclick", "")
+                if onclick_attr:
+                    print(f"[cav_worker] Method 2: Calling onclick directly: {onclick_attr}", flush=True)
+                    page.evaluate(f"() => {{ {onclick_attr} }}")
                     page.wait_for_timeout(2000)
-                    div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
-                    if div_check != "none" and div_check != "NOT FOUND":
-                        vehiculos_expanded = True
-                        print(f"[cav_worker] ✅ Force-clicked #title_5 (divLista_5={div_check})", flush=True)
-                    else:
-                        print(f"[cav_worker] Force-click on #title_5 didn't expand (divLista_5={div_check})", flush=True)
-            except Exception as e:
-                print(f"[cav_worker] #title_5 force click failed: {e}", flush=True)
-
-        # Retry: JS dispatchEvent (mousedown + mouseup + click)
-        if not vehiculos_expanded:
-            try:
-                page.evaluate("""() => {
-                    const el = document.getElementById('title_5');
-                    if (!el) return;
-                    ['mousedown', 'mouseup', 'click'].forEach(evtType => {
-                        el.dispatchEvent(new MouseEvent(evtType, {bubbles: true, cancelable: true, view: window}));
-                    });
-                }""")
-                page.wait_for_timeout(2000)
-                div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
-                if div_check != "none" and div_check != "NOT FOUND":
-                    vehiculos_expanded = True
-                    print(f"[cav_worker] ✅ JS dispatchEvent on #title_5 worked (divLista_5={div_check})", flush=True)
+                    state = _is_vehiculos_expanded()
+                    print(f"[cav_worker] Method 2 result: {state}", flush=True)
                 else:
-                    print(f"[cav_worker] JS dispatchEvent didn't expand (divLista_5={div_check})", flush=True)
+                    print("[cav_worker] Method 2: No onclick attribute found", flush=True)
             except Exception as e:
-                print(f"[cav_worker] JS dispatchEvent failed: {e}", flush=True)
+                print(f"[cav_worker] Method 2 failed: {e}", flush=True)
 
-        # Retry: jQuery trigger (jQuery is available on the page)
-        if not vehiculos_expanded:
+        state = _is_vehiculos_expanded()
+        if not state.get("expanded"):
+            # ── Method 3: Find the site's toggle function by inspecting event handlers ──
             try:
-                page.evaluate("""() => {
-                    if (typeof jQuery !== 'undefined') {
-                        jQuery('#title_5').trigger('click');
+                toggle_result = page.evaluate("""() => {
+                    // Many Chilean gov sites use a function pattern like:
+                    // function mostrarGrupo(num) or similar
+                    // Let's try common function names with argument 5
+                    const fns = ['mostrarGrupo', 'toggleGrupo', 'expandGrupo', 'abrirGrupo',
+                                 'mostrarLista', 'toggleLista', 'cargarCertificados',
+                                 'showGroup', 'toggleGroup', 'openGroup'];
+                    for (const fn of fns) {
+                        if (typeof window[fn] === 'function') {
+                            try {
+                                window[fn](5);
+                                return 'called ' + fn + '(5)';
+                            } catch(e) {
+                                try { window[fn]('5'); return 'called ' + fn + "('5')"; }
+                                catch(e2) {}
+                            }
+                        }
                     }
+                    // Try to extract the function from jQuery event handlers on #title_5
+                    if (typeof jQuery !== 'undefined') {
+                        try {
+                            const events = jQuery._data(jQuery('#title_5')[0], 'events');
+                            if (events && events.click) {
+                                for (const h of events.click) {
+                                    try { h.handler.call(jQuery('#title_5')[0]); return 'called jQuery handler'; }
+                                    catch(e) {}
+                                }
+                            }
+                        } catch(e) {}
+                        // Also try triggering via jQuery namespace
+                        try {
+                            jQuery('#title_5').trigger('click');
+                            return 'jQuery trigger';
+                        } catch(e) {}
+                    }
+                    // Try simulating the full click event chain
+                    const el = document.getElementById('title_5');
+                    if (el) {
+                        const rect = el.getBoundingClientRect();
+                        const x = rect.left + rect.width/2;
+                        const y = rect.top + rect.height/2;
+                        for (const evtType of ['pointerdown','mousedown','pointerup','mouseup','click']) {
+                            el.dispatchEvent(new PointerEvent(evtType, {
+                                bubbles: true, cancelable: true, view: window,
+                                clientX: x, clientY: y, pointerId: 1,
+                                pointerType: 'mouse', button: 0, buttons: 1
+                            }));
+                        }
+                        return 'dispatched pointer+mouse events';
+                    }
+                    return 'no method worked';
                 }""")
+                print(f"[cav_worker] Method 3 result: {toggle_result}", flush=True)
                 page.wait_for_timeout(2000)
-                div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
-                if div_check != "none" and div_check != "NOT FOUND":
-                    vehiculos_expanded = True
-                    print(f"[cav_worker] ✅ jQuery trigger click worked (divLista_5={div_check})", flush=True)
-                else:
-                    print(f"[cav_worker] jQuery trigger didn't expand (divLista_5={div_check})", flush=True)
+                state = _is_vehiculos_expanded()
+                print(f"[cav_worker] Method 3 state: {state}", flush=True)
             except Exception as e:
-                print(f"[cav_worker] jQuery trigger failed: {e}", flush=True)
+                print(f"[cav_worker] Method 3 failed: {e}", flush=True)
 
-        # Fallback: iterate all .titleGrupos divs
-        if not vehiculos_expanded:
-            try:
-                titles = page.locator(".titleGrupos")
-                for i in range(titles.count()):
-                    t = titles.nth(i)
-                    txt = t.inner_text().strip()
-                    if "vehículo" in txt.lower() or "vehiculo" in txt.lower():
-                        t.scroll_into_view_if_needed()
-                        t.click(force=True)
-                        vehiculos_expanded = True
-                        print(f"[cav_worker] ✅ Clicked .titleGrupos[{i}]: '{txt}'", flush=True)
-                        break
-            except Exception as e:
-                print(f"[cav_worker] .titleGrupos click failed: {e}", flush=True)
+        state = _is_vehiculos_expanded()
+        if not state.get("expanded"):
+            # ── Method 4: Force-click with Playwright + force=True on multiple targets ──
+            for selector in ["#title_5", "#arrowDown_5", ".titleGrupos >> text=Vehículos", "text=Vehículos"]:
+                try:
+                    el = page.locator(selector).first
+                    if el.count() > 0:
+                        el.click(force=True)
+                        page.wait_for_timeout(1500)
+                        state = _is_vehiculos_expanded()
+                        print(f"[cav_worker] Method 4 ({selector}): {state}", flush=True)
+                        if state.get("expanded"):
+                            break
+                except Exception as e:
+                    print(f"[cav_worker] Method 4 ({selector}) failed: {e}", flush=True)
 
-        # Fallback: try by text
-        if not vehiculos_expanded:
-            try:
-                page.locator("text=Vehículos").first.click()
-                vehiculos_expanded = True
-                print("[cav_worker] ✅ Clicked text=Vehículos", flush=True)
-            except Exception as e:
-                print(f"[cav_worker] text click failed: {e}", flush=True)
+        state = _is_vehiculos_expanded()
+        if not state.get("expanded"):
+            # ── Method 5 (Nuclear): Force divLista_5 visible AND ensure content exists ──
+            print("[cav_worker] ⚠️ All click methods failed. Nuclear fallback...", flush=True)
+            nuclear_result = page.evaluate("""() => {
+                const d = document.getElementById('divLista_5');
+                if (!d) return { ok: false, reason: 'divLista_5 not found in DOM' };
+                
+                // Force visible
+                d.style.display = 'block';
+                d.style.visibility = 'visible';
+                d.style.height = 'auto';
+                d.style.overflow = 'visible';
+                d.style.opacity = '1';
+                
+                // Also remove any 'collapsed' or 'hidden' classes
+                d.classList.remove('collapsed', 'hidden', 'hide');
+                
+                // Rotate the arrow to indicate expanded state
+                const arrow = document.getElementById('arrowDown_5');
+                if (arrow) arrow.style.transform = 'rotate(0deg)';
+                
+                // Check what's inside
+                const certTable = document.getElementById('certificadosTable');
+                const hasRows = certTable ? certTable.querySelectorAll('tr').length : 0;
+                const innerHTML = d.innerHTML.substring(0, 500);
+                
+                return {
+                    ok: true,
+                    display: window.getComputedStyle(d).display,
+                    childCount: d.children.length,
+                    hasCertTable: !!certTable,
+                    certRows: hasRows,
+                    contentPreview: innerHTML,
+                };
+            }""")
+            print(f"[cav_worker] Nuclear result: {json.dumps(nuclear_result, indent=2)}", flush=True)
+            _snap(page, "6b. Nuclear fallback — divLista_5 forzado visible")
 
-        page.wait_for_timeout(3000)  # Wait for accordion animation
+            # If certTable has no rows, the content was loaded by AJAX when accordion clicked.
+            # We need to trigger that AJAX call.
+            if nuclear_result.get("ok") and nuclear_result.get("certRows", 0) == 0:
+                print("[cav_worker] ⚠️ divLista_5 is visible but EMPTY — content loaded via AJAX", flush=True)
+                # Try to find & call the AJAX loading function
+                ajax_result = page.evaluate("""() => {
+                    // Look for any XHR/fetch that loads certificates
+                    // Common patterns on registrocivil.cl:
+                    // 1. Look at jQuery.ajax calls or $.get calls
+                    // 2. Try window.cargarCertificados or similar
+                    
+                    // Search ALL functions on window for anything related
+                    const results = [];
+                    for (const key of Object.getOwnPropertyNames(window)) {
+                        try {
+                            if (typeof window[key] === 'function') {
+                                const src = window[key].toString().substring(0, 300);
+                                if (/certificado|divLista|title_|grupo/i.test(src)) {
+                                    results.push({ name: key, preview: src.substring(0, 200) });
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    
+                    // Also check for inline scripts
+                    const scripts = Array.from(document.querySelectorAll('script')).map(
+                        s => s.textContent.substring(0, 300)
+                    ).filter(s => /divLista|title_|grupo|certificado/i.test(s));
+                    
+                    return { functions: results.slice(0,10), scripts: scripts.slice(0,5) };
+                }""")
+                print(f"[cav_worker] AJAX detection: {json.dumps(ajax_result, indent=2)}", flush=True)
+
+        page.wait_for_timeout(2000)
         _snap(page, "6. Después de expandir Vehículos")
 
-        # Final verification
-        if vehiculos_expanded:
-            final_state = page.evaluate("""() => {
-                const d = document.getElementById('divLista_5');
-                if (!d) return 'NOT FOUND';
-                return window.getComputedStyle(d).display;
-            }""")
-            print(f"[cav_worker] divLista_5 final display: {final_state}", flush=True)
-            if final_state == "none":
-                print("[cav_worker] ⚠️ Accordion STILL not expanded after all attempts!", flush=True)
-                vehiculos_expanded = False
+        # Final verification — is the accordion expanded AND has content?
+        final_state = _is_vehiculos_expanded()
+        print(f"[cav_worker] Step 3 FINAL state: {json.dumps(final_state)}", flush=True)
 
-        # Nuclear fallback: force divLista_5 visible via JS
-        if not vehiculos_expanded:
-            print("[cav_worker] ⚠️ All click methods failed. Forcing divLista_5 visible via JS...", flush=True)
-            page.evaluate("""() => {
-                const d = document.getElementById('divLista_5');
-                if (d) { d.style.display = 'block'; d.style.visibility = 'visible'; d.style.height = 'auto'; }
-            }""")
-            force_state = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
-            if force_state != "none" and force_state != "NOT FOUND":
-                vehiculos_expanded = True
-                print(f"[cav_worker] ✅ JS-forced divLista_5 visible (display: {force_state})", flush=True)
-            _snap(page, "6b. Después de forzar divLista_5 visible")
-
-        if not vehiculos_expanded:
-            # Dump all titleGrupos for debugging
-            try:
-                titles_info = page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('.titleGrupos')).map(el => ({
-                        id: el.id, text: el.innerText.trim().substring(0,50)
-                    }));
-                }""")
-                print("[cav_worker] ALL .titleGrupos:", flush=True)
-                for t in titles_info:
-                    print(f"  | #{t['id']}: '{t['text']}'", flush=True)
-            except Exception:
-                pass
+        if not final_state.get("expanded"):
             _snap(page, "❌ No se pudo expandir 'Vehículos'")
-            result = {"ok": False, "error": "Could not expand 'Vehículos' accordion"}
+            result = {"ok": False, "error": "Could not expand 'Vehículos' accordion",
+                      "page_state": page_state, "final_state": final_state}
             if debug:
                 result["steps"] = steps
             return result
 
         # ── Step 4: Click checkbox for "Certificado Vehículos de anotaciones Vigentes" ──
-        # The certificate rows are in <table id="certificadosTable" class="table-hover">
-        # Each row has a checkbox and a TD with the certificate name.
-        # The CAV row TD contains: "Certificado Vehículos\nde anotaciones Vigentes <!--id:4_4_1 -->"
-        print("[cav_worker] Step 4: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
+        print("[cav_worker] Step 4: Clicking CAV certificate...", flush=True)
         page.wait_for_timeout(1000)
+
+        # First, dump what's visible in the certificate list area
+        cert_area_info = page.evaluate("""() => {
+            const d = document.getElementById('divLista_5');
+            const certTable = document.getElementById('certificadosTable');
+            // Get all visible text in the area
+            const visibleText = d ? d.innerText.trim().substring(0,500) : '';
+            // Get all inputs (checkboxes/radios) in the area
+            const inputs = d ? Array.from(d.querySelectorAll('input')).map(inp => ({
+                type: inp.type, name: inp.name, id: inp.id,
+                checked: inp.checked, value: inp.value,
+                visible: inp.offsetParent !== null,
+                parentText: inp.closest('tr') ? inp.closest('tr').innerText.trim().substring(0,80) : ''
+            })) : [];
+            // Get all TR rows in any table inside divLista_5
+            const rows = d ? Array.from(d.querySelectorAll('tr')).map(tr => ({
+                text: tr.innerText.trim().substring(0,100),
+                hasInput: !!tr.querySelector('input')
+            })) : [];
+            return { visibleText, inputs, rows, hasCertTable: !!certTable };
+        }""")
+        print(f"[cav_worker] Cert area info: {json.dumps(cert_area_info, indent=2)}", flush=True)
 
         cav_clicked = False
 
-        # First: use JS to find the TR index containing "anotaciones Vigentes",
-        # then use Playwright to click the checkbox (Playwright dispatches proper events)
+        # Strategy: find the row containing "anotaciones Vigentes" and click its checkbox
         try:
-            row_info = page.evaluate("""() => {
-                const rows = document.querySelectorAll('#certificadosTable tr, table.table-hover tr, tr');
-                for (let i = 0; i < rows.length; i++) {
-                    const txt = (rows[i].innerText || '').toLowerCase();
+            click_result = page.evaluate("""() => {
+                // Search ALL rows in the page for "anotaciones vigentes"
+                const allRows = document.querySelectorAll('tr');
+                for (const row of allRows) {
+                    const txt = (row.innerText || '').toLowerCase();
                     if (txt.includes('anotaciones vigentes') && !txt.includes('multas')) {
-                        const cb = rows[i].querySelector('input[type=checkbox], input[type=radio]');
+                        const cb = row.querySelector('input[type=checkbox], input[type=radio]');
                         if (cb) {
                             cb.scrollIntoView({block: 'center'});
-                            return { rowIndex: i, hasCheckbox: true, cbName: cb.name || '', cbId: cb.id || '' };
+                            // Click the checkbox via JS
+                            cb.click();
+                            return {
+                                method: 'js_click_checkbox',
+                                cbId: cb.id, cbName: cb.name,
+                                checked: cb.checked,
+                                rowText: txt.substring(0,80)
+                            };
                         }
-                        return { rowIndex: i, hasCheckbox: false };
+                        // No checkbox, try clicking the row/cell itself
+                        const td = row.querySelector('td');
+                        if (td) { td.click(); return { method: 'js_click_td', rowText: txt.substring(0,80) }; }
+                        row.click();
+                        return { method: 'js_click_row', rowText: txt.substring(0,80) };
                     }
                 }
                 return null;
             }""")
-            if row_info:
-                print(f"[cav_worker] Found CAV row: {row_info}", flush=True)
-                if row_info.get("hasCheckbox"):
-                    # Click the checkbox using Playwright (proper event dispatch)
-                    cb_selector = None
-                    if row_info.get("cbId"):
-                        cb_selector = f"#{row_info['cbId']}"
-                    elif row_info.get("cbName"):
-                        cb_selector = f"input[name='{row_info['cbName']}']"
-                    
-                    if cb_selector:
-                        try:
-                            cb = page.locator(cb_selector).first
-                            cb.scroll_into_view_if_needed()
-                            cb.click(force=True)
-                            cav_clicked = True
-                            print(f"[cav_worker] ✅ Playwright-clicked checkbox: {cb_selector}", flush=True)
-                        except Exception as e:
-                            print(f"[cav_worker] Checkbox click by selector failed: {e}", flush=True)
-                    
-                    # If no id/name, click by row position
-                    if not cav_clicked:
-                        try:
-                            row_idx = row_info["rowIndex"]
-                            cb = page.locator(f"tr:nth-child({row_idx + 1}) input[type=checkbox], tr:nth-child({row_idx + 1}) input[type=radio]").first
-                            cb.scroll_into_view_if_needed()
-                            cb.click(force=True)
-                            cav_clicked = True
-                            print(f"[cav_worker] ✅ Playwright-clicked checkbox at row {row_idx}", flush=True)
-                        except Exception:
-                            pass
+            if click_result:
+                cav_clicked = True
+                print(f"[cav_worker] ✅ CAV JS click: {json.dumps(click_result)}", flush=True)
+            else:
+                print("[cav_worker] JS click: no row with 'anotaciones vigentes' found", flush=True)
         except Exception as e:
-            print(f"[cav_worker] CAV row search failed: {e}", flush=True)
+            print(f"[cav_worker] JS CAV click failed: {e}", flush=True)
 
-        # Fallback: click the TD text itself using Playwright
+        # Fallback: use Playwright locators
         if not cav_clicked:
-            try:
-                el = page.locator("td:has-text('anotaciones Vigentes')").first
-                el.scroll_into_view_if_needed()
-                el.click(force=True)
-                cav_clicked = True
-                print("[cav_worker] ✅ Force-clicked TD 'anotaciones Vigentes'", flush=True)
-            except Exception:
-                pass
+            for locator_str in [
+                "td:has-text('anotaciones Vigentes')",
+                "text=anotaciones Vigentes",
+                "xpath=//td[contains(.,'anotaciones Vigentes')]",
+                "xpath=//tr[contains(.,'anotaciones Vigentes')]//input",
+            ]:
+                try:
+                    el = page.locator(locator_str).first
+                    el.scroll_into_view_if_needed()
+                    el.click(force=True)
+                    cav_clicked = True
+                    print(f"[cav_worker] ✅ Playwright CAV click: {locator_str}", flush=True)
+                    break
+                except Exception as e:
+                    print(f"[cav_worker] Playwright CAV ({locator_str}): {e}", flush=True)
 
-        # Fallback 2: click using XPath 
-        if not cav_clicked:
-            try:
-                el = page.locator("xpath=//td[contains(text(),'anotaciones Vigentes')]").first
-                el.scroll_into_view_if_needed()
-                el.click(force=True)
-                cav_clicked = True
-                print("[cav_worker] ✅ Force-clicked via XPath", flush=True)
-            except Exception:
-                pass
-
-        page.wait_for_timeout(3000)  # Wait for the plate input form to appear
-        _snap(page, "7. Después de clickear Certificado Anotaciones Vigentes")
+        page.wait_for_timeout(3000)
+        _snap(page, "7. Después de clickear CAV")
 
         if not cav_clicked:
-            try:
-                body_txt = page.inner_text("body")
-                lines = [l.strip() for l in body_txt.splitlines() if l.strip()]
-                print("[cav_worker] VISIBLE PAGE TEXT:", flush=True)
-                for l in lines[:100]:
-                    print(f"  | {l}", flush=True)
-            except Exception:
-                pass
             _snap(page, "❌ No se encontró 'Certificado Vehículos de anotaciones Vigentes'")
-            result = {"ok": False, "error": "Could not find 'Certificado Vehículos de anotaciones Vigentes'"}
+            result = {"ok": False, "error": "Could not find/click CAV certificate option",
+                      "cert_area_info": cert_area_info}
             if debug:
                 result["steps"] = steps
             return result
 
         # ── Step 5: Enter the plate number ──
-        # After clicking the checkbox, a plate input appears with hint
-        # "Ej: LLNNNN, LLLLNN o LLLNNN" (div id='idTextoEjemplPatente')
         print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
         page.wait_for_timeout(3000)
 
+        # Dump all visible inputs to find the plate field
+        inputs_dump = page.evaluate("""() => Array.from(document.querySelectorAll('input')).filter(
+            inp => inp.offsetParent !== null && inp.type !== 'hidden'
+        ).map(inp => ({
+            type: inp.type, name: inp.name, id: inp.id,
+            placeholder: inp.placeholder || '',
+            value: inp.value,
+            maxLength: inp.maxLength,
+            parentId: inp.closest('[id]') ? inp.closest('[id]').id : '',
+            nearbyText: (() => {
+                let el = inp; 
+                for (let i=0; i<3; i++) { el = el.parentElement; if (!el) break; }
+                return el ? el.innerText.trim().substring(0,100) : '';
+            })()
+        }))""")
+        print(f"[cav_worker] Visible inputs: {json.dumps(inputs_dump, indent=2)}", flush=True)
+
         plate_input = None
 
-        # Best approach: use JS to find the input near the hint div, scroll to it
+        # Strategy 1: find input near the hint text "Ej: LLNNNN"
         try:
             input_id = page.evaluate("""() => {
                 const hint = document.getElementById('idTextoEjemplPatente');
-                if (!hint) return null;
-                // Walk up and look for a text input nearby
-                let el = hint;
-                for (let i = 0; i < 8; i++) {
-                    el = el.parentElement;
-                    if (!el) break;
-                    const inputs = el.querySelectorAll('input[type=text], input:not([type])');
-                    for (const inp of inputs) {
-                        const n = (inp.name || '').toLowerCase();
-                        const id = (inp.id || '').toLowerCase();
-                        if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
+                if (!hint) {
+                    // Search for the hint text anywhere
+                    const allText = document.body.innerText;
+                    if (!allText.includes('LLNNNN')) return null;
+                }
+                // Look for a text input that's:
+                // 1. Not the captcha input
+                // 2. Currently visible
+                // 3. Empty or ready for input
+                const inputs = document.querySelectorAll('input[type=text], input:not([type])');
+                for (const inp of inputs) {
+                    if (inp.offsetParent === null) continue; // hidden
+                    const n = (inp.name || '').toLowerCase();
+                    const id = (inp.id || '').toLowerCase();
+                    if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
+                    if (n.includes('patente') || n.includes('ppu') || id.includes('patente') || id.includes('ppu')) {
                         inp.scrollIntoView({block: 'center'});
-                        inp.id = inp.id || '_plate_input_found';
+                        inp.id = inp.id || '_plate_input';
                         return inp.id;
                     }
                 }
-                // Broader search: any text input that's not the captcha
-                const allInputs = document.querySelectorAll('input[type=text], input:not([type])');
-                for (const inp of allInputs) {
+                // If no patente-named input, take the first visible text input that's not captcha
+                for (const inp of inputs) {
+                    if (inp.offsetParent === null) continue;
                     const n = (inp.name || '').toLowerCase();
                     const id = (inp.id || '').toLowerCase();
                     if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
                     inp.scrollIntoView({block: 'center'});
-                    inp.id = inp.id || '_plate_input_found';
+                    inp.id = inp.id || '_plate_input';
                     return inp.id;
                 }
                 return null;
             }""")
             if input_id:
-                page.wait_for_timeout(500)
-                el = page.query_selector(f"#{input_id}")
-                if el:
-                    plate_input = el
-                    print(f"[cav_worker] ✅ Found plate input via JS: #{input_id}", flush=True)
+                plate_input = page.locator(f"#{input_id}").first
+                print(f"[cav_worker] ✅ Found plate input: #{input_id}", flush=True)
         except Exception as e:
-            print(f"[cav_worker] JS plate input search failed: {e}", flush=True)
-
-        # Fallback: direct CSS selectors
-        if not plate_input:
-            for selector in [
-                'input[name*="patente" i]',
-                'input[name*="ppu" i]',
-                'input[id*="patente" i]',
-                'input[id*="ppu" i]',
-            ]:
-                try:
-                    el = page.query_selector(selector)
-                    if el:
-                        el.scroll_into_view_if_needed()
-                        plate_input = el
-                        print(f"[cav_worker] ✅ Found plate input via CSS: {selector}", flush=True)
-                        break
-                except Exception:
-                    continue
+            print(f"[cav_worker] Plate input search failed: {e}", flush=True)
 
         if not plate_input:
-            try:
-                inputs_info = page.evaluate("""() => Array.from(document.querySelectorAll('input')).map(el => ({
-                    type: el.type, name: el.name, id: el.id,
-                    placeholder: el.placeholder, visible: el.offsetParent !== null
-                }))""")
-                print("[cav_worker] ALL INPUTS:", flush=True)
-                for i in inputs_info:
-                    print(f"  | {i}", flush=True)
-            except Exception:
-                pass
             _snap(page, "❌ No se encontró campo para ingresar patente")
-            result = {"ok": False, "error": "Could not find plate input field after clicking CAV option"}
+            result = {"ok": False, "error": "Could not find plate input field",
+                      "visible_inputs": inputs_dump}
             if debug:
                 result["steps"] = steps
             return result
@@ -633,57 +709,67 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         plate_input.click()
         plate_input.fill("")
         plate_input.type(plate, delay=50)
-        _snap(page, f"7. Patente escrita: {plate}")
+        _snap(page, f"8. Patente escrita: {plate}")
 
-        # ── Step 5: Click "Agregar a Carro" ──
-        # From the page dump: <BUTTON id='carro_btnContinuar' class='btn_agregarCarro'>Continuar</BUTTON>
-        # There may also be a per-row "Agregar" button that appears after filling the plate
-        print("[cav_worker] Step 5: Clicking Agregar / Continuar...", flush=True)
-        page.wait_for_timeout(500)
+        # ── Step 6: Click "Agregar a Carro" / Continuar ──
+        print("[cav_worker] Step 6: Clicking Agregar / Continuar...", flush=True)
+        page.wait_for_timeout(1000)
 
         agregar_clicked = False
 
-        # Try the row-level Agregar button first (appears next to the plate input)
+        # Try various selectors
         for selector in [
+            '#carro_btnContinuar',
             '.btn_agregarCarro',
             'button.btn_agregarCarro',
             'input.btn_agregarCarro',
-            '#carro_btnContinuar',
             'input[type="submit"]',
             'button[type="submit"]',
             'input[value*="Agregar" i]',
             'input[value*="Continuar" i]',
-            'button[value*="Agregar" i]',
+            'button:has-text("Agregar")',
+            'button:has-text("Continuar")',
+            'button:has-text("Consultar")',
+            'button:has-text("Buscar")',
         ]:
             try:
-                el = page.query_selector(selector)
-                if el and el.is_visible():
+                el = page.locator(selector).first
+                if el.count() > 0 and el.is_visible():
                     el.click()
                     agregar_clicked = True
-                    print(f"[cav_worker] Clicked Agregar via selector: {selector}", flush=True)
+                    print(f"[cav_worker] ✅ Clicked: {selector}", flush=True)
                     break
             except Exception:
                 continue
 
-        # Fallback: click by text
+        # Fallback: JS click on any visible button/input with relevant text
         if not agregar_clicked:
-            for text_match in ["Agregar", "Continuar", "Consultar", "Buscar"]:
-                try:
-                    el = page.locator(f"text={text_match}").first
-                    if el.is_visible():
-                        el.click()
-                        agregar_clicked = True
-                        print(f"[cav_worker] Clicked Agregar via text: '{text_match}'", flush=True)
-                        break
-                except Exception:
-                    continue
+            try:
+                js_click = page.evaluate("""() => {
+                    const btns = document.querySelectorAll('button, input[type=submit], input[type=button], .btn_agregarCarro');
+                    for (const btn of btns) {
+                        if (btn.offsetParent === null) continue;
+                        const txt = (btn.innerText || btn.value || '').toLowerCase();
+                        if (/agregar|continuar|consultar|buscar/.test(txt)) {
+                            btn.scrollIntoView({block: 'center'});
+                            btn.click();
+                            return { clicked: true, text: txt.substring(0,30), id: btn.id };
+                        }
+                    }
+                    return { clicked: false };
+                }""")
+                if js_click.get("clicked"):
+                    agregar_clicked = True
+                    print(f"[cav_worker] ✅ JS clicked button: {js_click}", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] JS button click failed: {e}", flush=True)
 
         page.wait_for_timeout(3000)
         try:
             page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
             pass
-        _snap(page, "8. Después de Agregar a Carro")
+        _snap(page, "9. Después de Agregar a Carro")
 
         # ── Step 7: Capture the result page ──
         print("[cav_worker] Step 7: Reading result page...", flush=True)
