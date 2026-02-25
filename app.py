@@ -5324,19 +5324,30 @@ def obtener_cav(cid):
         resp = req_lib.post(
             f"{CAV_WORKER_URL.rstrip('/')}/cav",
             json={"plate": plate, "secret": CAV_WORKER_SECRET},
-            timeout=90,  # CAPTCHA solving can take a while
+            timeout=180,  # CAPTCHA solving + navigation can take a while
         )
         data = resp.json()
 
         if not data.get("ok"):
             error_msg = data.get("error", "Error desconocido del robot CAV")
-            print(f"[cav] Worker returned error: {error_msg}", flush=True)
+            action = data.get("action", "manual")
+            print(f"[cav] Worker returned error: {error_msg} (action={action})", flush=True)
+
+            if action == "payment_required":
+                return jsonify({
+                    "ok": False,
+                    "action": "payment_required",
+                    "message": data.get("message", f"El CAV requiere pago en registrocivil.cl"),
+                    "price": data.get("price", "desconocido"),
+                    "url": "https://www.registrocivil.cl/OficinaInternet/"
+                })
+
             # Fall back to manual
             return jsonify({
                 "ok": False,
                 "action": "manual",
                 "message": f"Robot CAV falló: {error_msg}. Se abrirá la página manualmente.",
-                "url": f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
+                "url": "https://www.registrocivil.cl/OficinaInternet/"
             })
 
         # ── Success! Save the CAV data to DB ──

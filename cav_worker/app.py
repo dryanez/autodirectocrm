@@ -91,8 +91,9 @@ def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
 
 def _fetch_cav(plate: str, debug: bool = False) -> dict:
     """
-    Use Playwright to navigate registrocivil.cl, solve the CAPTCHA,
-    and scrape the CAV data for the given plate.
+    Use Playwright to navigate registrocivil.cl, solve the entry CAPTCHA,
+    then navigate: Vehículos → Certificado de Anotaciones Vigentes →
+    enter plate → Agregar a carro → scrape whatever data is available.
     When debug=True, captures screenshots at every step.
     """
     steps = []  # list of {"step": str, "screenshot": base64_str}
@@ -102,7 +103,7 @@ def _fetch_cav(plate: str, debug: bool = False) -> dict:
         if not debug:
             return
         try:
-            shot = page.screenshot(type="jpeg", quality=50)
+            shot = page.screenshot(type="jpeg", quality=50, full_page=True)
             steps.append({
                 "step": step_name,
                 "screenshot": base64.b64encode(shot).decode(),
@@ -127,44 +128,35 @@ def _fetch_cav(plate: str, debug: bool = False) -> dict:
     page = context.new_page()
 
     try:
-        url = f"https://www.registrocivil.cl/OficinaInternet/servlet/DetalleCarro?carro={plate}"
-        print(f"[cav_worker] Navigating to {url}", flush=True)
+        # ── Step 1: Go to the main page ──
+        url = "https://www.registrocivil.cl/OficinaInternet/"
+        print(f"[cav_worker] Step 1: Navigating to {url}", flush=True)
         page.goto(url, timeout=60000, wait_until="domcontentloaded")
-
-        # Wait for the page to fully load
         page.wait_for_timeout(3000)
-        _snap(page, "1. Página cargada")
+        _snap(page, "1. Página principal cargada")
 
+        # ── Step 2: Solve the entry CAPTCHA ──
         for attempt in range(MAX_RETRIES):
             print(f"[cav_worker] CAPTCHA attempt {attempt + 1}/{MAX_RETRIES}", flush=True)
-
-            # Check if we already got through (no CAPTCHA)
             body_text = page.content()
-            if _has_cav_data(body_text):
-                print("[cav_worker] No CAPTCHA — direct access!", flush=True)
-                _snap(page, "✅ Acceso directo — sin CAPTCHA")
-                result = _parse_cav_page(body_text, plate)
-                if debug:
-                    result["steps"] = steps
-                return result
 
-            # Look for the CAPTCHA image
+            # Check if we're already past the CAPTCHA (no challenge on page)
+            if "código de la imagen" not in body_text.lower() and "resolver el desafío" not in body_text.lower():
+                print("[cav_worker] No CAPTCHA gate — already inside!", flush=True)
+                _snap(page, "✅ Sin CAPTCHA — acceso directo")
+                break
+
+            # Find the CAPTCHA image
             captcha_img = None
-
-            # Try to find the captcha image element
-            # The page shows an image followed by a text input
             img_elements = page.query_selector_all("img")
             for img in img_elements:
                 src = img.get_attribute("src") or ""
                 alt = (img.get_attribute("alt") or "").lower()
-                # Skip known non-captcha images (logos, icons, red dot)
                 if "logo" in src.lower() or "icon" in src.lower():
                     continue
                 if "red dot" in alt or "Red dot" in (img.get_attribute("alt") or ""):
                     continue
-                # The CAPTCHA image is typically inline base64 or a servlet URL
                 if src.startswith("data:image") or "servlet" in src.lower() or "captcha" in src.lower():
-                    # Screenshot this specific element
                     try:
                         captcha_bytes = img.screenshot()
                         if captcha_bytes and len(captcha_bytes) > 500:
@@ -174,9 +166,8 @@ def _fetch_cav(plate: str, debug: bool = False) -> dict:
                     except Exception:
                         continue
 
+            # Fallback: find by size
             if not captcha_img:
-                # Fallback: try to find by taking a screenshot of a specific region
-                # or look for any substantial image
                 for img in img_elements:
                     try:
                         box = img.bounding_box()
@@ -184,121 +175,308 @@ def _fetch_cav(plate: str, debug: bool = False) -> dict:
                             captcha_bytes = img.screenshot()
                             if captcha_bytes and len(captcha_bytes) > 500:
                                 captcha_img = captcha_bytes
-                                print(f"[cav_worker] Found CAPTCHA by size ({box['width']}x{box['height']})", flush=True)
                                 break
                     except Exception:
                         continue
 
             if not captcha_img:
-                print("[cav_worker] Could not find CAPTCHA image on page", flush=True)
-                # Take full page screenshot for debugging
-                debug_shot = page.screenshot()
-                result = {
-                    "ok": False,
-                    "error": "Could not locate CAPTCHA image on page",
-                    "debug_screenshot": base64.b64encode(debug_shot).decode() if debug_shot else None,
-                }
+                _snap(page, "❌ No se encontró imagen CAPTCHA")
+                result = {"ok": False, "error": "Could not locate CAPTCHA image on page"}
                 if debug:
-                    _snap(page, "❌ No se encontró CAPTCHA")
                     result["steps"] = steps
                 return result
 
-            # Solve the CAPTCHA with 2captcha (human solvers, ~15-30s)
             _snap(page, f"2. CAPTCHA encontrado (intento {attempt+1})")
             captcha_text = _solve_captcha_with_2captcha(captcha_img)
-
             if not captcha_text:
-                print("[cav_worker] Claude returned empty CAPTCHA text", flush=True)
                 continue
 
-            # Find the text input and type the CAPTCHA answer
+            # Type the CAPTCHA answer
             input_el = page.query_selector('input[type="text"]')
             if not input_el:
-                # Try other selectors
                 input_el = page.query_selector('input[name*="captcha"]') or \
                            page.query_selector('input[name*="codigo"]') or \
                            page.query_selector('input[name*="code"]') or \
                            page.query_selector('input:not([type="hidden"]):not([type="submit"])')
-
             if not input_el:
-                return {"ok": False, "error": "Could not find CAPTCHA input field"}
+                result = {"ok": False, "error": "Could not find CAPTCHA input field"}
+                if debug:
+                    result["steps"] = steps
+                return result
 
-            # Clear and type
             input_el.click()
             input_el.fill("")
             input_el.type(captcha_text, delay=50)
             _snap(page, f"3. CAPTCHA escrito: '{captcha_text}'")
 
-            # Find and click the submit button
+            # Submit
             submit_btn = page.query_selector('input[type="submit"]') or \
                          page.query_selector('button[type="submit"]') or \
-                         page.query_selector('input[value*="submit"]') or \
                          page.query_selector('input[value*="Enviar"]') or \
                          page.query_selector('input[value*="Consultar"]')
-
             if not submit_btn:
-                # Try clicking any button-like element
                 submit_btn = page.query_selector('button') or \
                              page.query_selector('input[type="button"]')
-
             if submit_btn:
                 submit_btn.click()
             else:
-                # Press Enter as fallback
                 input_el.press("Enter")
 
-            # Wait for response
             page.wait_for_timeout(3000)
             try:
                 page.wait_for_load_state("networkidle", timeout=10000)
             except Exception:
                 pass
-            _snap(page, f"4. Después de enviar CAPTCHA '{captcha_text}'")
+            _snap(page, f"4. Después de enviar CAPTCHA")
 
-            # Check if we got through
+            # Check if CAPTCHA was wrong (still on challenge page)
             result_body = page.content()
-
-            # Check if CAPTCHA was wrong (page reloads with CAPTCHA again)
             if "código de la imagen" in result_body.lower() or "resolver el desafío" in result_body.lower():
-                print(f"[cav_worker] CAPTCHA attempt {attempt + 1} failed — wrong code", flush=True)
+                print(f"[cav_worker] CAPTCHA attempt {attempt + 1} failed", flush=True)
                 _snap(page, f"🔄 Intento {attempt + 1} falló — CAPTCHA incorrecto")
-                # Reload page for fresh CAPTCHA
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
                 page.wait_for_timeout(3000)
                 continue
 
-            # Check if we got CAV data
-            if _has_cav_data(result_body):
-                print("[cav_worker] CAPTCHA solved! Parsing CAV data...", flush=True)
-                _snap(page, "✅ CAV obtenido!")
-                result = _parse_cav_page(result_body, plate)
-                if debug:
-                    result["steps"] = steps
-                return result
+            # We got through!
+            print("[cav_worker] CAPTCHA solved! Inside the site.", flush=True)
+            _snap(page, "✅ CAPTCHA resuelto — dentro del sitio")
+            break
+        else:
+            # All CAPTCHA attempts failed
+            _snap(page, f"❌ CAPTCHA incorrecto tras {MAX_RETRIES} intentos")
+            fail_result = {"ok": False, "error": f"Could not solve CAPTCHA after {MAX_RETRIES} attempts"}
+            if debug:
+                fail_result["steps"] = steps
+            return fail_result
 
-            # Unknown state — maybe partial load
-            print(f"[cav_worker] Attempt {attempt + 1}: unclear response, retrying...", flush=True)
-            _snap(page, f"⚠️ Intento {attempt + 1} — respuesta no reconocida")
-            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3000)
+        # ── Step 3: Click on "Vehículos" to expand the section ──
+        print("[cav_worker] Step 3: Clicking Vehículos...", flush=True)
+        page.wait_for_timeout(2000)
 
-        # All retries exhausted
-        _snap(page, f"❌ CAPTCHA incorrecto tras {MAX_RETRIES} intentos")
-        fail_result = {
+        # Try to find and click "Vehículos" link/accordion
+        vehiculos_clicked = False
+        for selector in [
+            'text=Vehículos',
+            'a:has-text("Vehículos")',
+            'span:has-text("Vehículos")',
+            'div:has-text("Vehículos")',
+            ':text("Vehículos")',
+        ]:
+            try:
+                el = page.query_selector(selector)
+                if el and el.is_visible():
+                    el.click()
+                    vehiculos_clicked = True
+                    print(f"[cav_worker] Clicked Vehículos with selector: {selector}", flush=True)
+                    break
+            except Exception:
+                continue
+
+        if not vehiculos_clicked:
+            # Try with locator
+            try:
+                page.locator("text=Vehículos").first.click()
+                vehiculos_clicked = True
+            except Exception:
+                pass
+
+        page.wait_for_timeout(2000)
+        _snap(page, "5. Después de clickear Vehículos")
+
+        if not vehiculos_clicked:
+            _snap(page, "❌ No se pudo clickear 'Vehículos'")
+            result = {"ok": False, "error": "Could not find/click 'Vehículos' menu item"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # ── Step 4: Click "Certificado Vehículos de anotaciones Vigentes" ──
+        print("[cav_worker] Step 4: Clicking Certificado de Anotaciones Vigentes...", flush=True)
+        page.wait_for_timeout(1000)
+
+        cav_clicked = False
+        for text_match in [
+            "anotaciones Vigentes",
+            "Anotaciones Vigentes",
+            "anotaciones vigentes",
+            "Certificado Vehículos",
+        ]:
+            try:
+                el = page.locator(f"text={text_match}").first
+                if el.is_visible():
+                    el.click()
+                    cav_clicked = True
+                    print(f"[cav_worker] Clicked CAV option: '{text_match}'", flush=True)
+                    break
+            except Exception:
+                continue
+
+        page.wait_for_timeout(2000)
+        _snap(page, "6. Después de clickear Certificado Anotaciones")
+
+        if not cav_clicked:
+            _snap(page, "❌ No se encontró opción 'Certificado de Anotaciones Vigentes'")
+            result = {"ok": False, "error": "Could not find 'Certificado de Anotaciones Vigentes' option"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # ── Step 5: Enter the plate number ──
+        print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
+        page.wait_for_timeout(1000)
+
+        # Look for the plate input field
+        plate_input = None
+        for selector in [
+            'input[name*="patente"]',
+            'input[name*="placa"]',
+            'input[name*="ppu"]',
+            'input[name*="PPU"]',
+            'input[name*="vehiculo"]',
+            'input[placeholder*="patente" i]',
+            'input[placeholder*="placa" i]',
+            'input[type="text"]',
+        ]:
+            try:
+                el = page.query_selector(selector)
+                if el and el.is_visible():
+                    plate_input = el
+                    print(f"[cav_worker] Found plate input: {selector}", flush=True)
+                    break
+            except Exception:
+                continue
+
+        if not plate_input:
+            _snap(page, "❌ No se encontró campo para ingresar patente")
+            result = {"ok": False, "error": "Could not find plate input field"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        plate_input.click()
+        plate_input.fill("")
+        plate_input.type(plate, delay=50)
+        _snap(page, f"7. Patente escrita: {plate}")
+
+        # ── Step 6: Click "Agregar a Carro" or similar button ──
+        print("[cav_worker] Step 6: Clicking Agregar a Carro...", flush=True)
+        page.wait_for_timeout(500)
+
+        agregar_clicked = False
+        for text_match in [
+            "Agregar",
+            "agregar",
+            "Agregar a Carro",
+            "Agregar al Carro",
+            "Consultar",
+            "Buscar",
+        ]:
+            try:
+                el = page.locator(f"text={text_match}").first
+                if el.is_visible():
+                    el.click()
+                    agregar_clicked = True
+                    print(f"[cav_worker] Clicked: '{text_match}'", flush=True)
+                    break
+            except Exception:
+                continue
+
+        # Also try submit buttons
+        if not agregar_clicked:
+            for selector in [
+                'input[type="submit"]',
+                'button[type="submit"]',
+                'input[value*="Agregar"]',
+                'input[value*="Consultar"]',
+            ]:
+                try:
+                    el = page.query_selector(selector)
+                    if el and el.is_visible():
+                        el.click()
+                        agregar_clicked = True
+                        break
+                except Exception:
+                    continue
+
+        page.wait_for_timeout(3000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
+        _snap(page, "8. Después de Agregar a Carro")
+
+        # ── Step 7: Capture the result page ──
+        print("[cav_worker] Step 7: Reading result page...", flush=True)
+        result_html = page.content()
+        _snap(page, "9. Página de resultado final")
+
+        # Check if we got any vehicle/CAV data
+        if _has_cav_data(result_html):
+            print("[cav_worker] Found CAV data on page!", flush=True)
+            _snap(page, "✅ Datos CAV encontrados")
+            result = _parse_cav_page(result_html, plate)
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Check if it's a payment/cart page (common for registrocivil.cl)
+        html_lower = result_html.lower()
+        is_cart = "carro de certificados" in html_lower or "total $" in html_lower or "carro está vacío" in html_lower
+        is_payment = "pagar" in html_lower or "webpay" in html_lower or "tarjeta" in html_lower
+
+        if is_cart or is_payment:
+            print("[cav_worker] Hit the payment/cart page — CAV requires payment", flush=True)
+            _snap(page, "💰 Página de pago — CAV es un certificado pagado")
+
+            # Extract whatever info we can from the cart page
+            text = re.sub(r'<[^>]+>', ' ', result_html)
+            text = re.sub(r'\s+', ' ', text).strip()
+
+            # Look for price
+            price_match = re.search(r'Total\s*\$\s*([\d.,]+)', text)
+            price = price_match.group(1) if price_match else "desconocido"
+
+            result = {
+                "ok": False,
+                "error": "CAV requires payment on registrocivil.cl",
+                "action": "payment_required",
+                "message": f"El Certificado de Anotaciones Vigentes es un documento pagado (${price}). Debe obtenerse manualmente en registrocivil.cl.",
+                "price": price,
+                "page_text": text[:2000],
+            }
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Check for error messages from the site
+        if "error" in html_lower or "ha ocurrido un error" in html_lower:
+            _snap(page, "⚠️ Página de error del sitio")
+            result = {
+                "ok": False,
+                "error": "registrocivil.cl returned an error page",
+                "page_text": re.sub(r'<[^>]+>', ' ', result_html)[:2000].strip(),
+            }
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Unknown page state
+        _snap(page, "⚠️ Estado desconocido de la página")
+        result = {
             "ok": False,
-            "error": f"Could not solve CAPTCHA after {MAX_RETRIES} attempts",
-            "retries": MAX_RETRIES,
+            "error": "Unknown page state after navigation",
+            "page_text": re.sub(r'<[^>]+>', ' ', result_html)[:2000].strip(),
         }
         if debug:
-            fail_result["steps"] = steps
-        return fail_result
+            result["steps"] = steps
+        return result
 
     except Exception as e:
         print(f"[cav_worker] Error: {e}", flush=True)
         traceback.print_exc()
         err_result = {"ok": False, "error": str(e)}
         if debug:
-            # Try a last screenshot if page is still alive
             try:
                 _snap(page, f"💥 Error: {str(e)[:80]}")
             except Exception:
