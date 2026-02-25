@@ -924,7 +924,13 @@ def fetch_cav():
     print(f"{'='*60}", flush=True)
 
     start_time = time.time()
-    result = _fetch_cav(plate)
+    try:
+        result = _fetch_cav(plate)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[cav_worker] ❌ CRASH: {e}\n{tb}", flush=True)
+        result = {"ok": False, "error": f"Internal error: {str(e)}", "traceback": tb}
     elapsed = time.time() - start_time
 
     result["elapsed_seconds"] = round(elapsed, 1)
@@ -960,7 +966,13 @@ def fetch_cav_debug():
     print(f"{'='*60}", flush=True)
 
     start_time = time.time()
-    result = _fetch_cav(plate, debug=True)
+    try:
+        result = _fetch_cav(plate, debug=True)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[cav_worker] ❌ DEBUG CRASH: {e}\n{tb}", flush=True)
+        result = {"ok": False, "error": f"Internal error: {str(e)}", "traceback": tb}
     elapsed = time.time() - start_time
 
     result["elapsed_seconds"] = round(elapsed, 1)
