@@ -256,106 +256,152 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
                 fail_result["steps"] = steps
             return fail_result
 
-        # ── Step 3: Click "Certificado Vehículos de anotaciones Vigentes" ──
-        # IMPORTANT: After the CAPTCHA, the site goes directly to carro.srcei
-        # which shows ALL certificates in a flat table — there is NO "Vehículos"
-        # accordion to expand. We click the TD row directly.
-        # NOTE: The TD may be off-screen / display:none initially, so we must
-        # scroll into view and click WITHOUT checking is_visible().
-        print("[cav_worker] Step 3: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
+        # ── Step 3: Expand the "Vehículos" accordion ──
+        # The page shows collapsed accordion sections: Nacimiento, Matrimonio,
+        # Defunciones, Antecedentes, > Vehículos, Prendas, etc.
+        # We must click "Vehículos" to expand it and reveal the CAV checkbox.
+        print("[cav_worker] Step 3: Expanding 'Vehículos' accordion...", flush=True)
         page.wait_for_timeout(2000)
-        _snap(page, "5. Página post-CAPTCHA (buscando Certificado CAV)")
+        _snap(page, "5. Página post-CAPTCHA (buscando accordion Vehículos)")
+
+        vehiculos_expanded = False
+
+        # Use JS to find the accordion item with text "Vehículos" and click it
+        try:
+            clicked = page.evaluate("""() => {
+                // The accordions are typically <a>, <div>, <span>, <li> with ">" arrow
+                const all = document.querySelectorAll('*');
+                for (const el of all) {
+                    // Check direct text content (not children's text)
+                    const directText = Array.from(el.childNodes)
+                        .filter(n => n.nodeType === 3)
+                        .map(n => n.textContent.trim())
+                        .join('');
+                    const fullText = (el.innerText || el.textContent || '').trim();
+                    
+                    if ((directText === 'Vehículos' || directText === 'Vehiculos' ||
+                         fullText === 'Vehículos' || fullText === '> Vehículos' ||
+                         fullText === 'Vehiculos') && el.children.length < 5) {
+                        el.scrollIntoView({block: 'center'});
+                        el.click();
+                        return fullText;
+                    }
+                }
+                return null;
+            }""")
+            if clicked:
+                vehiculos_expanded = True
+                print(f"[cav_worker] ✅ Clicked Vehículos accordion: '{clicked}'", flush=True)
+        except Exception as e:
+            print(f"[cav_worker] JS Vehículos click failed: {e}", flush=True)
+
+        # Fallback: Playwright locator with force click
+        if not vehiculos_expanded:
+            for xpath in [
+                "//*[normalize-space(text())='Vehículos']",
+                "//*[normalize-space(.)='Vehículos']",
+                "//*[contains(text(),'Vehículos')]",
+                "//*[contains(text(),'Vehiculos')]",
+            ]:
+                try:
+                    els = page.locator(f"xpath={xpath}")
+                    for i in range(els.count()):
+                        el = els.nth(i)
+                        txt = el.inner_text().strip() if el.inner_text() else ""
+                        # Skip if it's the full certificate name (we want just "Vehículos")
+                        if len(txt) < 30:
+                            el.scroll_into_view_if_needed()
+                            el.click(force=True)
+                            vehiculos_expanded = True
+                            print(f"[cav_worker] ✅ Force-clicked Vehículos: '{txt}' via {xpath}", flush=True)
+                            break
+                except Exception:
+                    continue
+                if vehiculos_expanded:
+                    break
+
+        page.wait_for_timeout(3000)  # Wait for accordion to expand
+        _snap(page, "6. Después de expandir Vehículos")
+
+        if not vehiculos_expanded:
+            _snap(page, "❌ No se pudo expandir 'Vehículos'")
+            result = {"ok": False, "error": "Could not expand 'Vehículos' accordion"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # ── Step 4: Click checkbox for "Certificado Vehículos de anotaciones Vigentes" ──
+        # After expanding the accordion, the certificate items appear with checkboxes.
+        # We need to click the checkbox or the row for "anotaciones Vigentes".
+        print("[cav_worker] Step 4: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
+        page.wait_for_timeout(1000)
 
         cav_clicked = False
 
-        # Use JS to find, scroll into view, and click — ignore visibility
+        # Use JS: find the row with "anotaciones Vigentes" and click its checkbox
         try:
             clicked_text = page.evaluate("""() => {
-                const all = document.querySelectorAll('td, li, label, a, span, div, tr');
-                for (const el of all) {
-                    const txt = (el.innerText || el.textContent || '').toLowerCase();
+                const tds = document.querySelectorAll('td');
+                for (const td of tds) {
+                    const txt = (td.innerText || td.textContent || '').toLowerCase();
                     if (txt.includes('anotaciones vigentes') && !txt.includes('multas')) {
-                        el.scrollIntoView({block: 'center'});
-                        el.click();
-                        return (el.innerText || el.textContent || 'clicked').trim().substring(0, 80);
+                        // Found the TD — look for checkbox in same row
+                        const tr = td.closest('tr');
+                        if (tr) {
+                            const cb = tr.querySelector('input[type=checkbox], input[type=radio]');
+                            if (cb) {
+                                cb.scrollIntoView({block: 'center'});
+                                cb.click();
+                                return 'checkbox:' + td.innerText.trim().substring(0, 60);
+                            }
+                        }
+                        // No checkbox, click the TD itself
+                        td.scrollIntoView({block: 'center'});
+                        td.click();
+                        return 'td:' + td.innerText.trim().substring(0, 60);
                     }
                 }
                 return null;
             }""")
             if clicked_text:
                 cav_clicked = True
-                print(f"[cav_worker] ✅ Clicked CAV via JS scrollIntoView+click: '{clicked_text}'", flush=True)
+                print(f"[cav_worker] ✅ Clicked CAV: '{clicked_text}'", flush=True)
         except Exception as e:
-            print(f"[cav_worker] JS click attempt 1 failed: {e}", flush=True)
+            print(f"[cav_worker] JS CAV click failed: {e}", flush=True)
 
-        # Fallback: try clicking the TR parent of the TD (sometimes the row is clickable)
+        # Fallback: try text-based locator with force
         if not cav_clicked:
             try:
-                clicked_text = page.evaluate("""() => {
-                    const tds = document.querySelectorAll('td');
-                    for (const td of tds) {
-                        const txt = (td.innerText || td.textContent || '').toLowerCase();
-                        if (txt.includes('anotaciones vigentes')) {
-                            const tr = td.closest('tr');
-                            const target = tr || td;
-                            target.scrollIntoView({block: 'center'});
-                            // Try clicking a checkbox or radio in the same row first
-                            const cb = target.querySelector('input[type=checkbox], input[type=radio]');
-                            if (cb) { cb.click(); return 'checkbox:' + txt.substring(0,60); }
-                            target.click();
-                            return 'row:' + txt.substring(0,60);
-                        }
-                    }
-                    return null;
-                }""")
-                if clicked_text:
-                    cav_clicked = True
-                    print(f"[cav_worker] ✅ Clicked CAV row/checkbox: '{clicked_text}'", flush=True)
-            except Exception as e:
-                print(f"[cav_worker] JS click attempt 2 failed: {e}", flush=True)
+                el = page.locator("text=anotaciones Vigentes").first
+                el.scroll_into_view_if_needed()
+                el.click(force=True)
+                cav_clicked = True
+                print("[cav_worker] ✅ Force-clicked 'anotaciones Vigentes' via locator", flush=True)
+            except Exception:
+                pass
 
-        # Last fallback: Playwright force click (ignores actionability checks)
-        if not cav_clicked:
-            for xpath in [
-                "//td[contains(text(),'anotaciones Vigentes')]",
-                "//td[contains(text(),'anotaciones vigentes')]",
-                "//td[contains(text(),'Certificado Vehículos')]",
-                "//*[contains(text(),'anotaciones Vigentes')]",
-            ]:
-                try:
-                    el = page.locator(f"xpath={xpath}").first
-                    if el.count() > 0:
-                        el.scroll_into_view_if_needed()
-                        el.click(force=True)  # force=True skips visibility check
-                        cav_clicked = True
-                        print(f"[cav_worker] ✅ Force-clicked CAV via XPath: {xpath}", flush=True)
-                        break
-                except Exception as exc:
-                    print(f"[cav_worker] XPath force click failed ({xpath}): {exc}", flush=True)
-                    continue
-
-        page.wait_for_timeout(2000)
-        _snap(page, "6. Después de clickear Certificado Anotaciones")
+        page.wait_for_timeout(3000)  # Wait for the plate input form to appear
+        _snap(page, "7. Después de clickear Certificado Anotaciones Vigentes")
 
         if not cav_clicked:
             try:
                 body_txt = page.inner_text("body")
                 lines = [l.strip() for l in body_txt.splitlines() if l.strip()]
-                print("[cav_worker] FULL PAGE TEXT:", flush=True)
+                print("[cav_worker] VISIBLE PAGE TEXT:", flush=True)
                 for l in lines[:100]:
                     print(f"  | {l}", flush=True)
             except Exception:
                 pass
             _snap(page, "❌ No se encontró 'Certificado Vehículos de anotaciones Vigentes'")
-            result = {"ok": False, "error": "Could not find 'Certificado Vehículos de anotaciones Vigentes' in table"}
+            result = {"ok": False, "error": "Could not find 'Certificado Vehículos de anotaciones Vigentes'"}
             if debug:
                 result["steps"] = steps
             return result
 
-        # ── Step 4: Enter the plate number ──
-        # After clicking the TD, a plate input appears near id='idTextoEjemplPatente'
-        # NOTE: The input might also be "hidden" (off-screen), so use JS to find it
-        print(f"[cav_worker] Step 4: Entering plate {plate}...", flush=True)
+        # ── Step 5: Enter the plate number ──
+        # After clicking the checkbox, a plate input appears with hint
+        # "Ej: LLNNNN, LLLLNN o LLLNNN" (div id='idTextoEjemplPatente')
+        print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
         page.wait_for_timeout(3000)
 
         plate_input = None
