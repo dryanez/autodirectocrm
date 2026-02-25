@@ -5444,6 +5444,51 @@ def obtener_cav_debug(cid):
         return jsonify({"ok": False, "error": str(e), "steps": []}), 500
 
 
+@app.route("/api/consignaciones/<int:cid>/cav-stream", methods=["GET"])
+def obtener_cav_stream(cid):
+    """
+    SSE proxy — streams real-time screenshots from the CAV worker.
+    The frontend opens an EventSource to this URL and receives
+    step-by-step screenshots as the robot navigates.
+    """
+    from flask import Response
+    import requests as req_lib
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        def err():
+            yield f"data: {json.dumps({'error': 'Consignación no encontrada', 'done': True})}\n\n"
+        return Response(err(), mimetype="text/event-stream")
+
+    c = row_to_dict(c)
+    plate = (c.get("plate") or "").replace("-", "").replace(" ", "").upper()
+    if not plate:
+        def err():
+            yield f"data: {json.dumps({'error': 'No hay patente', 'done': True})}\n\n"
+        return Response(err(), mimetype="text/event-stream")
+
+    if not CAV_WORKER_URL:
+        def err():
+            yield f"data: {json.dumps({'error': 'CAV_WORKER_URL not configured', 'done': True})}\n\n"
+        return Response(err(), mimetype="text/event-stream")
+
+    def proxy_stream():
+        try:
+            print(f"[cav-stream] 📡 Streaming CAV debug for plate {plate}...", flush=True)
+            url = f"{CAV_WORKER_URL.rstrip('/')}/cav-stream?plate={plate}&secret={CAV_WORKER_SECRET}"
+            resp = req_lib.get(url, stream=True, timeout=300)
+            for line in resp.iter_lines():
+                if line:
+                    decoded = line.decode("utf-8")
+                    yield decoded + "\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return Response(proxy_stream(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.route("/api/consignaciones/<int:cid>/publicar-chileautos", methods=["POST"])
 def publicar_en_chileautos(cid):
     """Publish a listing to ChileAutos via their Global Inventory API."""

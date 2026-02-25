@@ -5167,21 +5167,48 @@
                     this.cavDebugLoading = true;
                     this.cavDebugModal = true;
 
-                    try {
-                        const res = await this.authFetch(`/api/consignaciones/${car.id}/cav-debug`, { method: 'POST' });
-                        const data = await res.json();
+                    // Use SSE (Server-Sent Events) for real-time streaming
+                    const token = localStorage.getItem('ad_token') || '';
+                    const url = `/api/consignaciones/${car.id}/cav-stream`;
+                    const evtSource = new EventSource(url);
 
-                        this.cavDebugSteps = data.steps || [];
-                        this.cavDebugElapsed = data.elapsed_seconds || null;
+                    evtSource.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
 
-                        if (!data.ok) {
-                            this.cavDebugError = data.error || 'Error desconocido';
+                            if (data.done) {
+                                // Final message — robot finished
+                                this.cavDebugLoading = false;
+                                this.cavDebugElapsed = data.elapsed_seconds || null;
+                                if (data.error) {
+                                    this.cavDebugError = data.error;
+                                }
+                                evtSource.close();
+                                return;
+                            }
+
+                            // Live step — append screenshot to modal
+                            if (data.step) {
+                                this.cavDebugSteps.push(data);
+                                // Auto-scroll to bottom of modal
+                                this.$nextTick(() => {
+                                    const container = document.querySelector('#cav-debug-steps');
+                                    if (container) container.scrollTop = container.scrollHeight;
+                                });
+                            }
+                        } catch (e) {
+                            console.error('SSE parse error:', e);
                         }
-                    } catch (e) {
-                        this.cavDebugError = 'Error de conexión: ' + e.message;
-                    } finally {
+                    };
+
+                    evtSource.onerror = (err) => {
+                        console.error('SSE error:', err);
+                        this.cavDebugError = this.cavDebugSteps.length === 0
+                            ? 'Error de conexión con el robot'
+                            : '';
                         this.cavDebugLoading = false;
-                    }
+                        evtSource.close();
+                    };
                 },
 
                 async openComprador(id) {
@@ -6161,52 +6188,65 @@
             </div>
         </div>
     </div>
-    <!-- ═══════ CAV Debug Modal ═══════ -->
+    <!-- ═══════ CAV Debug Modal — Real-Time Robot Vision ═══════ -->
     <div x-show="cavDebugModal" x-cloak
          class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
          @keydown.escape.window="cavDebugModal = false">
-        <div class="bg-slate-900 border border-slate-600 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl mx-4" @click.away="cavDebugModal = false">
+        <div class="bg-slate-900 border border-slate-600 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl mx-4" @click.away="cavDebugModal = false">
             <!-- Header -->
-            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700 sticky top-0 bg-slate-900 z-10">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700 shrink-0">
                 <div>
                     <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="ph ph-magnifying-glass text-yellow-400"></i>
-                        CAV Debug — Robot Vision
+                        <i class="ph text-yellow-400" :class="cavDebugLoading ? 'ph-broadcast animate-pulse' : 'ph-magnifying-glass'"></i>
+                        <span x-text="cavDebugLoading ? 'Robot en vivo 📡' : 'CAV Debug — Robot Vision'"></span>
                     </h3>
-                    <p class="text-xs text-slate-400 mt-0.5" x-text="'Patente: ' + (cavDebugPlate || '—') + (cavDebugElapsed ? '  •  ' + cavDebugElapsed + 's' : '')"></p>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        <span x-text="'Patente: ' + (cavDebugPlate || '—')"></span>
+                        <span x-show="cavDebugElapsed" x-text="'  •  ' + cavDebugElapsed + 's'"></span>
+                        <span x-show="cavDebugLoading" class="text-yellow-400 ml-2">● EN VIVO</span>
+                    </p>
                 </div>
                 <button @click="cavDebugModal = false" class="text-slate-400 hover:text-white text-xl"><i class="ph ph-x"></i></button>
             </div>
             <!-- Error -->
-            <div x-show="cavDebugError" class="mx-5 mt-4 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3">
+            <div x-show="cavDebugError" class="mx-5 mt-4 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3 shrink-0">
                 <p class="text-red-400 text-sm font-medium" x-text="cavDebugError"></p>
             </div>
-            <!-- Steps -->
-            <div class="p-5 space-y-4">
+            <!-- Steps (scrollable) -->
+            <div id="cav-debug-steps" class="p-5 space-y-4 overflow-y-auto flex-1">
                 <template x-if="cavDebugSteps.length === 0 && !cavDebugLoading && !cavDebugError">
                     <p class="text-slate-500 text-sm text-center py-8">Sin pasos registrados.</p>
                 </template>
                 <template x-for="(step, idx) in cavDebugSteps" :key="idx">
-                    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden animate-fadeIn">
                         <div class="flex items-center justify-between px-4 py-2 bg-slate-800/80">
                             <span class="text-sm font-semibold text-white" x-text="step.step"></span>
                             <div class="flex items-center gap-3 text-[10px] text-slate-500">
                                 <span x-text="step.time ? step.time + 's' : ''"></span>
-                                <span x-text="step.url ? new URL(step.url).hostname : ''" class="truncate max-w-[200px]"></span>
+                                <span x-text="step.url ? (() => { try { return new URL(step.url).hostname; } catch(e) { return ''; } })() : ''" class="truncate max-w-[200px]"></span>
                             </div>
                         </div>
-                        <img :src="'data:image/jpeg;base64,' + step.screenshot" class="w-full" loading="lazy"
-                             :alt="step.step" style="image-rendering: auto;">
+                        <template x-if="step.screenshot">
+                            <img :src="'data:image/jpeg;base64,' + step.screenshot" class="w-full" loading="lazy"
+                                 :alt="step.step" style="image-rendering: auto;">
+                        </template>
                     </div>
                 </template>
-                <!-- Loading indicator -->
-                <div x-show="cavDebugLoading" class="flex flex-col items-center py-8 gap-3">
-                    <i class="ph ph-spinner animate-spin text-3xl text-yellow-400"></i>
-                    <p class="text-yellow-300 text-sm">Robot navegando… esto puede tomar 30-60 segundos</p>
+                <!-- Loading indicator (always at bottom while streaming) -->
+                <div x-show="cavDebugLoading" class="flex items-center gap-3 py-4 px-4 bg-yellow-900/20 border border-yellow-700/30 rounded-xl">
+                    <i class="ph ph-spinner animate-spin text-2xl text-yellow-400"></i>
+                    <div>
+                        <p class="text-yellow-300 text-sm font-medium">Robot navegando…</p>
+                        <p class="text-yellow-600 text-xs">Los screenshots aparecen en tiempo real</p>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+    <style>
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+    </style>
 
 </body>
 </html>

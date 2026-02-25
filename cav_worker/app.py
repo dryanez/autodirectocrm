@@ -20,11 +20,12 @@
 
 import os
 import base64
+import json
 import re
 import time
 import traceback
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 
 app = Flask(__name__)
 
@@ -89,29 +90,34 @@ def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
             pass
 
 
-def _fetch_cav(plate: str, debug: bool = False) -> dict:
+def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
     """
     Use Playwright to navigate registrocivil.cl, solve the entry CAPTCHA,
     then navigate: Vehículos → Certificado de Anotaciones Vigentes →
     enter plate → Agregar a carro → scrape whatever data is available.
     When debug=True, captures screenshots at every step.
+    on_step(data_dict) is called for each step in real-time (SSE streaming).
     """
     steps = []  # list of {"step": str, "screenshot": base64_str}
 
     def _snap(page, step_name):
-        """Capture a screenshot for debug mode."""
-        if not debug:
+        """Capture a screenshot for debug/stream mode."""
+        if not debug and not on_step:
             return
         try:
             shot = page.screenshot(type="jpeg", quality=50, full_page=True)
-            steps.append({
+            step_data = {
                 "step": step_name,
                 "screenshot": base64.b64encode(shot).decode(),
                 "time": round(time.time() - _start, 1),
                 "url": page.url,
-            })
+            }
         except Exception:
-            steps.append({"step": step_name, "screenshot": None, "time": round(time.time() - _start, 1)})
+            step_data = {"step": step_name, "screenshot": None, "time": round(time.time() - _start, 1)}
+        if debug:
+            steps.append(step_data)
+        if on_step:
+            on_step(step_data)
 
     _start = time.time()
     plate = plate.replace("-", "").replace(" ", "").upper()
@@ -691,7 +697,66 @@ def fetch_cav_debug():
     return jsonify(result), status_code
 
 
-if __name__ == "__main__":
+@app.route("/cav-stream", methods=["GET"])
+def fetch_cav_stream():
+    """
+    SSE (Server-Sent Events) endpoint — streams screenshots in real-time.
+    GET /cav-stream?plate=ABCD12&secret=xxx
+    Each event: data: {"step": "...", "screenshot": "base64...", "time": 1.2, "url": "..."}
+    Final event: data: {"done": true, "result": {...}}
+    """
+    plate = (request.args.get("plate") or "").strip().upper().replace("-", "").replace(" ", "")
+    secret = request.args.get("secret", "")
+
+    if secret != CAV_SECRET:
+        def error_stream():
+            yield f"data: {json.dumps({'error': 'Invalid secret', 'done': True})}\n\n"
+        return Response(error_stream(), mimetype="text/event-stream")
+
+    if not plate or len(plate) < 4:
+        def error_stream():
+            yield f"data: {json.dumps({'error': 'Invalid plate', 'done': True})}\n\n"
+        return Response(error_stream(), mimetype="text/event-stream")
+
+    print(f"\n{'='*60}", flush=True)
+    print(f"[cav_worker] 📡 STREAM — Fetching CAV for plate: {plate}", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    def generate():
+        import queue, threading
+
+        q = queue.Queue()
+        start_time = time.time()
+
+        def on_step(step_data):
+            q.put(("step", step_data))
+
+        def worker():
+            try:
+                result = _fetch_cav(plate, debug=False, on_step=on_step)
+                q.put(("done", result))
+            except Exception as e:
+                q.put(("done", {"ok": False, "error": str(e)}))
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                msg_type, data = q.get(timeout=300)
+                if msg_type == "step":
+                    yield f"data: {json.dumps(data)}\n\n"
+                elif msg_type == "done":
+                    data["done"] = True
+                    data["elapsed_seconds"] = round(time.time() - start_time, 1)
+                    yield f"data: {json.dumps(data, default=str)}\n\n"
+                    break
+            except Exception:
+                yield f"data: {json.dumps({'error': 'Timeout', 'done': True})}\n\n"
+                break
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
     port = int(os.environ.get("PORT", 8090))
     print(f"\n🤖 CAV Worker — Registro Civil Robot Agent")
     print(f"   http://127.0.0.1:{port}")
