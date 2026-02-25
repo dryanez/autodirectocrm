@@ -256,217 +256,158 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
                 fail_result["steps"] = steps
             return fail_result
 
-        # ── DIAGNOSTIC: Dump page structure right after CAPTCHA ──
-        # This tells us the exact text/links available on the post-CAPTCHA page
-        try:
-            page_links = page.evaluate("""() => {
-                const results = [];
-                document.querySelectorAll('a, button, input[type=submit], input[type=button]').forEach(el => {
-                    const txt = (el.innerText || el.value || el.textContent || '').trim();
-                    const href = el.href || '';
-                    const id = el.id || '';
-                    const cls = el.className || '';
-                    if (txt) results.push({tag: el.tagName, txt: txt.substring(0,80), href: href.substring(0,80), id, cls: cls.substring(0,40)});
-                });
-                return results;
-            }""")
-            print("[cav_worker] CLICKABLE ELEMENTS after CAPTCHA:", flush=True)
-            for el in page_links:
-                print(f"  | <{el['tag']}> '{el['txt']}' id='{el['id']}' href='{el['href']}'", flush=True)
-        except Exception as e:
-            print(f"[cav_worker] Could not dump links: {e}", flush=True)
-
-        # ── Step 3: Click on "Vehículos" to expand the section ──
-        print("[cav_worker] Step 3: Clicking Vehículos...", flush=True)
+        # ── Step 3: Click "Certificado Vehículos de anotaciones Vigentes" ──
+        # IMPORTANT: After the CAPTCHA, the site goes directly to carro.srcei
+        # which shows ALL certificates in a flat table — there is NO "Vehículos"
+        # accordion to expand. We click the TD row directly.
+        print("[cav_worker] Step 3: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
         page.wait_for_timeout(2000)
-
-        vehiculos_clicked = False
-
-        # Try XPath which is the most reliable for text matching
-        for xpath in [
-            "//a[normalize-space(text())='Vehículos']",
-            "//span[normalize-space(text())='Vehículos']",
-            "//li[normalize-space(text())='Vehículos']",
-            "//td[normalize-space(text())='Vehículos']",
-            "//*[normalize-space(text())='Vehículos']",
-            "//*[contains(text(),'Vehículos')]",
-            "//*[contains(text(),'Vehiculos')]",
-        ]:
-            try:
-                el = page.locator(f"xpath={xpath}").first
-                if el.count() > 0 and el.is_visible():
-                    el.click()
-                    vehiculos_clicked = True
-                    print(f"[cav_worker] Clicked Vehículos via XPath: {xpath}", flush=True)
-                    break
-            except Exception:
-                continue
-
-        page.wait_for_timeout(3000)  # Give accordion time to animate open
-        _snap(page, "5. Después de clickear Vehículos")
-
-        # Dump ALL clickable elements again to see what appeared after clicking Vehículos
-        try:
-            post_v_links = page.evaluate("""() => {
-                const results = [];
-                document.querySelectorAll('a, button, li, td, label, span').forEach(el => {
-                    const txt = (el.innerText || el.textContent || '').trim();
-                    if (txt && txt.length < 100) results.push({tag: el.tagName, txt, visible: el.offsetParent !== null});
-                });
-                return results.filter(r => r.visible).slice(0, 60);
-            }""")
-            print("[cav_worker] VISIBLE ELEMENTS after clicking Vehículos:", flush=True)
-            for el in post_v_links:
-                print(f"  | <{el['tag']}> '{el['txt']}'", flush=True)
-        except Exception as e:
-            print(f"[cav_worker] Could not dump post-click elements: {e}", flush=True)
-
-        if not vehiculos_clicked:
-            _snap(page, "❌ No se pudo clickear 'Vehículos'")
-            result = {"ok": False, "error": "Could not find/click 'Vehículos' menu item"}
-            if debug:
-                result["steps"] = steps
-            return result
-
-        # ── Step 4: Click "Certificado Vehículos de anotaciones Vigentes" ──
-        print("[cav_worker] Step 4: Clicking Certificado de Anotaciones Vigentes...", flush=True)
-        page.wait_for_timeout(2000)
+        _snap(page, "5. Página post-CAPTCHA (buscando Certificado CAV)")
 
         cav_clicked = False
 
-        # Try XPath text matching — most reliable approach
+        # Primary: XPath on the exact TD text we confirmed in testing
         for xpath in [
-            "//*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑÜ','abcdefghijklmnopqrstuvwxyzáéíóúñü'),'anotaciones vigentes')]",
+            "//td[contains(text(),'anotaciones Vigentes')]",
+            "//td[contains(text(),'anotaciones vigentes')]",
+            "//td[contains(text(),'Anotaciones Vigentes')]",
+            "//td[contains(text(),'Certificado Vehículos')]",
             "//*[contains(text(),'anotaciones Vigentes')]",
-            "//*[contains(text(),'Anotaciones Vigentes')]",
             "//*[contains(text(),'anotaciones vigentes')]",
-            "//*[contains(text(),'Anotaciones vigentes')]",
-            "//*[contains(text(),'Certificado Vehículos')]",
-            "//a[contains(text(),'anotacion')]",
-            "//li[contains(text(),'anotacion')]",
-            "//td[contains(text(),'anotacion')]",
-            "//label[contains(text(),'anotacion')]",
-            "//span[contains(text(),'anotacion')]",
         ]:
             try:
                 el = page.locator(f"xpath={xpath}").first
                 if el.count() > 0 and el.is_visible():
                     el.click()
                     cav_clicked = True
-                    print(f"[cav_worker] Clicked CAV via XPath: {xpath}", flush=True)
+                    print(f"[cav_worker] ✅ Clicked CAV TD via XPath: {xpath}", flush=True)
                     break
             except Exception:
                 continue
 
-        # Fallback: use JS to find and click anything with "anotacion" in text
+        # Fallback: pure JS — walk all TDs looking for "anotacion"
         if not cav_clicked:
             try:
-                result_js = page.evaluate("""() => {
-                    const all = document.querySelectorAll('a, li, td, label, span, div, p, button');
-                    for (const el of all) {
+                clicked_text = page.evaluate("""() => {
+                    const tds = document.querySelectorAll('td, li, label, a, span, div');
+                    for (const el of tds) {
                         const txt = (el.innerText || el.textContent || '').toLowerCase();
                         if (txt.includes('anotacion') && el.offsetParent !== null) {
                             el.click();
-                            return el.innerText || el.textContent || 'clicked';
+                            return (el.innerText || el.textContent || 'clicked').trim().substring(0, 80);
                         }
                     }
                     return null;
                 }""")
-                if result_js:
+                if clicked_text:
                     cav_clicked = True
-                    print(f"[cav_worker] Clicked CAV via JS: '{result_js[:60]}'", flush=True)
+                    print(f"[cav_worker] ✅ Clicked CAV via JS: '{clicked_text}'", flush=True)
             except Exception as e:
                 print(f"[cav_worker] JS click failed: {e}", flush=True)
 
-        page.wait_for_timeout(3000)  # Wait for the plate input form to appear
+        page.wait_for_timeout(2000)
         _snap(page, "6. Después de clickear Certificado Anotaciones")
 
         if not cav_clicked:
-            # Dump full body text so we see exactly what's on screen
             try:
                 body_txt = page.inner_text("body")
                 lines = [l.strip() for l in body_txt.splitlines() if l.strip()]
-                print("[cav_worker] FULL PAGE TEXT (all lines):", flush=True)
-                for l in lines:
+                print("[cav_worker] FULL PAGE TEXT:", flush=True)
+                for l in lines[:100]:
                     print(f"  | {l}", flush=True)
             except Exception:
                 pass
-            _snap(page, "❌ No se encontró opción 'Certificado de Anotaciones Vigentes'")
-            result = {"ok": False, "error": "Could not find 'Certificado de Anotaciones Vigentes' option"}
+            _snap(page, "❌ No se encontró 'Certificado Vehículos de anotaciones Vigentes'")
+            result = {"ok": False, "error": "Could not find 'Certificado Vehículos de anotaciones Vigentes' in table"}
             if debug:
                 result["steps"] = steps
             return result
 
-        # ── Step 5: Enter the plate number ──
-        print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
+        # ── Step 4: Enter the plate number ──
+        # After clicking the TD, a plate input appears near id='idTextoEjemplPatente'
+        print(f"[cav_worker] Step 4: Entering plate {plate}...", flush=True)
         page.wait_for_timeout(2000)
 
-        # Look for the plate input field
         plate_input = None
+
+        # The plate input appears right after the clicked row, look near 'idTextoEjemplPatente'
         for selector in [
+            # Find an input near the example text div
+            '#idTextoEjemplPatente ~ input',
+            '#idTextoEjemplPatente + input',
+            # Generic plate-related names
             'input[name*="patente" i]',
-            'input[name*="placa" i]',
             'input[name*="ppu" i]',
-            'input[name*="PPU"]',
-            'input[name*="vehiculo" i]',
-            'input[placeholder*="patente" i]',
-            'input[placeholder*="placa" i]',
-            'input[placeholder*="PPU" i]',
-            'input[placeholder*="ppu" i]',
-            'input[placeholder*="ingrese" i]',
             'input[id*="patente" i]',
             'input[id*="ppu" i]',
-            'input[id*="placa" i]',
+            'input[placeholder*="patente" i]',
+            'input[placeholder*="ppu" i]',
+            'input[placeholder*="LLNNNN" i]',
         ]:
             try:
                 el = page.query_selector(selector)
                 if el and el.is_visible():
                     plate_input = el
-                    print(f"[cav_worker] Found plate input: {selector}", flush=True)
+                    print(f"[cav_worker] ✅ Found plate input: {selector}", flush=True)
                     break
             except Exception:
                 continue
 
-        # Fallback: find any visible text input that's NOT the captcha field
+        # Fallback: find the input that's nearest to the 'idTextoEjemplPatente' div via JS
         if not plate_input:
             try:
-                text_inputs = page.query_selector_all('input[type="text"], input:not([type])')
-                for inp in text_inputs:
-                    try:
-                        if inp.is_visible():
-                            name = inp.get_attribute("name") or ""
-                            id_ = inp.get_attribute("id") or ""
-                            placeholder = inp.get_attribute("placeholder") or ""
-                            # Skip the captcha input
-                            if "captcha" in name.lower() or "captcha" in id_.lower() or "codigo" in name.lower():
-                                continue
-                            plate_input = inp
-                            print(f"[cav_worker] Found fallback text input: name='{name}' id='{id_}' placeholder='{placeholder}'", flush=True)
-                            break
-                    except Exception:
-                        continue
+                found = page.evaluate("""() => {
+                    const hint = document.getElementById('idTextoEjemplPatente');
+                    if (!hint) return null;
+                    // Look for an input nearby (sibling, parent's sibling, etc.)
+                    let el = hint;
+                    for (let i = 0; i < 5; i++) {
+                        el = el.parentElement;
+                        if (!el) break;
+                        const inp = el.querySelector('input[type=text], input:not([type])');
+                        if (inp && inp.offsetParent !== null) {
+                            inp.id = inp.id || 'found_plate_input';
+                            return inp.id || 'found_plate_input';
+                        }
+                    }
+                    return null;
+                }""")
+                if found:
+                    el = page.query_selector(f"#{found}") or page.query_selector("#found_plate_input")
+                    if el and el.is_visible():
+                        plate_input = el
+                        print(f"[cav_worker] ✅ Found plate input via JS proximity: #{found}", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] JS proximity search failed: {e}", flush=True)
+
+        # Last resort: any visible text input that isn't captcha
+        if not plate_input:
+            try:
+                for inp in page.query_selector_all('input[type="text"], input:not([type])'):
+                    if inp.is_visible():
+                        name = inp.get_attribute("name") or ""
+                        id_ = inp.get_attribute("id") or ""
+                        if "captcha" in name.lower() or "captcha" in id_.lower():
+                            continue
+                        plate_input = inp
+                        print(f"[cav_worker] ⚠️ Using fallback text input: name='{name}' id='{id_}'", flush=True)
+                        break
             except Exception:
                 pass
 
         if not plate_input:
-            # Dump all inputs for debugging
             try:
-                inputs = page.query_selector_all('input')
-                print("[cav_worker] ALL INPUTS ON PAGE:", flush=True)
-                for inp in inputs:
-                    try:
-                        attrs = inp.evaluate("""el => ({
-                            type: el.type, name: el.name, id: el.id,
-                            placeholder: el.placeholder, visible: el.offsetParent !== null,
-                            value: el.value
-                        })""")
-                        print(f"  | {attrs}", flush=True)
-                    except Exception:
-                        pass
+                inputs_info = page.evaluate("""() => Array.from(document.querySelectorAll('input')).map(el => ({
+                    type: el.type, name: el.name, id: el.id,
+                    placeholder: el.placeholder, visible: el.offsetParent !== null
+                }))""")
+                print("[cav_worker] ALL INPUTS:", flush=True)
+                for i in inputs_info:
+                    print(f"  | {i}", flush=True)
             except Exception:
                 pass
             _snap(page, "❌ No se encontró campo para ingresar patente")
-            result = {"ok": False, "error": "Could not find plate input field"}
+            result = {"ok": False, "error": "Could not find plate input field after clicking CAV option"}
             if debug:
                 result["steps"] = steps
             return result
@@ -476,42 +417,45 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         plate_input.type(plate, delay=50)
         _snap(page, f"7. Patente escrita: {plate}")
 
-        # ── Step 6: Click "Agregar a Carro" or similar button ──
-        print("[cav_worker] Step 6: Clicking Agregar a Carro...", flush=True)
+        # ── Step 5: Click "Agregar a Carro" ──
+        # From the page dump: <BUTTON id='carro_btnContinuar' class='btn_agregarCarro'>Continuar</BUTTON>
+        # There may also be a per-row "Agregar" button that appears after filling the plate
+        print("[cav_worker] Step 5: Clicking Agregar / Continuar...", flush=True)
         page.wait_for_timeout(500)
 
         agregar_clicked = False
-        for text_match in [
-            "Agregar",
-            "agregar",
-            "Agregar a Carro",
-            "Agregar al Carro",
-            "Consultar",
-            "Buscar",
+
+        # Try the row-level Agregar button first (appears next to the plate input)
+        for selector in [
+            '.btn_agregarCarro',
+            'button.btn_agregarCarro',
+            'input.btn_agregarCarro',
+            '#carro_btnContinuar',
+            'input[type="submit"]',
+            'button[type="submit"]',
+            'input[value*="Agregar" i]',
+            'input[value*="Continuar" i]',
+            'button[value*="Agregar" i]',
         ]:
             try:
-                el = page.locator(f"text={text_match}").first
-                if el.is_visible():
+                el = page.query_selector(selector)
+                if el and el.is_visible():
                     el.click()
                     agregar_clicked = True
-                    print(f"[cav_worker] Clicked: '{text_match}'", flush=True)
+                    print(f"[cav_worker] Clicked Agregar via selector: {selector}", flush=True)
                     break
             except Exception:
                 continue
 
-        # Also try submit buttons
+        # Fallback: click by text
         if not agregar_clicked:
-            for selector in [
-                'input[type="submit"]',
-                'button[type="submit"]',
-                'input[value*="Agregar"]',
-                'input[value*="Consultar"]',
-            ]:
+            for text_match in ["Agregar", "Continuar", "Consultar", "Buscar"]:
                 try:
-                    el = page.query_selector(selector)
-                    if el and el.is_visible():
+                    el = page.locator(f"text={text_match}").first
+                    if el.is_visible():
                         el.click()
                         agregar_clicked = True
+                        print(f"[cav_worker] Clicked Agregar via text: '{text_match}'", flush=True)
                         break
                 except Exception:
                     continue
