@@ -260,50 +260,79 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         # IMPORTANT: After the CAPTCHA, the site goes directly to carro.srcei
         # which shows ALL certificates in a flat table — there is NO "Vehículos"
         # accordion to expand. We click the TD row directly.
+        # NOTE: The TD may be off-screen / display:none initially, so we must
+        # scroll into view and click WITHOUT checking is_visible().
         print("[cav_worker] Step 3: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
         page.wait_for_timeout(2000)
         _snap(page, "5. Página post-CAPTCHA (buscando Certificado CAV)")
 
         cav_clicked = False
 
-        # Primary: XPath on the exact TD text we confirmed in testing
-        for xpath in [
-            "//td[contains(text(),'anotaciones Vigentes')]",
-            "//td[contains(text(),'anotaciones vigentes')]",
-            "//td[contains(text(),'Anotaciones Vigentes')]",
-            "//td[contains(text(),'Certificado Vehículos')]",
-            "//*[contains(text(),'anotaciones Vigentes')]",
-            "//*[contains(text(),'anotaciones vigentes')]",
-        ]:
-            try:
-                el = page.locator(f"xpath={xpath}").first
-                if el.count() > 0 and el.is_visible():
-                    el.click()
-                    cav_clicked = True
-                    print(f"[cav_worker] ✅ Clicked CAV TD via XPath: {xpath}", flush=True)
-                    break
-            except Exception:
-                continue
+        # Use JS to find, scroll into view, and click — ignore visibility
+        try:
+            clicked_text = page.evaluate("""() => {
+                const all = document.querySelectorAll('td, li, label, a, span, div, tr');
+                for (const el of all) {
+                    const txt = (el.innerText || el.textContent || '').toLowerCase();
+                    if (txt.includes('anotaciones vigentes') && !txt.includes('multas')) {
+                        el.scrollIntoView({block: 'center'});
+                        el.click();
+                        return (el.innerText || el.textContent || 'clicked').trim().substring(0, 80);
+                    }
+                }
+                return null;
+            }""")
+            if clicked_text:
+                cav_clicked = True
+                print(f"[cav_worker] ✅ Clicked CAV via JS scrollIntoView+click: '{clicked_text}'", flush=True)
+        except Exception as e:
+            print(f"[cav_worker] JS click attempt 1 failed: {e}", flush=True)
 
-        # Fallback: pure JS — walk all TDs looking for "anotacion"
+        # Fallback: try clicking the TR parent of the TD (sometimes the row is clickable)
         if not cav_clicked:
             try:
                 clicked_text = page.evaluate("""() => {
-                    const tds = document.querySelectorAll('td, li, label, a, span, div');
-                    for (const el of tds) {
-                        const txt = (el.innerText || el.textContent || '').toLowerCase();
-                        if (txt.includes('anotacion') && el.offsetParent !== null) {
-                            el.click();
-                            return (el.innerText || el.textContent || 'clicked').trim().substring(0, 80);
+                    const tds = document.querySelectorAll('td');
+                    for (const td of tds) {
+                        const txt = (td.innerText || td.textContent || '').toLowerCase();
+                        if (txt.includes('anotaciones vigentes')) {
+                            const tr = td.closest('tr');
+                            const target = tr || td;
+                            target.scrollIntoView({block: 'center'});
+                            // Try clicking a checkbox or radio in the same row first
+                            const cb = target.querySelector('input[type=checkbox], input[type=radio]');
+                            if (cb) { cb.click(); return 'checkbox:' + txt.substring(0,60); }
+                            target.click();
+                            return 'row:' + txt.substring(0,60);
                         }
                     }
                     return null;
                 }""")
                 if clicked_text:
                     cav_clicked = True
-                    print(f"[cav_worker] ✅ Clicked CAV via JS: '{clicked_text}'", flush=True)
+                    print(f"[cav_worker] ✅ Clicked CAV row/checkbox: '{clicked_text}'", flush=True)
             except Exception as e:
-                print(f"[cav_worker] JS click failed: {e}", flush=True)
+                print(f"[cav_worker] JS click attempt 2 failed: {e}", flush=True)
+
+        # Last fallback: Playwright force click (ignores actionability checks)
+        if not cav_clicked:
+            for xpath in [
+                "//td[contains(text(),'anotaciones Vigentes')]",
+                "//td[contains(text(),'anotaciones vigentes')]",
+                "//td[contains(text(),'Certificado Vehículos')]",
+                "//*[contains(text(),'anotaciones Vigentes')]",
+            ]:
+                try:
+                    el = page.locator(f"xpath={xpath}").first
+                    if el.count() > 0:
+                        el.scroll_into_view_if_needed()
+                        el.click(force=True)  # force=True skips visibility check
+                        cav_clicked = True
+                        print(f"[cav_worker] ✅ Force-clicked CAV via XPath: {xpath}", flush=True)
+                        break
+                except Exception as exc:
+                    print(f"[cav_worker] XPath force click failed ({xpath}): {exc}", flush=True)
+                    continue
 
         page.wait_for_timeout(2000)
         _snap(page, "6. Después de clickear Certificado Anotaciones")
@@ -325,75 +354,70 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
 
         # ── Step 4: Enter the plate number ──
         # After clicking the TD, a plate input appears near id='idTextoEjemplPatente'
+        # NOTE: The input might also be "hidden" (off-screen), so use JS to find it
         print(f"[cav_worker] Step 4: Entering plate {plate}...", flush=True)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
 
         plate_input = None
 
-        # The plate input appears right after the clicked row, look near 'idTextoEjemplPatente'
-        for selector in [
-            # Find an input near the example text div
-            '#idTextoEjemplPatente ~ input',
-            '#idTextoEjemplPatente + input',
-            # Generic plate-related names
-            'input[name*="patente" i]',
-            'input[name*="ppu" i]',
-            'input[id*="patente" i]',
-            'input[id*="ppu" i]',
-            'input[placeholder*="patente" i]',
-            'input[placeholder*="ppu" i]',
-            'input[placeholder*="LLNNNN" i]',
-        ]:
-            try:
-                el = page.query_selector(selector)
-                if el and el.is_visible():
-                    plate_input = el
-                    print(f"[cav_worker] ✅ Found plate input: {selector}", flush=True)
-                    break
-            except Exception:
-                continue
-
-        # Fallback: find the input that's nearest to the 'idTextoEjemplPatente' div via JS
-        if not plate_input:
-            try:
-                found = page.evaluate("""() => {
-                    const hint = document.getElementById('idTextoEjemplPatente');
-                    if (!hint) return null;
-                    // Look for an input nearby (sibling, parent's sibling, etc.)
-                    let el = hint;
-                    for (let i = 0; i < 5; i++) {
-                        el = el.parentElement;
-                        if (!el) break;
-                        const inp = el.querySelector('input[type=text], input:not([type])');
-                        if (inp && inp.offsetParent !== null) {
-                            inp.id = inp.id || 'found_plate_input';
-                            return inp.id || 'found_plate_input';
-                        }
+        # Best approach: use JS to find the input near the hint div, scroll to it
+        try:
+            input_id = page.evaluate("""() => {
+                const hint = document.getElementById('idTextoEjemplPatente');
+                if (!hint) return null;
+                // Walk up and look for a text input nearby
+                let el = hint;
+                for (let i = 0; i < 8; i++) {
+                    el = el.parentElement;
+                    if (!el) break;
+                    const inputs = el.querySelectorAll('input[type=text], input:not([type])');
+                    for (const inp of inputs) {
+                        const n = (inp.name || '').toLowerCase();
+                        const id = (inp.id || '').toLowerCase();
+                        if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
+                        inp.scrollIntoView({block: 'center'});
+                        inp.id = inp.id || '_plate_input_found';
+                        return inp.id;
                     }
-                    return null;
-                }""")
-                if found:
-                    el = page.query_selector(f"#{found}") or page.query_selector("#found_plate_input")
-                    if el and el.is_visible():
-                        plate_input = el
-                        print(f"[cav_worker] ✅ Found plate input via JS proximity: #{found}", flush=True)
-            except Exception as e:
-                print(f"[cav_worker] JS proximity search failed: {e}", flush=True)
+                }
+                // Broader search: any text input that's not the captcha
+                const allInputs = document.querySelectorAll('input[type=text], input:not([type])');
+                for (const inp of allInputs) {
+                    const n = (inp.name || '').toLowerCase();
+                    const id = (inp.id || '').toLowerCase();
+                    if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
+                    inp.scrollIntoView({block: 'center'});
+                    inp.id = inp.id || '_plate_input_found';
+                    return inp.id;
+                }
+                return null;
+            }""")
+            if input_id:
+                page.wait_for_timeout(500)
+                el = page.query_selector(f"#{input_id}")
+                if el:
+                    plate_input = el
+                    print(f"[cav_worker] ✅ Found plate input via JS: #{input_id}", flush=True)
+        except Exception as e:
+            print(f"[cav_worker] JS plate input search failed: {e}", flush=True)
 
-        # Last resort: any visible text input that isn't captcha
+        # Fallback: direct CSS selectors
         if not plate_input:
-            try:
-                for inp in page.query_selector_all('input[type="text"], input:not([type])'):
-                    if inp.is_visible():
-                        name = inp.get_attribute("name") or ""
-                        id_ = inp.get_attribute("id") or ""
-                        if "captcha" in name.lower() or "captcha" in id_.lower():
-                            continue
-                        plate_input = inp
-                        print(f"[cav_worker] ⚠️ Using fallback text input: name='{name}' id='{id_}'", flush=True)
+            for selector in [
+                'input[name*="patente" i]',
+                'input[name*="ppu" i]',
+                'input[id*="patente" i]',
+                'input[id*="ppu" i]',
+            ]:
+                try:
+                    el = page.query_selector(selector)
+                    if el:
+                        el.scroll_into_view_if_needed()
+                        plate_input = el
+                        print(f"[cav_worker] ✅ Found plate input via CSS: {selector}", flush=True)
                         break
-            except Exception:
-                pass
+                except Exception:
+                    continue
 
         if not plate_input:
             try:
