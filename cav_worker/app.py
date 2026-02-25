@@ -256,42 +256,70 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
                 fail_result["steps"] = steps
             return fail_result
 
+        # ── DIAGNOSTIC: Dump page structure right after CAPTCHA ──
+        # This tells us the exact text/links available on the post-CAPTCHA page
+        try:
+            page_links = page.evaluate("""() => {
+                const results = [];
+                document.querySelectorAll('a, button, input[type=submit], input[type=button]').forEach(el => {
+                    const txt = (el.innerText || el.value || el.textContent || '').trim();
+                    const href = el.href || '';
+                    const id = el.id || '';
+                    const cls = el.className || '';
+                    if (txt) results.push({tag: el.tagName, txt: txt.substring(0,80), href: href.substring(0,80), id, cls: cls.substring(0,40)});
+                });
+                return results;
+            }""")
+            print("[cav_worker] CLICKABLE ELEMENTS after CAPTCHA:", flush=True)
+            for el in page_links:
+                print(f"  | <{el['tag']}> '{el['txt']}' id='{el['id']}' href='{el['href']}'", flush=True)
+        except Exception as e:
+            print(f"[cav_worker] Could not dump links: {e}", flush=True)
+
         # ── Step 3: Click on "Vehículos" to expand the section ──
         print("[cav_worker] Step 3: Clicking Vehículos...", flush=True)
         page.wait_for_timeout(2000)
 
-        # The page has accordion sections. "Vehículos" is one of them.
-        # We need to click it to expand and show sub-items.
         vehiculos_clicked = False
 
-        # First try: find all clickable elements and look for one containing "Vehículos"
-        try:
-            # Use XPath to find elements that contain exactly "Vehículos" text
-            candidates = page.query_selector_all('a, span, div, li, label, td, h3, h4, summary')
-            for el in candidates:
-                try:
-                    txt = (el.inner_text() or "").strip()
-                    if txt == "Vehículos" or txt == "> Vehículos" or txt.strip() == "Vehículos":
-                        if el.is_visible():
-                            el.click()
-                            vehiculos_clicked = True
-                            print(f"[cav_worker] Clicked Vehículos element: '{txt}'", flush=True)
-                            break
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"[cav_worker] Error searching for Vehículos: {e}", flush=True)
-
-        if not vehiculos_clicked:
+        # Try XPath which is the most reliable for text matching
+        for xpath in [
+            "//a[normalize-space(text())='Vehículos']",
+            "//span[normalize-space(text())='Vehículos']",
+            "//li[normalize-space(text())='Vehículos']",
+            "//td[normalize-space(text())='Vehículos']",
+            "//*[normalize-space(text())='Vehículos']",
+            "//*[contains(text(),'Vehículos')]",
+            "//*[contains(text(),'Vehiculos')]",
+        ]:
             try:
-                page.locator("text=Vehículos").first.click()
-                vehiculos_clicked = True
-                print("[cav_worker] Clicked Vehículos via locator", flush=True)
+                el = page.locator(f"xpath={xpath}").first
+                if el.count() > 0 and el.is_visible():
+                    el.click()
+                    vehiculos_clicked = True
+                    print(f"[cav_worker] Clicked Vehículos via XPath: {xpath}", flush=True)
+                    break
             except Exception:
-                pass
+                continue
 
         page.wait_for_timeout(3000)  # Give accordion time to animate open
         _snap(page, "5. Después de clickear Vehículos")
+
+        # Dump ALL clickable elements again to see what appeared after clicking Vehículos
+        try:
+            post_v_links = page.evaluate("""() => {
+                const results = [];
+                document.querySelectorAll('a, button, li, td, label, span').forEach(el => {
+                    const txt = (el.innerText || el.textContent || '').trim();
+                    if (txt && txt.length < 100) results.push({tag: el.tagName, txt, visible: el.offsetParent !== null});
+                });
+                return results.filter(r => r.visible).slice(0, 60);
+            }""")
+            print("[cav_worker] VISIBLE ELEMENTS after clicking Vehículos:", flush=True)
+            for el in post_v_links:
+                print(f"  | <{el['tag']}> '{el['txt']}'", flush=True)
+        except Exception as e:
+            print(f"[cav_worker] Could not dump post-click elements: {e}", flush=True)
 
         if not vehiculos_clicked:
             _snap(page, "❌ No se pudo clickear 'Vehículos'")
@@ -301,77 +329,65 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return result
 
         # ── Step 4: Click "Certificado Vehículos de anotaciones Vigentes" ──
-        # This is a sub-item that appears after expanding the Vehículos section.
-        # The exact text from the site is something like:
-        #   "Certificado Vehículos de anotaciones Vigentes"
-        # It may be a checkbox label, a link, or a clickable div/span.
         print("[cav_worker] Step 4: Clicking Certificado de Anotaciones Vigentes...", flush=True)
         page.wait_for_timeout(2000)
 
         cav_clicked = False
 
-        # Search all text-containing elements for the certificate option
-        search_terms = [
-            "anotaciones vigentes",
-            "anotaciones Vigentes",
-            "Anotaciones Vigentes",
-            "Certificado Vehículos",
-            "certificado veh",
-        ]
+        # Try XPath text matching — most reliable approach
+        for xpath in [
+            "//*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑÜ','abcdefghijklmnopqrstuvwxyzáéíóúñü'),'anotaciones vigentes')]",
+            "//*[contains(text(),'anotaciones Vigentes')]",
+            "//*[contains(text(),'Anotaciones Vigentes')]",
+            "//*[contains(text(),'anotaciones vigentes')]",
+            "//*[contains(text(),'Anotaciones vigentes')]",
+            "//*[contains(text(),'Certificado Vehículos')]",
+            "//a[contains(text(),'anotacion')]",
+            "//li[contains(text(),'anotacion')]",
+            "//td[contains(text(),'anotacion')]",
+            "//label[contains(text(),'anotacion')]",
+            "//span[contains(text(),'anotacion')]",
+        ]:
+            try:
+                el = page.locator(f"xpath={xpath}").first
+                if el.count() > 0 and el.is_visible():
+                    el.click()
+                    cav_clicked = True
+                    print(f"[cav_worker] Clicked CAV via XPath: {xpath}", flush=True)
+                    break
+            except Exception:
+                continue
 
-        try:
-            candidates = page.query_selector_all('a, span, div, li, label, td, input, checkbox, p')
-            for el in candidates:
-                try:
-                    txt = (el.inner_text() or "").strip().lower()
-                    if any(term.lower() in txt for term in search_terms):
-                        if el.is_visible():
-                            el.click()
-                            cav_clicked = True
-                            print(f"[cav_worker] Clicked CAV option: '{el.inner_text().strip()[:60]}'", flush=True)
-                            break
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"[cav_worker] Error searching for CAV option: {e}", flush=True)
-
-        # Fallback: try locator-based matching
-        if not cav_clicked:
-            for term in search_terms:
-                try:
-                    el = page.locator(f"text=/{term}/i").first
-                    if el.is_visible():
-                        el.click()
-                        cav_clicked = True
-                        print(f"[cav_worker] Clicked CAV via locator: '{term}'", flush=True)
-                        break
-                except Exception:
-                    continue
-
-        # Fallback: try clicking a checkbox near the text
+        # Fallback: use JS to find and click anything with "anotacion" in text
         if not cav_clicked:
             try:
-                checkboxes = page.query_selector_all('input[type="checkbox"]')
-                for cb in checkboxes:
-                    parent = cb.evaluate("el => el.parentElement ? el.parentElement.innerText : ''")
-                    if parent and "anotaciones" in parent.lower():
-                        cb.click()
-                        cav_clicked = True
-                        print(f"[cav_worker] Clicked checkbox near: '{parent[:60]}'", flush=True)
-                        break
-            except Exception:
-                pass
+                result_js = page.evaluate("""() => {
+                    const all = document.querySelectorAll('a, li, td, label, span, div, p, button');
+                    for (const el of all) {
+                        const txt = (el.innerText || el.textContent || '').toLowerCase();
+                        if (txt.includes('anotacion') && el.offsetParent !== null) {
+                            el.click();
+                            return el.innerText || el.textContent || 'clicked';
+                        }
+                    }
+                    return null;
+                }""")
+                if result_js:
+                    cav_clicked = True
+                    print(f"[cav_worker] Clicked CAV via JS: '{result_js[:60]}'", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] JS click failed: {e}", flush=True)
 
         page.wait_for_timeout(3000)  # Wait for the plate input form to appear
         _snap(page, "6. Después de clickear Certificado Anotaciones")
 
         if not cav_clicked:
-            # Dump all visible text so we know what options exist
+            # Dump full body text so we see exactly what's on screen
             try:
-                all_text = page.inner_text("body")
-                lines = [l.strip() for l in all_text.splitlines() if l.strip()]
-                print("[cav_worker] PAGE TEXT DUMP (first 80 lines):", flush=True)
-                for l in lines[:80]:
+                body_txt = page.inner_text("body")
+                lines = [l.strip() for l in body_txt.splitlines() if l.strip()]
+                print("[cav_worker] FULL PAGE TEXT (all lines):", flush=True)
+                for l in lines:
                     print(f"  | {l}", flush=True)
             except Exception:
                 pass
