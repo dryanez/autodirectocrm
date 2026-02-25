@@ -686,72 +686,188 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         plate_input.type(plate, delay=50)
         _snap(page, f"8. Patente escrita: {plate}")
 
-        # ── Step 6: Click "Agregar a Carro" / Continuar ──
-        print("[cav_worker] Step 6: Clicking Agregar / Continuar...", flush=True)
+        # ── Step 6: Click per-row "Agregar al Carro" button ──
+        # The button ID contains '#' chars (e.g. btn_agregarCarro_1#4_4_1#1)
+        # so standard CSS selectors won't work. Must use JS to find & click it.
+        # Clicking triggers an iframe modal (divAgregarACarro) that loads
+        # agregarACarro.srcei?run=''&idCertificado=...&ppu=...&filtro=1
+        # The server processes the request inside the iframe and adds to cart.
+        print("[cav_worker] Step 6: Clicking 'Agregar al Carro' (per-row button)...", flush=True)
         page.wait_for_timeout(1000)
 
-        agregar_clicked = False
+        agregar_result = page.evaluate("""() => {
+            const btns = document.querySelectorAll('button.btn_agregarCarro');
+            for (const btn of btns) {
+                if (btn.offsetParent === null) continue;
+                const txt = (btn.innerText || '').trim();
+                if (txt.includes('Agregar al Carro')) {
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return { clicked: true, id: btn.id, text: txt };
+                }
+            }
+            return { clicked: false };
+        }""")
+        print(f"[cav_worker] Agregar result: {json.dumps(agregar_result)}", flush=True)
 
-        # Try various selectors
-        for selector in [
-            '#carro_btnContinuar',
-            '.btn_agregarCarro',
-            'button.btn_agregarCarro',
-            'input.btn_agregarCarro',
-            'input[type="submit"]',
-            'button[type="submit"]',
-            'input[value*="Agregar" i]',
-            'input[value*="Continuar" i]',
-            'button:has-text("Agregar")',
-            'button:has-text("Continuar")',
-            'button:has-text("Consultar")',
-            'button:has-text("Buscar")',
-        ]:
+        if not agregar_result.get("clicked"):
+            _snap(page, "❌ No se encontró botón 'Agregar al Carro'")
+            result = {"ok": False, "error": "Could not find per-row 'Agregar al Carro' button"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Wait for the iframe (agregarACarro.srcei) to load and process
+        print("[cav_worker] Waiting for iframe to process...", flush=True)
+        page.wait_for_timeout(8000)
+        _snap(page, "9. Después de click Agregar al Carro (iframe procesando)")
+
+        # ── Step 7: Check iframe result and cart state ──
+        print("[cav_worker] Step 7: Checking iframe result & cart...", flush=True)
+
+        # Read the iframe response
+        iframe_text = ""
+        for f in page.frames:
+            if 'agregarACarro' in f.url or (f.name == 'cu_idIframe4'):
+                try:
+                    iframe_text = f.evaluate(
+                        "() => document.body ? document.body.innerText : ''"
+                    )
+                    print(f"[cav_worker] Iframe text: {iframe_text[:200]}", flush=True)
+                except Exception as e:
+                    print(f"[cav_worker] Iframe read error: {e}", flush=True)
+                break
+
+        # Check if rate-limited
+        if "excedido" in iframe_text.lower():
+            _snap(page, "⚠️ Excedido límite de certificados")
+            result = {
+                "ok": False,
+                "error": "Ha excedido el número de certificados permitidos (rate limit)",
+                "iframe_message": iframe_text.strip(),
+            }
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Close the modal if it's still open (click the X or outside)
+        page.evaluate("""() => {
+            const closeBtn = document.querySelector('#divAgregarACarro .close-reveal-modal');
+            if (closeBtn) closeBtn.click();
+            // Also try jQuery reveal close
+            if (typeof jQuery !== 'undefined') {
+                try { jQuery('#divAgregarACarro').trigger('reveal:close'); } catch(e) {}
+            }
+        }""")
+        page.wait_for_timeout(2000)
+
+        # Check cart state
+        cart_state = page.evaluate("""() => ({
+            total: document.getElementById('carro_valor_total')
+                   ? document.getElementById('carro_valor_total').innerText : '0',
+            certCount: document.querySelectorAll('#carro_tablasListaCertificados tr').length,
+            emptyVisible: document.getElementById('carro_textoVacio')
+                          ? window.getComputedStyle(document.getElementById('carro_textoVacio')).display !== 'none'
+                          : false,
+            emailVisible: document.getElementById('carro_solicitanteInputEmail')
+                          ? document.getElementById('carro_solicitanteInputEmail').offsetParent !== null
+                          : false,
+        })""")
+        print(f"[cav_worker] Cart state: {json.dumps(cart_state)}", flush=True)
+
+        if cart_state.get("certCount", 0) == 0 and cart_state.get("total", "0") == "0":
+            _snap(page, "⚠️ Carro vacío después de Agregar")
+            # The iframe might have processed but we need to check for errors
+            result = {
+                "ok": False,
+                "error": "Cart is empty after clicking Agregar al Carro",
+                "iframe_message": iframe_text.strip() if iframe_text else "No iframe response",
+                "cart_state": cart_state,
+            }
+            if debug:
+                result["steps"] = steps
+            return result
+
+        _snap(page, f"10. Certificado agregado al carro (total: ${cart_state.get('total', '?')})")
+
+        # ── Step 8: Fill solicitor email ──
+        print(f"[cav_worker] Step 8: Filling email {EMAIL}...", flush=True)
+        EMAIL = "felipe@autodirecto.cl"
+
+        # The email container may need to be visible first
+        page.evaluate("""() => {
+            const c = document.getElementById('carro_datosMailSolicitanteContainer');
+            if (c) c.style.display = 'block';
+        }""")
+        page.wait_for_timeout(500)
+
+        # Fill email + confirmation
+        for field_id in ['carro_solicitanteInputEmail', 'carro_solicitanteInputEmailConfirm']:
             try:
-                el = page.locator(selector).first
-                if el.count() > 0 and el.is_visible():
+                el = page.locator(f"#{field_id}")
+                if el.count() > 0:
                     el.click()
-                    agregar_clicked = True
-                    print(f"[cav_worker] ✅ Clicked: {selector}", flush=True)
-                    break
-            except Exception:
-                continue
-
-        # Fallback: JS click on any visible button/input with relevant text
-        if not agregar_clicked:
-            try:
-                js_click = page.evaluate("""() => {
-                    const btns = document.querySelectorAll('button, input[type=submit], input[type=button], .btn_agregarCarro');
-                    for (const btn of btns) {
-                        if (btn.offsetParent === null) continue;
-                        const txt = (btn.innerText || btn.value || '').toLowerCase();
-                        if (/agregar|continuar|consultar|buscar/.test(txt)) {
-                            btn.scrollIntoView({block: 'center'});
-                            btn.click();
-                            return { clicked: true, text: txt.substring(0,30), id: btn.id };
-                        }
-                    }
-                    return { clicked: false };
-                }""")
-                if js_click.get("clicked"):
-                    agregar_clicked = True
-                    print(f"[cav_worker] ✅ JS clicked button: {js_click}", flush=True)
+                    el.fill("")
+                    el.type(EMAIL, delay=30)
+                    print(f"[cav_worker] ✅ Filled #{field_id}", flush=True)
             except Exception as e:
-                print(f"[cav_worker] JS button click failed: {e}", flush=True)
+                # Fallback: JS fill
+                page.evaluate(f"""() => {{
+                    const el = document.getElementById('{field_id}');
+                    if (el) {{ el.value = '{EMAIL}'; el.dispatchEvent(new Event('change', {{bubbles:true}})); }}
+                }}""")
+                print(f"[cav_worker] JS filled #{field_id}", flush=True)
 
-        page.wait_for_timeout(3000)
+        _snap(page, f"11. Email ingresado: {EMAIL}")
+
+        # ── Step 9: Click "Continuar" ──
+        print("[cav_worker] Step 9: Clicking Continuar...", flush=True)
+        page.evaluate("""() => {
+            const btn = document.getElementById('carro_btnContinuar');
+            if (btn) btn.click();
+        }""")
+        page.wait_for_timeout(5000)
         try:
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             pass
-        _snap(page, "9. Después de Agregar a Carro")
+        _snap(page, "12. Después de Continuar")
 
-        # ── Step 7: Capture the result page ──
-        print("[cav_worker] Step 7: Reading result page...", flush=True)
+        # ── Step 10: Read result page (payment or CAV data) ──
+        print("[cav_worker] Step 10: Reading result page...", flush=True)
         result_html = page.content()
-        _snap(page, "9. Página de resultado final")
+        _snap(page, "13. Página de resultado final")
 
-        # Check if we got any vehicle/CAV data
+        html_lower = result_html.lower()
+
+        # Check if we're on the payment page
+        is_payment = ("webpay" in html_lower or "tarjeta" in html_lower
+                      or "pagar" in html_lower or "transbank" in html_lower
+                      or "entregadocumentos" in page.url.lower())
+
+        if is_payment:
+            print("[cav_worker] Hit the payment page — CAV requires payment", flush=True)
+            _snap(page, "💰 Página de pago — CAV es un certificado pagado")
+
+            text = re.sub(r'<[^>]+>', ' ', result_html)
+            text = re.sub(r'\s+', ' ', text).strip()
+
+            price_match = re.search(r'Total\s*\$?\s*([\d.,]+)', text)
+            price = price_match.group(1) if price_match else cart_state.get("total", "desconocido")
+
+            result = {
+                "ok": True,
+                "status": "payment_required",
+                "plate": plate,
+                "message": f"El Certificado de Anotaciones Vigentes (CAV) para {plate} requiere pago de ${price} en registrocivil.cl.",
+                "price": price,
+                "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
+            }
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Check if we got actual CAV data (after payment completed)
         if _has_cav_data(result_html):
             print("[cav_worker] Found CAV data on page!", flush=True)
             _snap(page, "✅ Datos CAV encontrados")
@@ -760,53 +876,15 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
                 result["steps"] = steps
             return result
 
-        # Check if it's a payment/cart page (common for registrocivil.cl)
-        html_lower = result_html.lower()
-        is_cart = "carro de certificados" in html_lower or "total $" in html_lower or "carro está vacío" in html_lower
-        is_payment = "pagar" in html_lower or "webpay" in html_lower or "tarjeta" in html_lower
-
-        if is_cart or is_payment:
-            print("[cav_worker] Hit the payment/cart page — CAV requires payment", flush=True)
-            _snap(page, "💰 Página de pago — CAV es un certificado pagado")
-
-            # Extract whatever info we can from the cart page
-            text = re.sub(r'<[^>]+>', ' ', result_html)
-            text = re.sub(r'\s+', ' ', text).strip()
-
-            # Look for price
-            price_match = re.search(r'Total\s*\$\s*([\d.,]+)', text)
-            price = price_match.group(1) if price_match else "desconocido"
-
-            result = {
-                "ok": False,
-                "error": "CAV requires payment on registrocivil.cl",
-                "action": "payment_required",
-                "message": f"El Certificado de Anotaciones Vigentes es un documento pagado (${price}). Debe obtenerse manualmente en registrocivil.cl.",
-                "price": price,
-                "page_text": text[:2000],
-            }
-            if debug:
-                result["steps"] = steps
-            return result
-
-        # Check for error messages from the site
-        if "error" in html_lower or "ha ocurrido un error" in html_lower:
-            _snap(page, "⚠️ Página de error del sitio")
-            result = {
-                "ok": False,
-                "error": "registrocivil.cl returned an error page",
-                "page_text": re.sub(r'<[^>]+>', ' ', result_html)[:2000].strip(),
-            }
-            if debug:
-                result["steps"] = steps
-            return result
-
-        # Unknown page state
-        _snap(page, "⚠️ Estado desconocido de la página")
+        # Still on cart page — return cart info
+        _snap(page, "⚠️ Estado final del flujo")
         result = {
-            "ok": False,
-            "error": "Unknown page state after navigation",
-            "page_text": re.sub(r'<[^>]+>', ' ', result_html)[:2000].strip(),
+            "ok": True,
+            "status": "payment_required",
+            "plate": plate,
+            "price": cart_state.get("total", "desconocido"),
+            "message": f"CAV para {plate} agregado al carro. Requiere pago de ${cart_state.get('total', '?')} en registrocivil.cl.",
+            "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
         }
         if debug:
             result["steps"] = steps
