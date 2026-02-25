@@ -791,8 +791,8 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         _snap(page, f"10. Certificado agregado al carro (total: ${cart_state.get('total', '?')})")
 
         # ── Step 8: Fill solicitor email ──
-        print(f"[cav_worker] Step 8: Filling email {EMAIL}...", flush=True)
         EMAIL = "felipe@autodirecto.cl"
+        print(f"[cav_worker] Step 8: Filling email {EMAIL}...", flush=True)
 
         # The email container may need to be visible first
         page.evaluate("""() => {
