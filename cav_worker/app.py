@@ -91,11 +91,11 @@ def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
             pass
 
 
-def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
+def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = False, on_step=None) -> dict:
     """
     Use Playwright to navigate registrocivil.cl, solve the entry CAPTCHA,
     then navigate: Vehículos → Certificado de Anotaciones Vigentes →
-    enter plate → Agregar a carro → scrape whatever data is available.
+    enter plate → Agregar a carro → fill email → Continuar → payment page.
     When debug=True, captures screenshots at every step.
     on_step(data_dict) is called for each step in real-time (SSE streaming).
     """
@@ -791,7 +791,7 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         _snap(page, f"10. Certificado agregado al carro (total: ${cart_state.get('total', '?')})")
 
         # ── Step 8: Fill solicitor email ──
-        EMAIL = "felipe@autodirecto.cl"
+        EMAIL = email  # passed in as parameter (default: felipe@autodirecto.cl)
         print(f"[cav_worker] Step 8: Filling email {EMAIL}...", flush=True)
 
         # The email container may need to be visible first
@@ -1058,13 +1058,15 @@ def fetch_cav():
     if not plate or len(plate) < 4:
         return jsonify({"ok": False, "error": "Invalid plate number"}), 400
 
+    email = (data.get("email") or "felipe@autodirecto.cl").strip()
+
     print(f"\n{'='*60}", flush=True)
-    print(f"[cav_worker] Fetching CAV for plate: {plate}", flush=True)
+    print(f"[cav_worker] Fetching CAV for plate: {plate} / email: {email}", flush=True)
     print(f"{'='*60}", flush=True)
 
     start_time = time.time()
     try:
-        result = _fetch_cav(plate)
+        result = _fetch_cav(plate, email=email)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -1100,13 +1102,15 @@ def fetch_cav_debug():
     if not plate or len(plate) < 4:
         return jsonify({"ok": False, "error": "Invalid plate number"}), 400
 
+    email = (data.get("email") or "felipe@autodirecto.cl").strip()
+
     print(f"\n{'='*60}", flush=True)
-    print(f"[cav_worker] 🔍 DEBUG — Fetching CAV for plate: {plate}", flush=True)
+    print(f"[cav_worker] 🔍 DEBUG — Fetching CAV for plate: {plate} / email: {email}", flush=True)
     print(f"{'='*60}", flush=True)
 
     start_time = time.time()
     try:
-        result = _fetch_cav(plate, debug=True)
+        result = _fetch_cav(plate, email=email, debug=True)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -1131,6 +1135,7 @@ def fetch_cav_stream():
     """
     plate = (request.args.get("plate") or "").strip().upper().replace("-", "").replace(" ", "")
     secret = request.args.get("secret", "")
+    email = (request.args.get("email") or "felipe@autodirecto.cl").strip()
 
     if secret != CAV_SECRET:
         def error_stream():
@@ -1143,7 +1148,7 @@ def fetch_cav_stream():
         return Response(error_stream(), mimetype="text/event-stream")
 
     print(f"\n{'='*60}", flush=True)
-    print(f"[cav_worker] 📡 STREAM — Fetching CAV for plate: {plate}", flush=True)
+    print(f"[cav_worker] 📡 STREAM — Fetching CAV for plate: {plate} / email: {email}", flush=True)
     print(f"{'='*60}", flush=True)
 
     def generate():
@@ -1157,7 +1162,7 @@ def fetch_cav_stream():
 
         def worker():
             try:
-                result = _fetch_cav(plate, debug=False, on_step=on_step)
+                result = _fetch_cav(plate, email=email, debug=False, on_step=on_step)
                 q.put(("done", result))
             except Exception as e:
                 q.put(("done", {"ok": False, "error": str(e)}))
