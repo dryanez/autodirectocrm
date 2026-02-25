@@ -36,7 +36,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 
 COPY app.py .
+COPY start.sh .
+RUN chmod +x start.sh
 
 EXPOSE 8090
 
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8090} --workers 1 --timeout 120
+CMD ["./start.sh"]
