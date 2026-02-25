@@ -260,34 +260,37 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         print("[cav_worker] Step 3: Clicking Vehículos...", flush=True)
         page.wait_for_timeout(2000)
 
-        # Try to find and click "Vehículos" link/accordion
+        # The page has accordion sections. "Vehículos" is one of them.
+        # We need to click it to expand and show sub-items.
         vehiculos_clicked = False
-        for selector in [
-            'text=Vehículos',
-            'a:has-text("Vehículos")',
-            'span:has-text("Vehículos")',
-            'div:has-text("Vehículos")',
-            ':text("Vehículos")',
-        ]:
-            try:
-                el = page.query_selector(selector)
-                if el and el.is_visible():
-                    el.click()
-                    vehiculos_clicked = True
-                    print(f"[cav_worker] Clicked Vehículos with selector: {selector}", flush=True)
-                    break
-            except Exception:
-                continue
+
+        # First try: find all clickable elements and look for one containing "Vehículos"
+        try:
+            # Use XPath to find elements that contain exactly "Vehículos" text
+            candidates = page.query_selector_all('a, span, div, li, label, td, h3, h4, summary')
+            for el in candidates:
+                try:
+                    txt = (el.inner_text() or "").strip()
+                    if txt == "Vehículos" or txt == "> Vehículos" or txt.strip() == "Vehículos":
+                        if el.is_visible():
+                            el.click()
+                            vehiculos_clicked = True
+                            print(f"[cav_worker] Clicked Vehículos element: '{txt}'", flush=True)
+                            break
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[cav_worker] Error searching for Vehículos: {e}", flush=True)
 
         if not vehiculos_clicked:
-            # Try with locator
             try:
                 page.locator("text=Vehículos").first.click()
                 vehiculos_clicked = True
+                print("[cav_worker] Clicked Vehículos via locator", flush=True)
             except Exception:
                 pass
 
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)  # Give accordion time to animate open
         _snap(page, "5. Después de clickear Vehículos")
 
         if not vehiculos_clicked:
@@ -298,30 +301,80 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return result
 
         # ── Step 4: Click "Certificado Vehículos de anotaciones Vigentes" ──
+        # This is a sub-item that appears after expanding the Vehículos section.
+        # The exact text from the site is something like:
+        #   "Certificado Vehículos de anotaciones Vigentes"
+        # It may be a checkbox label, a link, or a clickable div/span.
         print("[cav_worker] Step 4: Clicking Certificado de Anotaciones Vigentes...", flush=True)
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
 
         cav_clicked = False
-        for text_match in [
+
+        # Search all text-containing elements for the certificate option
+        search_terms = [
+            "anotaciones vigentes",
             "anotaciones Vigentes",
             "Anotaciones Vigentes",
-            "anotaciones vigentes",
             "Certificado Vehículos",
-        ]:
-            try:
-                el = page.locator(f"text={text_match}").first
-                if el.is_visible():
-                    el.click()
-                    cav_clicked = True
-                    print(f"[cav_worker] Clicked CAV option: '{text_match}'", flush=True)
-                    break
-            except Exception:
-                continue
+            "certificado veh",
+        ]
 
-        page.wait_for_timeout(2000)
+        try:
+            candidates = page.query_selector_all('a, span, div, li, label, td, input, checkbox, p')
+            for el in candidates:
+                try:
+                    txt = (el.inner_text() or "").strip().lower()
+                    if any(term.lower() in txt for term in search_terms):
+                        if el.is_visible():
+                            el.click()
+                            cav_clicked = True
+                            print(f"[cav_worker] Clicked CAV option: '{el.inner_text().strip()[:60]}'", flush=True)
+                            break
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[cav_worker] Error searching for CAV option: {e}", flush=True)
+
+        # Fallback: try locator-based matching
+        if not cav_clicked:
+            for term in search_terms:
+                try:
+                    el = page.locator(f"text=/{term}/i").first
+                    if el.is_visible():
+                        el.click()
+                        cav_clicked = True
+                        print(f"[cav_worker] Clicked CAV via locator: '{term}'", flush=True)
+                        break
+                except Exception:
+                    continue
+
+        # Fallback: try clicking a checkbox near the text
+        if not cav_clicked:
+            try:
+                checkboxes = page.query_selector_all('input[type="checkbox"]')
+                for cb in checkboxes:
+                    parent = cb.evaluate("el => el.parentElement ? el.parentElement.innerText : ''")
+                    if parent and "anotaciones" in parent.lower():
+                        cb.click()
+                        cav_clicked = True
+                        print(f"[cav_worker] Clicked checkbox near: '{parent[:60]}'", flush=True)
+                        break
+            except Exception:
+                pass
+
+        page.wait_for_timeout(3000)  # Wait for the plate input form to appear
         _snap(page, "6. Después de clickear Certificado Anotaciones")
 
         if not cav_clicked:
+            # Dump all visible text so we know what options exist
+            try:
+                all_text = page.inner_text("body")
+                lines = [l.strip() for l in all_text.splitlines() if l.strip()]
+                print("[cav_worker] PAGE TEXT DUMP (first 80 lines):", flush=True)
+                for l in lines[:80]:
+                    print(f"  | {l}", flush=True)
+            except Exception:
+                pass
             _snap(page, "❌ No se encontró opción 'Certificado de Anotaciones Vigentes'")
             result = {"ok": False, "error": "Could not find 'Certificado de Anotaciones Vigentes' option"}
             if debug:
@@ -330,19 +383,24 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
 
         # ── Step 5: Enter the plate number ──
         print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
 
         # Look for the plate input field
         plate_input = None
         for selector in [
-            'input[name*="patente"]',
-            'input[name*="placa"]',
-            'input[name*="ppu"]',
+            'input[name*="patente" i]',
+            'input[name*="placa" i]',
+            'input[name*="ppu" i]',
             'input[name*="PPU"]',
-            'input[name*="vehiculo"]',
+            'input[name*="vehiculo" i]',
             'input[placeholder*="patente" i]',
             'input[placeholder*="placa" i]',
-            'input[type="text"]',
+            'input[placeholder*="PPU" i]',
+            'input[placeholder*="ppu" i]',
+            'input[placeholder*="ingrese" i]',
+            'input[id*="patente" i]',
+            'input[id*="ppu" i]',
+            'input[id*="placa" i]',
         ]:
             try:
                 el = page.query_selector(selector)
@@ -353,7 +411,44 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             except Exception:
                 continue
 
+        # Fallback: find any visible text input that's NOT the captcha field
         if not plate_input:
+            try:
+                text_inputs = page.query_selector_all('input[type="text"], input:not([type])')
+                for inp in text_inputs:
+                    try:
+                        if inp.is_visible():
+                            name = inp.get_attribute("name") or ""
+                            id_ = inp.get_attribute("id") or ""
+                            placeholder = inp.get_attribute("placeholder") or ""
+                            # Skip the captcha input
+                            if "captcha" in name.lower() or "captcha" in id_.lower() or "codigo" in name.lower():
+                                continue
+                            plate_input = inp
+                            print(f"[cav_worker] Found fallback text input: name='{name}' id='{id_}' placeholder='{placeholder}'", flush=True)
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        if not plate_input:
+            # Dump all inputs for debugging
+            try:
+                inputs = page.query_selector_all('input')
+                print("[cav_worker] ALL INPUTS ON PAGE:", flush=True)
+                for inp in inputs:
+                    try:
+                        attrs = inp.evaluate("""el => ({
+                            type: el.type, name: el.name, id: el.id,
+                            placeholder: el.placeholder, visible: el.offsetParent !== null,
+                            value: el.value
+                        })""")
+                        print(f"  | {attrs}", flush=True)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             _snap(page, "❌ No se encontró campo para ingresar patente")
             result = {"ok": False, "error": "Could not find plate input field"}
             if debug:
