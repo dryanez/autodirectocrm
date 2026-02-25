@@ -560,169 +560,123 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return result
 
         # ── Step 4: Click checkbox for "Certificado Vehículos de anotaciones Vigentes" ──
+        # The site uses iCheck jQuery plugin — native checkboxes are hidden behind
+        # <ins class="iCheck-helper"> which intercepts pointer events.
+        # Must use jQuery iCheck API: $('input').iCheck('check')
         print("[cav_worker] Step 4: Clicking CAV certificate...", flush=True)
         page.wait_for_timeout(1000)
 
-        # First, dump what's visible in the certificate list area
-        cert_area_info = page.evaluate("""() => {
-            const d = document.getElementById('divLista_5');
-            const certTable = document.getElementById('certificadosTable');
-            // Get all visible text in the area
-            const visibleText = d ? d.innerText.trim().substring(0,500) : '';
-            // Get all inputs (checkboxes/radios) in the area
-            const inputs = d ? Array.from(d.querySelectorAll('input')).map(inp => ({
-                type: inp.type, name: inp.name, id: inp.id,
-                checked: inp.checked, value: inp.value,
-                visible: inp.offsetParent !== null,
-                parentText: inp.closest('tr') ? inp.closest('tr').innerText.trim().substring(0,80) : ''
-            })) : [];
-            // Get all TR rows in any table inside divLista_5
-            const rows = d ? Array.from(d.querySelectorAll('tr')).map(tr => ({
-                text: tr.innerText.trim().substring(0,100),
-                hasInput: !!tr.querySelector('input')
-            })) : [];
-            return { visibleText, inputs, rows, hasCertTable: !!certTable };
-        }""")
-        print(f"[cav_worker] Cert area info: {json.dumps(cert_area_info, indent=2)}", flush=True)
-
         cav_clicked = False
 
-        # Strategy: find the row containing "anotaciones Vigentes" and click its checkbox
+        # Strategy 1: Use jQuery iCheck API (the correct way for this site)
         try:
-            click_result = page.evaluate("""() => {
-                // Search ALL rows in the page for "anotaciones vigentes"
-                const allRows = document.querySelectorAll('tr');
-                for (const row of allRows) {
+            icheck_result = page.evaluate("""() => {
+                const rows = document.querySelectorAll('tr');
+                for (const row of rows) {
                     const txt = (row.innerText || '').toLowerCase();
                     if (txt.includes('anotaciones vigentes') && !txt.includes('multas')) {
                         const cb = row.querySelector('input[type=checkbox], input[type=radio]');
-                        if (cb) {
-                            cb.scrollIntoView({block: 'center'});
-                            // Click the checkbox via JS
-                            cb.click();
-                            return {
-                                method: 'js_click_checkbox',
-                                cbId: cb.id, cbName: cb.name,
-                                checked: cb.checked,
-                                rowText: txt.substring(0,80)
-                            };
+                        if (!cb) continue;
+                        cb.scrollIntoView({block: 'center'});
+                        if (typeof jQuery !== 'undefined' && typeof jQuery.fn.iCheck !== 'undefined') {
+                            jQuery(cb).iCheck('check');
+                            return { method: 'iCheck_api', cbId: cb.id, cbName: cb.name, checked: cb.checked, rowText: txt.substring(0,80) };
                         }
-                        // No checkbox, try clicking the row/cell itself
-                        const td = row.querySelector('td');
-                        if (td) { td.click(); return { method: 'js_click_td', rowText: txt.substring(0,80) }; }
-                        row.click();
-                        return { method: 'js_click_row', rowText: txt.substring(0,80) };
+                        cb.checked = true;
+                        cb.dispatchEvent(new Event('change', {bubbles: true}));
+                        const parent = cb.closest('[class*=icheckbox]');
+                        if (parent) { parent.classList.add('checked'); parent.click(); }
+                        return { method: 'manual_check', cbId: cb.id, checked: cb.checked, rowText: txt.substring(0,80) };
                     }
                 }
                 return null;
             }""")
-            if click_result:
+            if icheck_result:
                 cav_clicked = True
-                print(f"[cav_worker] ✅ CAV JS click: {json.dumps(click_result)}", flush=True)
-            else:
-                print("[cav_worker] JS click: no row with 'anotaciones vigentes' found", flush=True)
+                print(f"[cav_worker] ✅ CAV checked: {json.dumps(icheck_result)}", flush=True)
         except Exception as e:
-            print(f"[cav_worker] JS CAV click failed: {e}", flush=True)
+            print(f"[cav_worker] iCheck API failed: {e}", flush=True)
 
-        # Fallback: use Playwright locators
+        # Fallback: Playwright force-click
         if not cav_clicked:
-            for locator_str in [
-                "td:has-text('anotaciones Vigentes')",
-                "text=anotaciones Vigentes",
-                "xpath=//td[contains(.,'anotaciones Vigentes')]",
-                "xpath=//tr[contains(.,'anotaciones Vigentes')]//input",
-            ]:
+            for sel in ["input[name='nameCert_4_4_1']", "#checkCert_4_4_1_false", "td:has-text('anotaciones Vigentes')"]:
                 try:
-                    el = page.locator(locator_str).first
-                    el.scroll_into_view_if_needed()
-                    el.click(force=True)
+                    page.locator(sel).first.click(force=True)
                     cav_clicked = True
-                    print(f"[cav_worker] ✅ Playwright CAV click: {locator_str}", flush=True)
+                    print(f"[cav_worker] ✅ Playwright force-click: {sel}", flush=True)
                     break
-                except Exception as e:
-                    print(f"[cav_worker] Playwright CAV ({locator_str}): {e}", flush=True)
+                except Exception:
+                    pass
 
         page.wait_for_timeout(3000)
         _snap(page, "7. Después de clickear CAV")
 
         if not cav_clicked:
             _snap(page, "❌ No se encontró 'Certificado Vehículos de anotaciones Vigentes'")
-            result = {"ok": False, "error": "Could not find/click CAV certificate option",
-                      "cert_area_info": cert_area_info}
+            result = {"ok": False, "error": "Could not find/click CAV certificate option"}
             if debug:
                 result["steps"] = steps
             return result
 
         # ── Step 5: Enter the plate number ──
         print(f"[cav_worker] Step 5: Entering plate {plate}...", flush=True)
-        page.wait_for_timeout(3000)
-
-        # Dump all visible inputs to find the plate field
-        inputs_dump = page.evaluate("""() => Array.from(document.querySelectorAll('input')).filter(
-            inp => inp.offsetParent !== null && inp.type !== 'hidden'
-        ).map(inp => ({
-            type: inp.type, name: inp.name, id: inp.id,
-            placeholder: inp.placeholder || '',
-            value: inp.value,
-            maxLength: inp.maxLength,
-            parentId: inp.closest('[id]') ? inp.closest('[id]').id : '',
-            nearbyText: (() => {
-                let el = inp; 
-                for (let i=0; i<3; i++) { el = el.parentElement; if (!el) break; }
-                return el ? el.innerText.trim().substring(0,100) : '';
-            })()
-        }))""")
-        print(f"[cav_worker] Visible inputs: {json.dumps(inputs_dump, indent=2)}", flush=True)
+        page.wait_for_timeout(2000)
 
         plate_input = None
 
-        # Strategy 1: find input near the hint text "Ej: LLNNNN"
-        try:
-            input_id = page.evaluate("""() => {
-                const hint = document.getElementById('idTextoEjemplPatente');
-                if (!hint) {
-                    // Search for the hint text anywhere
-                    const allText = document.body.innerText;
-                    if (!allText.includes('LLNNNN')) return null;
-                }
-                // Look for a text input that's:
-                // 1. Not the captcha input
-                // 2. Currently visible
-                // 3. Empty or ready for input
-                const inputs = document.querySelectorAll('input[type=text], input:not([type])');
-                for (const inp of inputs) {
-                    if (inp.offsetParent === null) continue; // hidden
-                    const n = (inp.name || '').toLowerCase();
-                    const id = (inp.id || '').toLowerCase();
-                    if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
-                    if (n.includes('patente') || n.includes('ppu') || id.includes('patente') || id.includes('ppu')) {
-                        inp.scrollIntoView({block: 'center'});
-                        inp.id = inp.id || '_plate_input';
-                        return inp.id;
+        # Strategy 1: Find the PPU input by known ID pattern or placeholder
+        # After checking the CAV checkbox, a plate input appears:
+        #   <input id="idInputPPU_4_4_1" placeholder="Ej: LLNNNN, LLLLNN o LLLNNN">
+        for selector in [
+            'input[id^="idInputPPU_"]',
+            'input[placeholder*="LLNNNN"]',
+            'input[placeholder*="patente" i]',
+            'input[name*="ppu" i]',
+            'input[name*="patente" i]',
+            'input[id*="ppu" i]',
+            'input[id*="patente" i]',
+        ]:
+            try:
+                el = page.locator(selector).first
+                if el.count() > 0 and el.is_visible():
+                    plate_input = el
+                    print(f"[cav_worker] ✅ Found plate input: {selector}", flush=True)
+                    break
+            except Exception:
+                continue
+
+        # Strategy 2: JS search for visible text input that's not login/captcha
+        if not plate_input:
+            try:
+                input_id = page.evaluate("""() => {
+                    const inputs = document.querySelectorAll('input[type=text], input:not([type])');
+                    for (const inp of inputs) {
+                        if (inp.offsetParent === null) continue;
+                        const n = (inp.name || '').toLowerCase();
+                        const id = (inp.id || '').toLowerCase();
+                        const ph = (inp.placeholder || '').toLowerCase();
+                        if (n === 'run' || n === 'pass' || n.includes('captcha') || n.includes('codigo')) continue;
+                        if (id.includes('run') || id.includes('captcha')) continue;
+                        if (id.includes('ppu') || id.includes('patente') || ph.includes('llnnnn') || ph.includes('patente')) {
+                            inp.scrollIntoView({block: 'center'});
+                            return inp.id || '_plate_input';
+                        }
                     }
-                }
-                // If no patente-named input, take the first visible text input that's not captcha
-                for (const inp of inputs) {
-                    if (inp.offsetParent === null) continue;
-                    const n = (inp.name || '').toLowerCase();
-                    const id = (inp.id || '').toLowerCase();
-                    if (n.includes('captcha') || id.includes('captcha') || n.includes('codigo')) continue;
-                    inp.scrollIntoView({block: 'center'});
-                    inp.id = inp.id || '_plate_input';
-                    return inp.id;
-                }
-                return null;
-            }""")
-            if input_id:
-                plate_input = page.locator(f"#{input_id}").first
-                print(f"[cav_worker] ✅ Found plate input: #{input_id}", flush=True)
-        except Exception as e:
-            print(f"[cav_worker] Plate input search failed: {e}", flush=True)
+                    return null;
+                }""")
+                if input_id:
+                    plate_input = page.locator(f"#{input_id}").first
+                    print(f"[cav_worker] ✅ JS found plate input: #{input_id}", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] JS plate search failed: {e}", flush=True)
 
         if not plate_input:
+            inputs_dump = page.evaluate("""() => Array.from(document.querySelectorAll('input')).filter(
+                inp => inp.offsetParent !== null && inp.type !== 'hidden'
+            ).map(inp => ({ type: inp.type, name: inp.name, id: inp.id, placeholder: inp.placeholder || '' }))""")
+            print(f"[cav_worker] Visible inputs: {json.dumps(inputs_dump)}", flush=True)
             _snap(page, "❌ No se encontró campo para ingresar patente")
-            result = {"ok": False, "error": "Could not find plate input field",
-                      "visible_inputs": inputs_dump}
+            result = {"ok": False, "error": "Could not find plate input field", "visible_inputs": inputs_dump}
             if debug:
                 result["steps"] = steps
             return result
