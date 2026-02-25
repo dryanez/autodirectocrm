@@ -257,73 +257,78 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return fail_result
 
         # ── Step 3: Expand the "Vehículos" accordion ──
-        # The page shows collapsed accordion sections: Nacimiento, Matrimonio,
-        # Defunciones, Antecedentes, > Vehículos, Prendas, etc.
-        # We must click "Vehículos" to expand it and reveal the CAV checkbox.
+        # CONFIRMED from HTML analysis:
+        #   <div class="titleGrupos" id="title_5">
+        #     <i class="fa fa-chevron-down" id="arrowDown_5" style="transform: rotate(-90deg)">
+        #     Vehículos
+        #   </div>
+        # The click handler is a JS event listener (not inline onclick),
+        # so we MUST use Playwright's .click() — JS el.click() doesn't trigger it!
         print("[cav_worker] Step 3: Expanding 'Vehículos' accordion...", flush=True)
         page.wait_for_timeout(2000)
         _snap(page, "5. Página post-CAPTCHA (buscando accordion Vehículos)")
 
         vehiculos_expanded = False
 
-        # Use JS to find the accordion item with text "Vehículos" and click it
+        # Primary: click #title_5 directly (the exact id from HTML analysis)
         try:
-            clicked = page.evaluate("""() => {
-                // The accordions are typically <a>, <div>, <span>, <li> with ">" arrow
-                const all = document.querySelectorAll('*');
-                for (const el of all) {
-                    // Check direct text content (not children's text)
-                    const directText = Array.from(el.childNodes)
-                        .filter(n => n.nodeType === 3)
-                        .map(n => n.textContent.trim())
-                        .join('');
-                    const fullText = (el.innerText || el.textContent || '').trim();
-                    
-                    if ((directText === 'Vehículos' || directText === 'Vehiculos' ||
-                         fullText === 'Vehículos' || fullText === '> Vehículos' ||
-                         fullText === 'Vehiculos') && el.children.length < 5) {
-                        el.scrollIntoView({block: 'center'});
-                        el.click();
-                        return fullText;
-                    }
-                }
-                return null;
-            }""")
-            if clicked:
+            el = page.locator("#title_5")
+            if el.count() > 0:
+                el.scroll_into_view_if_needed()
+                el.click(force=True)
                 vehiculos_expanded = True
-                print(f"[cav_worker] ✅ Clicked Vehículos accordion: '{clicked}'", flush=True)
+                print("[cav_worker] ✅ Clicked #title_5 (Vehículos accordion)", flush=True)
         except Exception as e:
-            print(f"[cav_worker] JS Vehículos click failed: {e}", flush=True)
+            print(f"[cav_worker] #title_5 click failed: {e}", flush=True)
 
-        # Fallback: Playwright locator with force click
+        # Fallback: find the .titleGrupos div that contains "Vehículos"
         if not vehiculos_expanded:
-            for xpath in [
-                "//*[normalize-space(text())='Vehículos']",
-                "//*[normalize-space(.)='Vehículos']",
-                "//*[contains(text(),'Vehículos')]",
-                "//*[contains(text(),'Vehiculos')]",
-            ]:
+            try:
+                titles = page.locator(".titleGrupos")
+                for i in range(titles.count()):
+                    t = titles.nth(i)
+                    txt = t.inner_text().strip()
+                    if "Vehículos" in txt or "Vehiculos" in txt:
+                        t.scroll_into_view_if_needed()
+                        t.click(force=True)
+                        vehiculos_expanded = True
+                        print(f"[cav_worker] ✅ Clicked .titleGrupos: '{txt}'", flush=True)
+                        break
+            except Exception as e:
+                print(f"[cav_worker] .titleGrupos click failed: {e}", flush=True)
+
+        # Fallback 2: try all titleGrupos by id pattern (title_0, title_1, ...)
+        if not vehiculos_expanded:
+            for idx in range(15):
                 try:
-                    els = page.locator(f"xpath={xpath}")
-                    for i in range(els.count()):
-                        el = els.nth(i)
-                        txt = el.inner_text().strip() if el.inner_text() else ""
-                        # Skip if it's the full certificate name (we want just "Vehículos")
-                        if len(txt) < 30:
+                    el = page.locator(f"#title_{idx}")
+                    if el.count() > 0:
+                        txt = el.inner_text().strip()
+                        if "vehículo" in txt.lower() or "vehiculo" in txt.lower():
                             el.scroll_into_view_if_needed()
                             el.click(force=True)
                             vehiculos_expanded = True
-                            print(f"[cav_worker] ✅ Force-clicked Vehículos: '{txt}' via {xpath}", flush=True)
+                            print(f"[cav_worker] ✅ Clicked #title_{idx}: '{txt}'", flush=True)
                             break
                 except Exception:
                     continue
-                if vehiculos_expanded:
-                    break
 
         page.wait_for_timeout(3000)  # Wait for accordion to expand
         _snap(page, "6. Después de expandir Vehículos")
 
         if not vehiculos_expanded:
+            # Dump all titleGrupos for debugging
+            try:
+                titles_info = page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('.titleGrupos')).map(el => ({
+                        id: el.id, text: el.innerText.trim().substring(0,50)
+                    }));
+                }""")
+                print("[cav_worker] ALL .titleGrupos:", flush=True)
+                for t in titles_info:
+                    print(f"  | #{t['id']}: '{t['text']}'", flush=True)
+            except Exception:
+                pass
             _snap(page, "❌ No se pudo expandir 'Vehículos'")
             result = {"ok": False, "error": "Could not expand 'Vehículos' accordion"}
             if debug:
@@ -331,52 +336,85 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return result
 
         # ── Step 4: Click checkbox for "Certificado Vehículos de anotaciones Vigentes" ──
-        # After expanding the accordion, the certificate items appear with checkboxes.
-        # We need to click the checkbox or the row for "anotaciones Vigentes".
+        # The certificate rows are in <table id="certificadosTable" class="table-hover">
+        # Each row has a checkbox and a TD with the certificate name.
+        # The CAV row TD contains: "Certificado Vehículos\nde anotaciones Vigentes <!--id:4_4_1 -->"
         print("[cav_worker] Step 4: Clicking 'Certificado Vehículos de anotaciones Vigentes'...", flush=True)
         page.wait_for_timeout(1000)
 
         cav_clicked = False
 
-        # Use JS: find the row with "anotaciones Vigentes" and click its checkbox
+        # First: use JS to find the TR index containing "anotaciones Vigentes",
+        # then use Playwright to click the checkbox (Playwright dispatches proper events)
         try:
-            clicked_text = page.evaluate("""() => {
-                const tds = document.querySelectorAll('td');
-                for (const td of tds) {
-                    const txt = (td.innerText || td.textContent || '').toLowerCase();
+            row_info = page.evaluate("""() => {
+                const rows = document.querySelectorAll('#certificadosTable tr, table.table-hover tr, tr');
+                for (let i = 0; i < rows.length; i++) {
+                    const txt = (rows[i].innerText || '').toLowerCase();
                     if (txt.includes('anotaciones vigentes') && !txt.includes('multas')) {
-                        // Found the TD — look for checkbox in same row
-                        const tr = td.closest('tr');
-                        if (tr) {
-                            const cb = tr.querySelector('input[type=checkbox], input[type=radio]');
-                            if (cb) {
-                                cb.scrollIntoView({block: 'center'});
-                                cb.click();
-                                return 'checkbox:' + td.innerText.trim().substring(0, 60);
-                            }
+                        const cb = rows[i].querySelector('input[type=checkbox], input[type=radio]');
+                        if (cb) {
+                            cb.scrollIntoView({block: 'center'});
+                            return { rowIndex: i, hasCheckbox: true, cbName: cb.name || '', cbId: cb.id || '' };
                         }
-                        // No checkbox, click the TD itself
-                        td.scrollIntoView({block: 'center'});
-                        td.click();
-                        return 'td:' + td.innerText.trim().substring(0, 60);
+                        return { rowIndex: i, hasCheckbox: false };
                     }
                 }
                 return null;
             }""")
-            if clicked_text:
-                cav_clicked = True
-                print(f"[cav_worker] ✅ Clicked CAV: '{clicked_text}'", flush=True)
+            if row_info:
+                print(f"[cav_worker] Found CAV row: {row_info}", flush=True)
+                if row_info.get("hasCheckbox"):
+                    # Click the checkbox using Playwright (proper event dispatch)
+                    cb_selector = None
+                    if row_info.get("cbId"):
+                        cb_selector = f"#{row_info['cbId']}"
+                    elif row_info.get("cbName"):
+                        cb_selector = f"input[name='{row_info['cbName']}']"
+                    
+                    if cb_selector:
+                        try:
+                            cb = page.locator(cb_selector).first
+                            cb.scroll_into_view_if_needed()
+                            cb.click(force=True)
+                            cav_clicked = True
+                            print(f"[cav_worker] ✅ Playwright-clicked checkbox: {cb_selector}", flush=True)
+                        except Exception as e:
+                            print(f"[cav_worker] Checkbox click by selector failed: {e}", flush=True)
+                    
+                    # If no id/name, click by row position
+                    if not cav_clicked:
+                        try:
+                            row_idx = row_info["rowIndex"]
+                            cb = page.locator(f"tr:nth-child({row_idx + 1}) input[type=checkbox], tr:nth-child({row_idx + 1}) input[type=radio]").first
+                            cb.scroll_into_view_if_needed()
+                            cb.click(force=True)
+                            cav_clicked = True
+                            print(f"[cav_worker] ✅ Playwright-clicked checkbox at row {row_idx}", flush=True)
+                        except Exception:
+                            pass
         except Exception as e:
-            print(f"[cav_worker] JS CAV click failed: {e}", flush=True)
+            print(f"[cav_worker] CAV row search failed: {e}", flush=True)
 
-        # Fallback: try text-based locator with force
+        # Fallback: click the TD text itself using Playwright
         if not cav_clicked:
             try:
-                el = page.locator("text=anotaciones Vigentes").first
+                el = page.locator("td:has-text('anotaciones Vigentes')").first
                 el.scroll_into_view_if_needed()
                 el.click(force=True)
                 cav_clicked = True
-                print("[cav_worker] ✅ Force-clicked 'anotaciones Vigentes' via locator", flush=True)
+                print("[cav_worker] ✅ Force-clicked TD 'anotaciones Vigentes'", flush=True)
+            except Exception:
+                pass
+
+        # Fallback 2: click using XPath 
+        if not cav_clicked:
+            try:
+                el = page.locator("xpath=//td[contains(text(),'anotaciones Vigentes')]").first
+                el.scroll_into_view_if_needed()
+                el.click(force=True)
+                cav_clicked = True
+                print("[cav_worker] ✅ Force-clicked via XPath", flush=True)
             except Exception:
                 pass
 
