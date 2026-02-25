@@ -53,6 +53,7 @@ def _get_browser():
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--single-process",
+            "--disable-blink-features=AutomationControlled",
         ],
     )
     print("[cav_worker] Chromium browser launched", flush=True)
@@ -131,6 +132,20 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         viewport={"width": 1280, "height": 900},
         locale="es-CL",
     )
+
+    # Anti-bot detection: override navigator.webdriver and other headless indicators.
+    # registrocivil.cl detects headless Chromium and closes the page without this.
+    context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5]
+        });
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['es-CL', 'es', 'en']
+        });
+        window.chrome = { runtime: {} };
+    """)
+
     page = context.new_page()
 
     try:
