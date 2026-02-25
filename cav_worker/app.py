@@ -153,7 +153,13 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
         url = "https://www.registrocivil.cl/OficinaInternet/"
         print(f"[cav_worker] Step 1: Navigating to {url}", flush=True)
         page.goto(url, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+        # Wait for all JS to initialize (CRITICAL: the certificate list
+        # is rendered by JS after domcontentloaded)
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        page.wait_for_timeout(5000)
         _snap(page, "1. Página principal cargada")
 
         # ── Step 2: Solve the entry CAPTCHA ──
