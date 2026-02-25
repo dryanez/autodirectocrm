@@ -257,64 +257,174 @@ def _fetch_cav(plate: str, debug: bool = False, on_step=None) -> dict:
             return fail_result
 
         # ── Step 3: Expand the "Vehículos" accordion ──
-        # CONFIRMED from HTML analysis:
-        #   <div class="titleGrupos" id="title_5">
-        #     <i class="fa fa-chevron-down" id="arrowDown_5" style="transform: rotate(-90deg)">
-        #     Vehículos
-        #   </div>
-        # The click handler is a JS event listener (not inline onclick),
-        # so we MUST use Playwright's .click() — JS el.click() doesn't trigger it!
+        # CONFIRMED from local testing:
+        #   <div class="titleGrupos" id="title_5"> → click to expand
+        #   <div class="divListaClass" id="divLista_5" style="display:none"> → becomes visible
+        #   Inside: <table id="certificadosTable">
+        # Playwright .click() works (confirmed locally). All methods work.
         print("[cav_worker] Step 3: Expanding 'Vehículos' accordion...", flush=True)
         page.wait_for_timeout(2000)
+
+        # VERIFY we're actually on the right page first
+        current_url = page.url
+        print(f"[cav_worker] Current URL: {current_url}", flush=True)
+        page_has_title5 = page.evaluate("() => !!document.getElementById('title_5')")
+        page_has_container = page.evaluate("() => !!document.getElementById('certContainer')")
+        page_has_captcha = page.evaluate("() => document.body.innerText.toLowerCase().includes('código de la imagen')")
+        print(f"[cav_worker] #title_5 exists: {page_has_title5}, #certContainer: {page_has_container}, still on CAPTCHA: {page_has_captcha}", flush=True)
+
+        if page_has_captcha:
+            print("[cav_worker] ❌ STILL ON CAPTCHA PAGE! CAPTCHA was not actually solved!", flush=True)
+            _snap(page, "❌ Todavía en página CAPTCHA")
+            # Don't continue — abort
+            result = {"ok": False, "error": "CAPTCHA was not solved — still on challenge page"}
+            if debug:
+                result["steps"] = steps
+            return result
+
+        # Dump page diagnostics
+        page_diag = page.evaluate("""() => {
+            const allIds = Array.from(document.querySelectorAll('[id]')).slice(0, 40).map(e => e.id);
+            const bodyText = document.body.innerText.substring(0, 500);
+            return { url: location.href, title: document.title, ids: allIds, bodyPreview: bodyText };
+        }""")
+        print(f"[cav_worker] Page diagnostics: {page_diag}", flush=True)
+
         _snap(page, "5. Página post-CAPTCHA (buscando accordion Vehículos)")
 
         vehiculos_expanded = False
 
-        # Primary: click #title_5 directly (the exact id from HTML analysis)
+        # Primary: Playwright click on #title_5 (confirmed working locally)
         try:
             el = page.locator("#title_5")
             if el.count() > 0:
                 el.scroll_into_view_if_needed()
-                el.click(force=True)
+                el.click()  # Normal click, not force — this works locally
                 vehiculos_expanded = True
-                print("[cav_worker] ✅ Clicked #title_5 (Vehículos accordion)", flush=True)
+                print("[cav_worker] ✅ Clicked #title_5", flush=True)
         except Exception as e:
             print(f"[cav_worker] #title_5 click failed: {e}", flush=True)
 
-        # Fallback: find the .titleGrupos div that contains "Vehículos"
+        # Verify: check if divLista_5 became visible
+        if vehiculos_expanded:
+            page.wait_for_timeout(2000)
+            div_visible = page.evaluate("""() => {
+                const d = document.getElementById('divLista_5');
+                if (!d) return 'divLista_5 NOT FOUND';
+                return { display: d.style.display, computed: window.getComputedStyle(d).display };
+            }""")
+            print(f"[cav_worker] divLista_5 state after click: {div_visible}", flush=True)
+            if isinstance(div_visible, dict) and div_visible.get("computed") == "none":
+                print("[cav_worker] ⚠️ divLista_5 still hidden! Click didn't expand. Trying again...", flush=True)
+                vehiculos_expanded = False
+
+        # Retry with force
+        if not vehiculos_expanded:
+            try:
+                el = page.locator("#title_5")
+                if el.count() > 0:
+                    el.scroll_into_view_if_needed()
+                    el.click(force=True)
+                    page.wait_for_timeout(2000)
+                    div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
+                    if div_check != "none" and div_check != "NOT FOUND":
+                        vehiculos_expanded = True
+                        print(f"[cav_worker] ✅ Force-clicked #title_5 (divLista_5={div_check})", flush=True)
+                    else:
+                        print(f"[cav_worker] Force-click on #title_5 didn't expand (divLista_5={div_check})", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] #title_5 force click failed: {e}", flush=True)
+
+        # Retry: JS dispatchEvent (mousedown + mouseup + click)
+        if not vehiculos_expanded:
+            try:
+                page.evaluate("""() => {
+                    const el = document.getElementById('title_5');
+                    if (!el) return;
+                    ['mousedown', 'mouseup', 'click'].forEach(evtType => {
+                        el.dispatchEvent(new MouseEvent(evtType, {bubbles: true, cancelable: true, view: window}));
+                    });
+                }""")
+                page.wait_for_timeout(2000)
+                div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
+                if div_check != "none" and div_check != "NOT FOUND":
+                    vehiculos_expanded = True
+                    print(f"[cav_worker] ✅ JS dispatchEvent on #title_5 worked (divLista_5={div_check})", flush=True)
+                else:
+                    print(f"[cav_worker] JS dispatchEvent didn't expand (divLista_5={div_check})", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] JS dispatchEvent failed: {e}", flush=True)
+
+        # Retry: jQuery trigger (jQuery is available on the page)
+        if not vehiculos_expanded:
+            try:
+                page.evaluate("""() => {
+                    if (typeof jQuery !== 'undefined') {
+                        jQuery('#title_5').trigger('click');
+                    }
+                }""")
+                page.wait_for_timeout(2000)
+                div_check = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
+                if div_check != "none" and div_check != "NOT FOUND":
+                    vehiculos_expanded = True
+                    print(f"[cav_worker] ✅ jQuery trigger click worked (divLista_5={div_check})", flush=True)
+                else:
+                    print(f"[cav_worker] jQuery trigger didn't expand (divLista_5={div_check})", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] jQuery trigger failed: {e}", flush=True)
+
+        # Fallback: iterate all .titleGrupos divs
         if not vehiculos_expanded:
             try:
                 titles = page.locator(".titleGrupos")
                 for i in range(titles.count()):
                     t = titles.nth(i)
                     txt = t.inner_text().strip()
-                    if "Vehículos" in txt or "Vehiculos" in txt:
+                    if "vehículo" in txt.lower() or "vehiculo" in txt.lower():
                         t.scroll_into_view_if_needed()
                         t.click(force=True)
                         vehiculos_expanded = True
-                        print(f"[cav_worker] ✅ Clicked .titleGrupos: '{txt}'", flush=True)
+                        print(f"[cav_worker] ✅ Clicked .titleGrupos[{i}]: '{txt}'", flush=True)
                         break
             except Exception as e:
                 print(f"[cav_worker] .titleGrupos click failed: {e}", flush=True)
 
-        # Fallback 2: try all titleGrupos by id pattern (title_0, title_1, ...)
+        # Fallback: try by text
         if not vehiculos_expanded:
-            for idx in range(15):
-                try:
-                    el = page.locator(f"#title_{idx}")
-                    if el.count() > 0:
-                        txt = el.inner_text().strip()
-                        if "vehículo" in txt.lower() or "vehiculo" in txt.lower():
-                            el.scroll_into_view_if_needed()
-                            el.click(force=True)
-                            vehiculos_expanded = True
-                            print(f"[cav_worker] ✅ Clicked #title_{idx}: '{txt}'", flush=True)
-                            break
-                except Exception:
-                    continue
+            try:
+                page.locator("text=Vehículos").first.click()
+                vehiculos_expanded = True
+                print("[cav_worker] ✅ Clicked text=Vehículos", flush=True)
+            except Exception as e:
+                print(f"[cav_worker] text click failed: {e}", flush=True)
 
-        page.wait_for_timeout(3000)  # Wait for accordion to expand
+        page.wait_for_timeout(3000)  # Wait for accordion animation
         _snap(page, "6. Después de expandir Vehículos")
+
+        # Final verification
+        if vehiculos_expanded:
+            final_state = page.evaluate("""() => {
+                const d = document.getElementById('divLista_5');
+                if (!d) return 'NOT FOUND';
+                return window.getComputedStyle(d).display;
+            }""")
+            print(f"[cav_worker] divLista_5 final display: {final_state}", flush=True)
+            if final_state == "none":
+                print("[cav_worker] ⚠️ Accordion STILL not expanded after all attempts!", flush=True)
+                vehiculos_expanded = False
+
+        # Nuclear fallback: force divLista_5 visible via JS
+        if not vehiculos_expanded:
+            print("[cav_worker] ⚠️ All click methods failed. Forcing divLista_5 visible via JS...", flush=True)
+            page.evaluate("""() => {
+                const d = document.getElementById('divLista_5');
+                if (d) { d.style.display = 'block'; d.style.visibility = 'visible'; d.style.height = 'auto'; }
+            }""")
+            force_state = page.evaluate("() => { const d = document.getElementById('divLista_5'); return d ? window.getComputedStyle(d).display : 'NOT FOUND'; }")
+            if force_state != "none" and force_state != "NOT FOUND":
+                vehiculos_expanded = True
+                print(f"[cav_worker] ✅ JS-forced divLista_5 visible (display: {force_state})", flush=True)
+            _snap(page, "6b. Después de forzar divLista_5 visible")
 
         if not vehiculos_expanded:
             # Dump all titleGrupos for debugging
