@@ -5398,6 +5398,41 @@ def obtener_cav(cid):
         })
 
 
+@app.route("/api/consignaciones/<int:cid>/cav-debug", methods=["POST"])
+def obtener_cav_debug(cid):
+    """
+    Debug endpoint — same as /cav but returns step-by-step screenshots
+    so the frontend can show what the robot sees at each navigation step.
+    """
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    c = row_to_dict(c)
+    plate = (c.get("plate") or "").replace("-", "").replace(" ", "").upper()
+    if not plate:
+        return jsonify({"error": "No hay patente registrada"}), 400
+
+    if not CAV_WORKER_URL:
+        return jsonify({"ok": False, "error": "CAV_WORKER_URL not configured"}), 500
+
+    import requests as req_lib
+    try:
+        print(f"[cav-debug] 🔍 Calling CAV Worker debug for plate {plate}...", flush=True)
+        resp = req_lib.post(
+            f"{CAV_WORKER_URL.rstrip('/')}/cav-debug",
+            json={"plate": plate, "secret": CAV_WORKER_SECRET},
+            timeout=300,
+        )
+        data = resp.json()
+        data["plate"] = plate
+        return jsonify(data), resp.status_code
+    except req_lib.exceptions.Timeout:
+        return jsonify({"ok": False, "error": "Robot tardó demasiado", "steps": []}), 504
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "steps": []}), 500
+
+
 @app.route("/api/consignaciones/<int:cid>/publicar-chileautos", methods=["POST"])
 def publicar_en_chileautos(cid):
     """Publish a listing to ChileAutos via their Global Inventory API."""

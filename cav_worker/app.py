@@ -89,11 +89,30 @@ def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
             pass
 
 
-def _fetch_cav(plate: str) -> dict:
+def _fetch_cav(plate: str, debug: bool = False) -> dict:
     """
     Use Playwright to navigate registrocivil.cl, solve the CAPTCHA,
     and scrape the CAV data for the given plate.
+    When debug=True, captures screenshots at every step.
     """
+    steps = []  # list of {"step": str, "screenshot": base64_str}
+
+    def _snap(page, step_name):
+        """Capture a screenshot for debug mode."""
+        if not debug:
+            return
+        try:
+            shot = page.screenshot(type="jpeg", quality=50)
+            steps.append({
+                "step": step_name,
+                "screenshot": base64.b64encode(shot).decode(),
+                "time": round(time.time() - _start, 1),
+                "url": page.url,
+            })
+        except Exception:
+            steps.append({"step": step_name, "screenshot": None, "time": round(time.time() - _start, 1)})
+
+    _start = time.time()
     plate = plate.replace("-", "").replace(" ", "").upper()
     browser = _get_browser()
     context = browser.new_context(
@@ -114,6 +133,7 @@ def _fetch_cav(plate: str) -> dict:
 
         # Wait for the page to fully load
         page.wait_for_timeout(3000)
+        _snap(page, "1. Página cargada")
 
         for attempt in range(MAX_RETRIES):
             print(f"[cav_worker] CAPTCHA attempt {attempt + 1}/{MAX_RETRIES}", flush=True)
@@ -122,7 +142,11 @@ def _fetch_cav(plate: str) -> dict:
             body_text = page.content()
             if _has_cav_data(body_text):
                 print("[cav_worker] No CAPTCHA — direct access!", flush=True)
-                return _parse_cav_page(body_text, plate)
+                _snap(page, "✅ Acceso directo — sin CAPTCHA")
+                result = _parse_cav_page(body_text, plate)
+                if debug:
+                    result["steps"] = steps
+                return result
 
             # Look for the CAPTCHA image
             captcha_img = None
@@ -169,13 +193,18 @@ def _fetch_cav(plate: str) -> dict:
                 print("[cav_worker] Could not find CAPTCHA image on page", flush=True)
                 # Take full page screenshot for debugging
                 debug_shot = page.screenshot()
-                return {
+                result = {
                     "ok": False,
                     "error": "Could not locate CAPTCHA image on page",
                     "debug_screenshot": base64.b64encode(debug_shot).decode() if debug_shot else None,
                 }
+                if debug:
+                    _snap(page, "❌ No se encontró CAPTCHA")
+                    result["steps"] = steps
+                return result
 
             # Solve the CAPTCHA with 2captcha (human solvers, ~15-30s)
+            _snap(page, f"2. CAPTCHA encontrado (intento {attempt+1})")
             captcha_text = _solve_captcha_with_2captcha(captcha_img)
 
             if not captcha_text:
@@ -198,6 +227,7 @@ def _fetch_cav(plate: str) -> dict:
             input_el.click()
             input_el.fill("")
             input_el.type(captcha_text, delay=50)
+            _snap(page, f"3. CAPTCHA escrito: '{captcha_text}'")
 
             # Find and click the submit button
             submit_btn = page.query_selector('input[type="submit"]') or \
@@ -223,6 +253,7 @@ def _fetch_cav(plate: str) -> dict:
                 page.wait_for_load_state("networkidle", timeout=10000)
             except Exception:
                 pass
+            _snap(page, f"4. Después de enviar CAPTCHA '{captcha_text}'")
 
             # Check if we got through
             result_body = page.content()
@@ -230,6 +261,7 @@ def _fetch_cav(plate: str) -> dict:
             # Check if CAPTCHA was wrong (page reloads with CAPTCHA again)
             if "código de la imagen" in result_body.lower() or "resolver el desafío" in result_body.lower():
                 print(f"[cav_worker] CAPTCHA attempt {attempt + 1} failed — wrong code", flush=True)
+                _snap(page, f"🔄 Intento {attempt + 1} falló — CAPTCHA incorrecto")
                 # Reload page for fresh CAPTCHA
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
                 page.wait_for_timeout(3000)
@@ -238,24 +270,41 @@ def _fetch_cav(plate: str) -> dict:
             # Check if we got CAV data
             if _has_cav_data(result_body):
                 print("[cav_worker] CAPTCHA solved! Parsing CAV data...", flush=True)
-                return _parse_cav_page(result_body, plate)
+                _snap(page, "✅ CAV obtenido!")
+                result = _parse_cav_page(result_body, plate)
+                if debug:
+                    result["steps"] = steps
+                return result
 
             # Unknown state — maybe partial load
             print(f"[cav_worker] Attempt {attempt + 1}: unclear response, retrying...", flush=True)
+            _snap(page, f"⚠️ Intento {attempt + 1} — respuesta no reconocida")
             page.goto(url, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
 
         # All retries exhausted
-        return {
+        _snap(page, f"❌ CAPTCHA incorrecto tras {MAX_RETRIES} intentos")
+        fail_result = {
             "ok": False,
             "error": f"Could not solve CAPTCHA after {MAX_RETRIES} attempts",
             "retries": MAX_RETRIES,
         }
+        if debug:
+            fail_result["steps"] = steps
+        return fail_result
 
     except Exception as e:
         print(f"[cav_worker] Error: {e}", flush=True)
         traceback.print_exc()
-        return {"ok": False, "error": str(e)}
+        err_result = {"ok": False, "error": str(e)}
+        if debug:
+            # Try a last screenshot if page is still alive
+            try:
+                _snap(page, f"💥 Error: {str(e)[:80]}")
+            except Exception:
+                pass
+            err_result["steps"] = steps
+        return err_result
     finally:
         try:
             context.close()
@@ -428,6 +477,37 @@ def fetch_cav():
     if result.get("ok"):
         result.pop("raw_text", None)
         result.pop("debug_screenshot", None)
+
+    status_code = 200 if result.get("ok") else 500
+    return jsonify(result), status_code
+
+
+@app.route("/cav-debug", methods=["POST"])
+def fetch_cav_debug():
+    """
+    Debug endpoint — same as /cav but returns step-by-step screenshots.
+    Body: { "plate": "ABCD12", "secret": "<CAV_SECRET>" }
+    """
+    data = request.json or {}
+
+    secret = data.get("secret", "")
+    if secret != CAV_SECRET:
+        return jsonify({"ok": False, "error": "Invalid secret"}), 403
+
+    plate = (data.get("plate") or "").strip().upper().replace("-", "").replace(" ", "")
+    if not plate or len(plate) < 4:
+        return jsonify({"ok": False, "error": "Invalid plate number"}), 400
+
+    print(f"\n{'='*60}", flush=True)
+    print(f"[cav_worker] 🔍 DEBUG — Fetching CAV for plate: {plate}", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    start_time = time.time()
+    result = _fetch_cav(plate, debug=True)
+    elapsed = time.time() - start_time
+
+    result["elapsed_seconds"] = round(elapsed, 1)
+    print(f"[cav_worker] DEBUG done in {elapsed:.1f}s — {len(result.get('steps', []))} screenshots captured", flush=True)
 
     status_code = 200 if result.get("ok") else 500
     return jsonify(result), status_code

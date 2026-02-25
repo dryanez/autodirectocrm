@@ -821,6 +821,14 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2">
+                                    <button @click="obtenerCAVDebug(invDetail)"
+                                        :disabled="!invDetail?.plate || cavLoading || cavDebugLoading"
+                                        :class="cavDebugLoading ? 'bg-yellow-700/50 text-yellow-300 cursor-wait' : (invDetail?.plate ? 'bg-yellow-700/30 hover:bg-yellow-700/50 text-yellow-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
+                                        class="text-xs px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-1"
+                                        title="Ejecutar robot y ver screenshots paso a paso">
+                                        <i class="ph" :class="cavDebugLoading ? 'ph-spinner animate-spin' : 'ph-magnifying-glass'"></i>
+                                        <span x-text="cavDebugLoading ? 'Depurando…' : '🔍 Debug'"></span>
+                                    </button>
                                     <button @click="obtenerCAV(invDetail)"
                                         :disabled="!invDetail?.plate || cavLoading"
                                         :class="cavLoading ? 'bg-indigo-700/50 text-indigo-300 cursor-wait' : (invDetail?.plate ? 'bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed')"
@@ -5073,6 +5081,12 @@
 
                 // ─── CAV — Certificado de Anotaciones Vigentes ───────────
                 cavLoading: false,
+                cavDebugLoading: false,
+                cavDebugModal: false,
+                cavDebugSteps: [],
+                cavDebugError: '',
+                cavDebugPlate: '',
+                cavDebugElapsed: null,
 
                 async obtenerCAV(car) {
                     if (!car?.plate) {
@@ -5138,6 +5152,35 @@
                         }
                     } finally {
                         this.cavLoading = false;
+                    }
+                },
+
+                async obtenerCAVDebug(car) {
+                    if (!car?.plate) { alert('⚠️ Ingrese la patente primero.'); return; }
+                    const plate = car.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+                    // Reset & open modal immediately
+                    this.cavDebugSteps = [];
+                    this.cavDebugError = '';
+                    this.cavDebugPlate = plate;
+                    this.cavDebugElapsed = null;
+                    this.cavDebugLoading = true;
+                    this.cavDebugModal = true;
+
+                    try {
+                        const res = await this.authFetch(`/api/consignaciones/${car.id}/cav-debug`, { method: 'POST' });
+                        const data = await res.json();
+
+                        this.cavDebugSteps = data.steps || [];
+                        this.cavDebugElapsed = data.elapsed_seconds || null;
+
+                        if (!data.ok) {
+                            this.cavDebugError = data.error || 'Error desconocido';
+                        }
+                    } catch (e) {
+                        this.cavDebugError = 'Error de conexión: ' + e.message;
+                    } finally {
+                        this.cavDebugLoading = false;
                     }
                 },
 
@@ -6115,6 +6158,52 @@
                     </div>
                 </div>
                 <p class="text-[11px] text-slate-600 mt-3 text-center">Al terminar las fotos, el propietario debe presionar <strong class="text-slate-500">"Volver al CRM"</strong> — las fotos aparecerán automáticamente aquí.</p>
+            </div>
+        </div>
+    </div>
+    <!-- ═══════ CAV Debug Modal ═══════ -->
+    <div x-show="cavDebugModal" x-cloak
+         class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+         @keydown.escape.window="cavDebugModal = false">
+        <div class="bg-slate-900 border border-slate-600 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl mx-4" @click.away="cavDebugModal = false">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-700 sticky top-0 bg-slate-900 z-10">
+                <div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-magnifying-glass text-yellow-400"></i>
+                        CAV Debug — Robot Vision
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-0.5" x-text="'Patente: ' + (cavDebugPlate || '—') + (cavDebugElapsed ? '  •  ' + cavDebugElapsed + 's' : '')"></p>
+                </div>
+                <button @click="cavDebugModal = false" class="text-slate-400 hover:text-white text-xl"><i class="ph ph-x"></i></button>
+            </div>
+            <!-- Error -->
+            <div x-show="cavDebugError" class="mx-5 mt-4 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3">
+                <p class="text-red-400 text-sm font-medium" x-text="cavDebugError"></p>
+            </div>
+            <!-- Steps -->
+            <div class="p-5 space-y-4">
+                <template x-if="cavDebugSteps.length === 0 && !cavDebugLoading && !cavDebugError">
+                    <p class="text-slate-500 text-sm text-center py-8">Sin pasos registrados.</p>
+                </template>
+                <template x-for="(step, idx) in cavDebugSteps" :key="idx">
+                    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                        <div class="flex items-center justify-between px-4 py-2 bg-slate-800/80">
+                            <span class="text-sm font-semibold text-white" x-text="step.step"></span>
+                            <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                                <span x-text="step.time ? step.time + 's' : ''"></span>
+                                <span x-text="step.url ? new URL(step.url).hostname : ''" class="truncate max-w-[200px]"></span>
+                            </div>
+                        </div>
+                        <img :src="'data:image/jpeg;base64,' + step.screenshot" class="w-full" loading="lazy"
+                             :alt="step.step" style="image-rendering: auto;">
+                    </div>
+                </template>
+                <!-- Loading indicator -->
+                <div x-show="cavDebugLoading" class="flex flex-col items-center py-8 gap-3">
+                    <i class="ph ph-spinner animate-spin text-3xl text-yellow-400"></i>
+                    <p class="text-yellow-300 text-sm">Robot navegando… esto puede tomar 30-60 segundos</p>
+                </div>
             </div>
         </div>
     </div>
