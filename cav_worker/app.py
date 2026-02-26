@@ -39,10 +39,22 @@ _playwright = None
 
 
 def _get_browser():
-    """Get or create a persistent Chromium browser instance."""
+    """Get or create a persistent Chromium browser instance. Auto-restarts if crashed."""
     global _browser, _playwright
-    if _browser and _browser.is_connected():
-        return _browser
+    # Check if existing browser is still alive
+    try:
+        if _browser and _browser.is_connected():
+            return _browser
+    except Exception:
+        pass
+    # Kill old playwright if needed
+    try:
+        if _playwright:
+            _playwright.stop()
+    except Exception:
+        pass
+    _browser = None
+    _playwright = None
     from playwright.sync_api import sync_playwright
     _playwright = sync_playwright().start()
     _browser = _playwright.chromium.launch(
