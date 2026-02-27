@@ -990,28 +990,37 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
 
                 # ── Step 13: Scotiabank — dump frame structure BEFORE clicking Empresas ──
                 print("[cav_worker] Step 13: Scotiabank page loaded — dumping frame structure...", flush=True)
+                frame_debug_before = []
                 for fi, frame in enumerate(page.frames):
                     try:
                         finfo = frame.evaluate("""() => ({
                             url: location.href,
-                            html: document.documentElement.outerHTML.substring(0, 600),
+                            html: document.documentElement.outerHTML.substring(0, 1500),
                             inputs: Array.from(document.querySelectorAll('input')).map(i => ({
                                 type: i.type, id: i.id, name: i.name,
                             })),
                             links: Array.from(document.querySelectorAll('a')).map(a => ({
-                                text: (a.innerText||'').trim().substring(0,60),
-                                href: (a.href||'').substring(0,120),
+                                text: (a.innerText||'').trim().substring(0,80),
+                                href: (a.href||'').substring(0,150),
                             })).filter(l => l.text || l.href),
                         })""")
                         is_main = "MAIN" if frame == page.main_frame else ""
+                        fentry = {
+                            "fi": fi, "is_main": bool(is_main), "name": frame.name,
+                            "url": finfo['url'][:150],
+                            "html_snippet": finfo['html'][:500],
+                            "inputs": finfo['inputs'][:10],
+                            "links": finfo['links'][:10],
+                        }
+                        frame_debug_before.append(fentry)
                         print(f"[cav_worker] Frame {fi} {is_main} name='{frame.name}' url={finfo['url'][:100]}", flush=True)
                         if finfo['inputs']:
                             print(f"  inputs: {json.dumps(finfo['inputs'][:10])}", flush=True)
                         if finfo['links']:
                             print(f"  links: {json.dumps(finfo['links'][:8])}", flush=True)
-                        # Show first 200 chars of HTML to understand structure
-                        print(f"  html: {finfo['html'][:200]}", flush=True)
+                        print(f"  html: {finfo['html'][:300]}", flush=True)
                     except Exception as e:
+                        frame_debug_before.append({"fi": fi, "name": frame.name, "error": str(e)})
                         print(f"[cav_worker] Frame {fi} name='{frame.name}' — error: {e}", flush=True)
 
                 # ── Step 14: Click "Haga Click Aquí" for Scotiabank Empresas ──
@@ -1322,6 +1331,7 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                     "login_result": login_result_clean,
                     "ingresar_result": ingresar_result,
                     "empresas_clicked": empresas_clicked,
+                    "frame_debug_before": frame_debug_before[:5],
                     "message": f"CAV para {plate} — Scotiabank Empresas login completado. URL: {post_login_url}",
                     "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
                 }
