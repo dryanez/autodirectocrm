@@ -33,51 +33,15 @@ CAV_SECRET = os.environ.get("CAV_SECRET", "cav-autodirecto-2026")
 TWOCAPTCHA_API_KEY = os.environ.get("TWOCAPTCHA_API_KEY", "")
 MAX_RETRIES = 3
 
-# ─── Lazy-load Playwright to avoid startup cost on healthchecks ───────────────
-import threading
-
-_thread_local = threading.local()
-
-
-def _get_browser():
-    """Get or create a Chromium browser instance for this thread.
-    Uses thread-local storage to avoid 'cannot switch to a different thread' greenlet errors.
-    Each thread gets its own Playwright + browser instance."""
-    pw = getattr(_thread_local, 'playwright', None)
-    br = getattr(_thread_local, 'browser', None)
-
-    # Check if existing browser is still alive
-    try:
-        if br and br.is_connected():
-            return br
-    except Exception:
-        pass
-
-    # Kill old playwright if needed
-    try:
-        if pw:
-            pw.stop()
-    except Exception:
-        pass
-
-    _thread_local.browser = None
-    _thread_local.playwright = None
-
-    from playwright.sync_api import sync_playwright
-    _thread_local.playwright = sync_playwright().start()
-    _thread_local.browser = _thread_local.playwright.chromium.launch(
-        headless=True,
-        args=[
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--single-process",
-            "--disable-blink-features=AutomationControlled",
-        ],
-    )
-    print("[cav_worker] Chromium browser launched (thread-local)", flush=True)
-    return _thread_local.browser
+# ─── Playwright browser — fresh per request to avoid greenlet thread issues ──
+_BROWSER_ARGS = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--single-process",
+    "--disable-blink-features=AutomationControlled",
+]
 
 
 def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
@@ -142,7 +106,12 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
 
     _start = time.time()
     plate = plate.replace("-", "").replace(" ", "").upper()
-    browser = _get_browser()
+
+    # Fresh playwright + browser per request (avoids greenlet thread-switch crashes)
+    from playwright.sync_api import sync_playwright
+    _pw = sync_playwright().start()
+    browser = _pw.chromium.launch(headless=True, args=_BROWSER_ARGS)
+    print(f"[cav_worker] Chromium launched for plate={plate}", flush=True)
     context = browser.new_context(
         user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -1016,6 +985,14 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
     finally:
         try:
             context.close()
+        except Exception:
+            pass
+        try:
+            browser.close()
+        except Exception:
+            pass
+        try:
+            _pw.stop()
         except Exception:
             pass
 
