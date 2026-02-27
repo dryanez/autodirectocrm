@@ -1050,38 +1050,74 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 time.sleep(3)
                 _snap(page, "20. Scotiabank Empresas login page")
 
-                # ── Step 14: Fill RUT Empresa + Clave → Ingresar ──
-                SCOTIA_RUT = "783557177"
+                # ── Step 14: Fill Scotiabank Empresas login ──
+                # Empresas login has: RUT Empresa, RUT Persona (operator), and Clave
+                SCOTIA_RUT_EMPRESA = "783557177"
+                SCOTIA_RUT_PERSONA = "188424430"
                 SCOTIA_CLAVE = "Comoestas01"
-                print(f"[cav_worker] Step 14: Filling RUT={SCOTIA_RUT} + Clave...", flush=True)
+                print(f"[cav_worker] Step 14: Filling RUT Empresa={SCOTIA_RUT_EMPRESA}, RUT Persona={SCOTIA_RUT_PERSONA}, Clave...", flush=True)
 
                 def _fill_login(target):
-                    """Fill RUT + Clave fields on a page or frame."""
-                    return target.evaluate("""(rut, clave) => {
+                    """Fill login fields on a page or frame.
+                    Scotiabank Empresas may have 2 or 3 input fields:
+                    - 2 fields: RUT + Clave (personal login page before clicking Empresas)
+                    - 3 fields: RUT Empresa + RUT Persona + Clave (empresas login)
+                    """
+                    creds = {
+                        "rutEmpresa": SCOTIA_RUT_EMPRESA,
+                        "rutPersona": SCOTIA_RUT_PERSONA,
+                        "clave": SCOTIA_CLAVE,
+                    }
+                    return target.evaluate("""(creds) => {
                         const inputs = Array.from(document.querySelectorAll('input'));
-                        let rutField = null, claveField = null;
-                        for (const inp of inputs) {
-                            if (inp.offsetParent === null && inp.type !== 'hidden') continue;
-                            const nm = (inp.name || '').toLowerCase();
-                            const id = (inp.id || '').toLowerCase();
-                            const tp = (inp.type || '').toLowerCase();
-                            if (nm.includes('rut') || id.includes('rut')) rutField = inp;
-                            if (tp === 'password' || nm.includes('clave') || nm.includes('pass') || id.includes('clave')) claveField = inp;
+                        const visible = inputs.filter(i => i.offsetParent !== null || i.type === 'hidden');
+                        const textInputs = visible.filter(i => i.type === 'text' || i.type === '' || !i.type);
+                        const passInputs = visible.filter(i => i.type === 'password');
+
+                        const result = {
+                            totalVisible: visible.length,
+                            textCount: textInputs.length,
+                            passCount: passInputs.length,
+                            fieldsFilled: [],
+                        };
+
+                        // If 2+ text inputs → first = RUT Empresa, second = RUT Persona
+                        // If 1 text input → just RUT (fill with empresa RUT)
+                        if (textInputs.length >= 2) {
+                            // Empresas login: RUT Empresa + RUT Persona
+                            textInputs[0].focus();
+                            textInputs[0].value = creds.rutEmpresa;
+                            textInputs[0].dispatchEvent(new Event('input', {bubbles:true}));
+                            textInputs[0].dispatchEvent(new Event('change', {bubbles:true}));
+                            result.fieldsFilled.push('rutEmpresa:' + textInputs[0].name + '/' + textInputs[0].id);
+
+                            textInputs[1].focus();
+                            textInputs[1].value = creds.rutPersona;
+                            textInputs[1].dispatchEvent(new Event('input', {bubbles:true}));
+                            textInputs[1].dispatchEvent(new Event('change', {bubbles:true}));
+                            result.fieldsFilled.push('rutPersona:' + textInputs[1].name + '/' + textInputs[1].id);
+                        } else if (textInputs.length === 1) {
+                            // Personal login: just RUT
+                            textInputs[0].focus();
+                            textInputs[0].value = creds.rutEmpresa;
+                            textInputs[0].dispatchEvent(new Event('input', {bubbles:true}));
+                            textInputs[0].dispatchEvent(new Event('change', {bubbles:true}));
+                            result.fieldsFilled.push('rut:' + textInputs[0].name + '/' + textInputs[0].id);
                         }
-                        if (!rutField) rutField = inputs.find(i => i.offsetParent !== null && (i.type === 'text' || !i.type));
-                        if (!claveField) claveField = inputs.find(i => i.offsetParent !== null && i.type === 'password');
-                        if (rutField) {
-                            rutField.focus(); rutField.value = rut;
-                            rutField.dispatchEvent(new Event('input', {bubbles:true}));
-                            rutField.dispatchEvent(new Event('change', {bubbles:true}));
+
+                        // Password field
+                        if (passInputs.length > 0) {
+                            passInputs[0].focus();
+                            passInputs[0].value = creds.clave;
+                            passInputs[0].dispatchEvent(new Event('input', {bubbles:true}));
+                            passInputs[0].dispatchEvent(new Event('change', {bubbles:true}));
+                            result.fieldsFilled.push('clave:' + passInputs[0].name + '/' + passInputs[0].id);
                         }
-                        if (claveField) {
-                            claveField.focus(); claveField.value = clave;
-                            claveField.dispatchEvent(new Event('input', {bubbles:true}));
-                            claveField.dispatchEvent(new Event('change', {bubbles:true}));
-                        }
-                        return { rutFound: !!rutField, claveFound: !!claveField };
-                    }""", SCOTIA_RUT, SCOTIA_CLAVE)
+
+                        result.rutFound = textInputs.length > 0;
+                        result.claveFound = passInputs.length > 0;
+                        return result;
+                    }""", creds)
 
                 def _click_ingresar(target):
                     """Click Ingresar / login button."""
