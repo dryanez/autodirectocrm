@@ -1032,39 +1032,63 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 empresas_clicked = False
                 empresas_frame = None
 
-                # Search ALL frames for the "Haga Click Aquí" link
+                # Search ALL frames for the "Haga Click Aquí" link or empresa() JS call
                 for frame in page.frames:
                     try:
                         result_click = frame.evaluate("""() => {
                             const links = document.querySelectorAll('a');
+                            // Priority 1: text contains "haga click"
                             for (const a of links) {
                                 const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
-                                const href = (a.href || '').toLowerCase();
                                 if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui')) {
-                                    // Check if it calls empresa() function
-                                    const hasEmpresaFn = href.includes('empresa');
                                     a.scrollIntoView({block:'center'});
                                     a.click();
-                                    return { clicked: true, text: a.innerText.trim(), href: a.href, hasEmpresaFn };
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href, method: 'text_hagaclick' };
                                 }
                             }
-                            // Fallback: link with 'empresa' in text
+                            // Priority 2: href contains "empresa" (the link calls javascript:empresa())
+                            for (const a of links) {
+                                const href = (a.href || a.getAttribute('href') || '').toLowerCase();
+                                if (href.includes('empresa')) {
+                                    a.scrollIntoView({block:'center'});
+                                    a.click();
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href || a.getAttribute('href'), method: 'href_empresa' };
+                                }
+                            }
+                            // Priority 3: text contains 'empresa'
                             for (const a of links) {
                                 const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
                                 if (txt.includes('empresa')) {
                                     a.scrollIntoView({block:'center'});
                                     a.click();
-                                    return { clicked: true, text: a.innerText.trim(), href: a.href, hasEmpresaFn: true };
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href, method: 'text_empresa' };
                                 }
                             }
-                            return { clicked: false };
+                            // Priority 4: onclick contains 'empresa'
+                            for (const a of links) {
+                                const onclick = (a.getAttribute('onclick') || '').toLowerCase();
+                                if (onclick.includes('empresa')) {
+                                    a.scrollIntoView({block:'center'});
+                                    a.click();
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href, onclick, method: 'onclick_empresa' };
+                                }
+                            }
+                            // Priority 5: try calling empresa() directly if it exists as a global function
+                            if (typeof empresa === 'function') {
+                                empresa();
+                                return { clicked: true, text: '', href: '', method: 'direct_empresa_fn' };
+                            }
+                            return { clicked: false, linkCount: links.length };
                         }""")
                         if result_click.get('clicked'):
                             empresas_clicked = True
                             empresas_frame = frame
                             is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
-                            print(f"[cav_worker] ✅ Empresas link clicked in {is_main}: text='{result_click.get('text','')}' href='{result_click.get('href','')}'", flush=True)
+                            print(f"[cav_worker] ✅ Empresas link clicked in {is_main}: method={result_click.get('method','')} text='{result_click.get('text','')}' href='{result_click.get('href','')}'", flush=True)
                             break
+                        else:
+                            is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                            print(f"[cav_worker] Frame {is_main}: no empresa link found (links={result_click.get('linkCount',0)})", flush=True)
                     except Exception as e:
                         print(f"[cav_worker] Frame {frame.name} click error: {e}", flush=True)
 
