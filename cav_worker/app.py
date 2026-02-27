@@ -914,17 +914,251 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
             current_url = page.url
             print(f"[cav_worker] URL after Continuar: {current_url}", flush=True)
             if "tesoreria" in current_url.lower() or "tgr" in current_url.lower():
-                # On TGR external site — grab page text for info
-                text = re.sub(r'<[^>]+>', ' ', result_html)
-                text = re.sub(r'\s+', ' ', text).strip()
-                _snap(page, "🏦 Sitio TGR externo")
+                _snap(page, "🏦 Sitio TGR externo — seleccionando Scotiabank")
+
+                # ── Step 11: TGR bank selection → click Scotiabank ──
+                print("[cav_worker] Step 11: Looking for Scotiabank on TGR page...", flush=True)
+                # The TGR page loads bank logos slowly — retry up to 12 times (60s)
+                scotia_clicked = False
+                for attempt in range(12):
+                    scotia_clicked = page.evaluate("""() => {
+                        const all = document.querySelectorAll('a, button, input, img, div, td, li, label, span');
+                        for (const el of all) {
+                            if (el.offsetParent === null) continue;
+                            const txt = (el.innerText || el.textContent || el.alt || el.title || el.value || '').toLowerCase();
+                            const src = (el.src || '').toLowerCase();
+                            if (txt.includes('scotiabank') || txt.includes('scotia') || src.includes('scotiabank') || src.includes('scotia')) {
+                                const target = (el.tagName === 'IMG' && el.parentElement && (el.parentElement.tagName === 'A' || el.parentElement.tagName === 'DIV'))
+                                    ? el.parentElement : el;
+                                target.scrollIntoView({block:'center'});
+                                target.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""")
+                    if scotia_clicked:
+                        print(f"[cav_worker] ✅ Scotiabank clicked (attempt {attempt+1})", flush=True)
+                        break
+                    print(f"[cav_worker]   Scotiabank not found yet (attempt {attempt+1}/12), waiting 5s...", flush=True)
+                    time.sleep(5)
+
+                if not scotia_clicked:
+                    _snap(page, "❌ Scotiabank no encontrado en TGR")
+                    result = {
+                        "ok": False,
+                        "error": "Scotiabank not found on TGR bank selection page",
+                        "status": "tgr_bank_error",
+                        "plate": plate,
+                        "tgr_url": current_url,
+                    }
+                    if debug:
+                        result["steps"] = steps
+                    return result
+
+                time.sleep(4)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
+                time.sleep(2)
+                _snap(page, "18. Scotiabank seleccionado — buscando Pagar")
+
+                # ── Step 12: Click "Pagar" button ──
+                print("[cav_worker] Step 12: Clicking Pagar...", flush=True)
+                pagar_clicked = page.evaluate("""() => {
+                    const all = document.querySelectorAll('a, button, input[type=submit], input[type=button]');
+                    for (const el of all) {
+                        if (el.offsetParent === null) continue;
+                        const txt = (el.innerText || el.value || '').trim().toLowerCase();
+                        if (txt === 'pagar' || txt.includes('pagar')) {
+                            el.scrollIntoView({block:'center'});
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""")
+                print(f"[cav_worker] Pagar clicked: {pagar_clicked}", flush=True)
+                time.sleep(5)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+                time.sleep(5)
+                _snap(page, "19. Después de Pagar — página login Scotiabank")
+
+                # ── Step 13: Click "Haga Click Aquí" for Scotiabank Empresas ──
+                # The personal login page has: "Para empresas con Contrato Scotiaweb Haga Click Aquí"
+                print("[cav_worker] Step 13: Looking for 'Haga Click Aquí' (Empresas)...", flush=True)
+                empresas_clicked = False
+
+                # Try main page first
+                empresas_clicked = page.evaluate("""() => {
+                    const links = document.querySelectorAll('a');
+                    for (const a of links) {
+                        const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
+                        if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui')) {
+                            a.scrollIntoView({block:'center'});
+                            a.click();
+                            return true;
+                        }
+                    }
+                    // Fallback: any <a> with 'empresa'
+                    for (const a of links) {
+                        const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
+                        if (txt.includes('empresa')) {
+                            a.scrollIntoView({block:'center'});
+                            a.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""")
+
+                # If not found on main page, check inside frames (Scotiabank uses framesets)
+                if not empresas_clicked:
+                    print("[cav_worker] Not found on main page, checking frames...", flush=True)
+                    for frame in page.frames:
+                        if frame == page.main_frame:
+                            continue
+                        try:
+                            empresas_clicked = frame.evaluate("""() => {
+                                const links = document.querySelectorAll('a');
+                                for (const a of links) {
+                                    const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
+                                    if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui') || txt.includes('empresa')) {
+                                        a.scrollIntoView({block:'center'});
+                                        a.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }""")
+                            if empresas_clicked:
+                                print(f"[cav_worker] ✅ Empresas link found in frame: {frame.name}", flush=True)
+                                break
+                        except Exception:
+                            pass
+
+                print(f"[cav_worker] Empresas clicked: {empresas_clicked}", flush=True)
+                time.sleep(5)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
+                time.sleep(3)
+                _snap(page, "20. Scotiabank Empresas login page")
+
+                # ── Step 14: Fill RUT Empresa + Clave → Ingresar ──
+                SCOTIA_RUT = "783557177"
+                SCOTIA_CLAVE = "Comoestas01"
+                print(f"[cav_worker] Step 14: Filling RUT={SCOTIA_RUT} + Clave...", flush=True)
+
+                def _fill_login(target):
+                    """Fill RUT + Clave fields on a page or frame."""
+                    return target.evaluate("""(rut, clave) => {
+                        const inputs = Array.from(document.querySelectorAll('input'));
+                        let rutField = null, claveField = null;
+                        for (const inp of inputs) {
+                            if (inp.offsetParent === null && inp.type !== 'hidden') continue;
+                            const nm = (inp.name || '').toLowerCase();
+                            const id = (inp.id || '').toLowerCase();
+                            const tp = (inp.type || '').toLowerCase();
+                            if (nm.includes('rut') || id.includes('rut')) rutField = inp;
+                            if (tp === 'password' || nm.includes('clave') || nm.includes('pass') || id.includes('clave')) claveField = inp;
+                        }
+                        if (!rutField) rutField = inputs.find(i => i.offsetParent !== null && (i.type === 'text' || !i.type));
+                        if (!claveField) claveField = inputs.find(i => i.offsetParent !== null && i.type === 'password');
+                        if (rutField) {
+                            rutField.focus(); rutField.value = rut;
+                            rutField.dispatchEvent(new Event('input', {bubbles:true}));
+                            rutField.dispatchEvent(new Event('change', {bubbles:true}));
+                        }
+                        if (claveField) {
+                            claveField.focus(); claveField.value = clave;
+                            claveField.dispatchEvent(new Event('input', {bubbles:true}));
+                            claveField.dispatchEvent(new Event('change', {bubbles:true}));
+                        }
+                        return { rutFound: !!rutField, claveFound: !!claveField };
+                    }""", SCOTIA_RUT, SCOTIA_CLAVE)
+
+                def _click_ingresar(target):
+                    """Click Ingresar / login button."""
+                    return target.evaluate("""() => {
+                        const all = document.querySelectorAll('button, input[type=submit], input[type=button], a, input[type=image]');
+                        for (const el of all) {
+                            if (el.offsetParent === null) continue;
+                            const txt = (el.innerText || el.value || el.alt || '').trim().toLowerCase();
+                            if (txt.includes('ingresar') || txt.includes('login') || txt.includes('entrar')) {
+                                el.scrollIntoView({block:'center'});
+                                el.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""")
+
+                # Try main page then frames
+                login_result = _fill_login(page)
+                login_target = page
+                if not login_result.get('rutFound'):
+                    for frame in page.frames:
+                        if frame == page.main_frame:
+                            continue
+                        try:
+                            login_result = _fill_login(frame)
+                            if login_result.get('rutFound'):
+                                login_target = frame
+                                print(f"[cav_worker] Login fields found in frame: {frame.name}", flush=True)
+                                break
+                        except Exception:
+                            pass
+
+                print(f"[cav_worker] Login fill result: {login_result}", flush=True)
+                time.sleep(1)
+                _snap(page, "21. RUT + Clave ingresados")
+
+                ingresar_clicked = _click_ingresar(login_target)
+                print(f"[cav_worker] Ingresar clicked: {ingresar_clicked}", flush=True)
+                time.sleep(8)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+                time.sleep(3)
+                _snap(page, "22. Después de Ingresar (Scotiabank)")
+
+                # ── Step 15: Capture post-login state ──
+                post_login_url = page.url
+                post_login_text = ""
+                try:
+                    post_login_text = page.evaluate("() => document.body ? document.body.innerText.substring(0,1000) : ''")
+                except Exception:
+                    pass
+                # Also check frames
+                for frame in page.frames:
+                    if frame == page.main_frame:
+                        continue
+                    try:
+                        ft = frame.evaluate("() => document.body ? document.body.innerText.substring(0,500) : ''")
+                        if ft.strip():
+                            post_login_text += f"\n[frame:{frame.name}] {ft}"
+                    except Exception:
+                        pass
+
+                print(f"[cav_worker] Post-login URL: {post_login_url}", flush=True)
+                print(f"[cav_worker] Post-login text: {post_login_text[:300]}", flush=True)
+                _snap(page, "23. Estado post-login Scotiabank")
+
                 result = {
                     "ok": True,
-                    "status": "tgr_redirect",
+                    "status": "scotiabank_login",
                     "plate": plate,
                     "price": "1430",
-                    "tgr_url": current_url,
-                    "message": f"CAV para {plate} redirigido a TGR (Tesorería). URL: {current_url}",
+                    "post_login_url": post_login_url,
+                    "post_login_text": post_login_text[:500],
+                    "message": f"CAV para {plate} — Scotiabank Empresas login completado. URL: {post_login_url}",
                     "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
                 }
                 if debug:
