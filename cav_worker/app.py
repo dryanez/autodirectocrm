@@ -1042,12 +1042,48 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                             pass
 
                 print(f"[cav_worker] Empresas clicked: {empresas_clicked}", flush=True)
+                # After clicking "Haga Click Aquí" the page may navigate or a frame may reload
                 time.sleep(5)
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=20000)
                 except Exception:
                     pass
-                time.sleep(3)
+                time.sleep(5)  # extra wait for empresas form to load
+
+                # Debug: dump ALL form fields we can see (main page + frames)
+                page_debug = page.evaluate("""() => ({
+                    url: location.href,
+                    inputs: Array.from(document.querySelectorAll('input')).map(i => ({
+                        type: i.type, id: i.id, name: i.name, visible: i.offsetParent !== null,
+                        placeholder: i.placeholder || '',
+                    })),
+                    frames: Array.from(document.querySelectorAll('frame, iframe')).map(f => ({
+                        tag: f.tagName, id: f.id, name: f.name, src: (f.src||'').substring(0,150),
+                    })),
+                    text: document.body.innerText.substring(0, 500),
+                })""")
+                print(f"[cav_worker] Page URL: {page_debug['url']}", flush=True)
+                print(f"[cav_worker] Page text: {page_debug['text'][:200]}", flush=True)
+                print(f"[cav_worker] Page inputs: {json.dumps(page_debug['inputs'][:10])}", flush=True)
+                print(f"[cav_worker] Page frames: {json.dumps(page_debug['frames'][:5])}", flush=True)
+
+                # Also dump each frame's fields
+                for fi, frame in enumerate(page.frames):
+                    if frame == page.main_frame:
+                        continue
+                    try:
+                        fdata = frame.evaluate("""() => ({
+                            url: location.href,
+                            inputs: Array.from(document.querySelectorAll('input')).map(i => ({
+                                type: i.type, id: i.id, name: i.name, visible: i.offsetParent !== null,
+                            })),
+                            text: document.body ? document.body.innerText.substring(0, 200) : '',
+                        })""")
+                        if fdata['inputs']:
+                            print(f"[cav_worker] Frame {fi} ({frame.name}): url={fdata['url'][:80]} inputs={json.dumps(fdata['inputs'][:10])} text={fdata['text'][:100]}", flush=True)
+                    except Exception:
+                        pass
+
                 _snap(page, "20. Scotiabank Empresas login page")
 
                 # ── Step 14: Fill Scotiabank Empresas login ──
@@ -1194,6 +1230,7 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                     "price": "1430",
                     "post_login_url": post_login_url,
                     "post_login_text": post_login_text[:500],
+                    "login_result": login_result,
                     "message": f"CAV para {plate} — Scotiabank Empresas login completado. URL: {post_login_url}",
                     "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
                 }
