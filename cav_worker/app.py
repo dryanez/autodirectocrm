@@ -34,30 +34,38 @@ TWOCAPTCHA_API_KEY = os.environ.get("TWOCAPTCHA_API_KEY", "")
 MAX_RETRIES = 3
 
 # ─── Lazy-load Playwright to avoid startup cost on healthchecks ───────────────
-_browser = None
-_playwright = None
+import threading
+
+_thread_local = threading.local()
 
 
 def _get_browser():
-    """Get or create a persistent Chromium browser instance. Auto-restarts if crashed."""
-    global _browser, _playwright
+    """Get or create a Chromium browser instance for this thread.
+    Uses thread-local storage to avoid 'cannot switch to a different thread' greenlet errors.
+    Each thread gets its own Playwright + browser instance."""
+    pw = getattr(_thread_local, 'playwright', None)
+    br = getattr(_thread_local, 'browser', None)
+
     # Check if existing browser is still alive
     try:
-        if _browser and _browser.is_connected():
-            return _browser
+        if br and br.is_connected():
+            return br
     except Exception:
         pass
+
     # Kill old playwright if needed
     try:
-        if _playwright:
-            _playwright.stop()
+        if pw:
+            pw.stop()
     except Exception:
         pass
-    _browser = None
-    _playwright = None
+
+    _thread_local.browser = None
+    _thread_local.playwright = None
+
     from playwright.sync_api import sync_playwright
-    _playwright = sync_playwright().start()
-    _browser = _playwright.chromium.launch(
+    _thread_local.playwright = sync_playwright().start()
+    _thread_local.browser = _thread_local.playwright.chromium.launch(
         headless=True,
         args=[
             "--no-sandbox",
@@ -68,8 +76,8 @@ def _get_browser():
             "--disable-blink-features=AutomationControlled",
         ],
     )
-    print("[cav_worker] Chromium browser launched", flush=True)
-    return _browser
+    print("[cav_worker] Chromium browser launched (thread-local)", flush=True)
+    return _thread_local.browser
 
 
 def _solve_captcha_with_2captcha(image_bytes: bytes) -> str:
@@ -845,35 +853,127 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
             pass
         _snap(page, "12. Después de Continuar")
 
-        # ── Step 10: Read result page (payment or CAV data) ──
+        # ── Step 10: Read result page — select TGR payment & continue ──
         print("[cav_worker] Step 10: Reading result page...", flush=True)
         result_html = page.content()
-        _snap(page, "13. Página de resultado final")
+        _snap(page, "13. Página de confirmación / pago")
 
         html_lower = result_html.lower()
 
-        # Check if we're on the payment page
-        is_payment = ("webpay" in html_lower or "tarjeta" in html_lower
-                      or "pagar" in html_lower or "transbank" in html_lower
-                      or "entregadocumentos" in page.url.lower())
+        # Detect the payment selection page (TGR / Servipag)
+        is_payment_select = ("tesoreria" in html_lower or "tgr" in html_lower
+                             or "servipag" in html_lower
+                             or "medio de pago" in html_lower
+                             or "entregadocumentos" in page.url.lower())
 
-        if is_payment:
-            print("[cav_worker] Hit the payment page — CAV requires payment", flush=True)
-            _snap(page, "💰 Página de pago — CAV es un certificado pagado")
+        if is_payment_select:
+            print("[cav_worker] Step 10: On payment selection page — selecting TGR (free)...", flush=True)
+            _snap(page, "14. Página selección medio de pago")
 
+            # Select TGR radio button (free — no transaction cost)
+            tgr_selected = page.evaluate("""() => {
+                // TGR radio: find input[type=radio] near text 'TGR' or 'Tesoreria'
+                const radios = document.querySelectorAll('input[type=radio]');
+                for (const r of radios) {
+                    const parent = r.closest('tr, li, div, label') || r.parentElement;
+                    const txt = parent ? (parent.innerText || '').toLowerCase() : '';
+                    if (txt.includes('tgr') || txt.includes('tesoreria') || txt.includes('tesorer')) {
+                        r.click();
+                        r.checked = true;
+                        r.dispatchEvent(new Event('change', {bubbles: true}));
+                        r.dispatchEvent(new Event('click', {bubbles: true}));
+                        return { selected: true, value: r.value, id: r.id, txt: txt.substring(0,60) };
+                    }
+                }
+                // Fallback: select FIRST radio (usually TGR is first)
+                if (radios.length > 0) {
+                    radios[0].click();
+                    radios[0].checked = true;
+                    return { selected: true, fallback: true, value: radios[0].value };
+                }
+                return { selected: false };
+            }""")
+            print(f"[cav_worker] TGR selection: {json.dumps(tgr_selected)}", flush=True)
+            page.wait_for_timeout(1500)
+            _snap(page, "15. TGR seleccionado")
+
+            # Click Continuar on the payment selection page
+            print("[cav_worker] Step 11: Clicking Continuar on payment page...", flush=True)
+            continuar_clicked = page.evaluate("""() => {
+                // Find Continuar button — could be <input type=submit>, <button>, or <a>
+                const candidates = [
+                    ...document.querySelectorAll('input[type=submit]'),
+                    ...document.querySelectorAll('input[type=button]'),
+                    ...document.querySelectorAll('button'),
+                    ...document.querySelectorAll('a.btn, a.button'),
+                ];
+                for (const el of candidates) {
+                    const txt = (el.value || el.innerText || '').toLowerCase().trim();
+                    if (txt.includes('continuar') || txt.includes('siguiente') || txt.includes('pagar')) {
+                        el.scrollIntoView({block: 'center'});
+                        el.click();
+                        return { clicked: true, txt: txt.substring(0,30), tag: el.tagName, id: el.id };
+                    }
+                }
+                return { clicked: false };
+            }""")
+            print(f"[cav_worker] Continuar click: {json.dumps(continuar_clicked)}", flush=True)
+
+            page.wait_for_timeout(6000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=20000)
+            except Exception:
+                pass
+            _snap(page, "16. Después de Continuar en pago")
+
+            # ── Step 12: Read the TGR result page (CAV data) ──
+            print("[cav_worker] Step 12: Reading TGR result page...", flush=True)
+            result_html = page.content()
+            _snap(page, "17. Página resultado TGR / CAV")
+            html_lower = result_html.lower()
+
+            # Check if we got CAV data
+            if _has_cav_data(result_html):
+                print("[cav_worker] ✅ CAV data found after TGR payment!", flush=True)
+                _snap(page, "✅ Datos CAV obtenidos")
+                result = _parse_cav_page(result_html, plate)
+                if debug:
+                    result["steps"] = steps
+                return result
+
+            # Check if redirected to TGR/Tesoreria site for actual payment
+            current_url = page.url
+            print(f"[cav_worker] URL after Continuar: {current_url}", flush=True)
+            if "tesoreria" in current_url.lower() or "tgr" in current_url.lower():
+                # On TGR external site — grab page text for info
+                text = re.sub(r'<[^>]+>', ' ', result_html)
+                text = re.sub(r'\s+', ' ', text).strip()
+                _snap(page, "🏦 Sitio TGR externo")
+                result = {
+                    "ok": True,
+                    "status": "tgr_redirect",
+                    "plate": plate,
+                    "price": "1430",
+                    "tgr_url": current_url,
+                    "message": f"CAV para {plate} redirigido a TGR (Tesorería). URL: {current_url}",
+                    "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
+                }
+                if debug:
+                    result["steps"] = steps
+                return result
+
+            # Still getting the page — return what we have
             text = re.sub(r'<[^>]+>', ' ', result_html)
             text = re.sub(r'\s+', ' ', text).strip()
-
-            price_match = re.search(r'Total\s*\$?\s*([\d.,]+)', text)
-            price = price_match.group(1) if price_match else cart_state.get("total", "desconocido")
-
+            _snap(page, "⚠️ Estado tras selección TGR")
             result = {
                 "ok": True,
-                "status": "payment_required",
+                "status": "payment_processing",
                 "plate": plate,
-                "message": f"El Certificado de Anotaciones Vigentes (CAV) para {plate} requiere pago de ${price} en registrocivil.cl.",
-                "price": price,
-                "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
+                "price": "1430",
+                "page_url": current_url,
+                "page_text": text[:1000],
+                "message": f"CAV para {plate} en proceso de pago TGR. Revisar URL: {current_url}",
             }
             if debug:
                 result["steps"] = steps
