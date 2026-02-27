@@ -988,116 +988,161 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 time.sleep(5)
                 _snap(page, "19. Después de Pagar — página login Scotiabank")
 
-                # ── Step 13: Click "Haga Click Aquí" for Scotiabank Empresas ──
-                # The personal login page has: "Para empresas con Contrato Scotiaweb Haga Click Aquí"
-                print("[cav_worker] Step 13: Looking for 'Haga Click Aquí' (Empresas)...", flush=True)
+                # ── Step 13: Scotiabank — dump frame structure BEFORE clicking Empresas ──
+                print("[cav_worker] Step 13: Scotiabank page loaded — dumping frame structure...", flush=True)
+                for fi, frame in enumerate(page.frames):
+                    try:
+                        finfo = frame.evaluate("""() => ({
+                            url: location.href,
+                            html: document.documentElement.outerHTML.substring(0, 600),
+                            inputs: Array.from(document.querySelectorAll('input')).map(i => ({
+                                type: i.type, id: i.id, name: i.name,
+                            })),
+                            links: Array.from(document.querySelectorAll('a')).map(a => ({
+                                text: (a.innerText||'').trim().substring(0,60),
+                                href: (a.href||'').substring(0,120),
+                            })).filter(l => l.text || l.href),
+                        })""")
+                        is_main = "MAIN" if frame == page.main_frame else ""
+                        print(f"[cav_worker] Frame {fi} {is_main} name='{frame.name}' url={finfo['url'][:100]}", flush=True)
+                        if finfo['inputs']:
+                            print(f"  inputs: {json.dumps(finfo['inputs'][:10])}", flush=True)
+                        if finfo['links']:
+                            print(f"  links: {json.dumps(finfo['links'][:8])}", flush=True)
+                        # Show first 200 chars of HTML to understand structure
+                        print(f"  html: {finfo['html'][:200]}", flush=True)
+                    except Exception as e:
+                        print(f"[cav_worker] Frame {fi} name='{frame.name}' — error: {e}", flush=True)
+
+                # ── Step 14: Click "Haga Click Aquí" for Scotiabank Empresas ──
+                # The Scotiabank page uses framesets. The personal login has a link
+                # that calls javascript:empresa() to switch to the empresas form.
+                # We need to find & click it in the right frame, then wait for the
+                # frame to reload with the empresas login form.
+                print("[cav_worker] Step 14: Looking for 'Haga Click Aquí' (Empresas)...", flush=True)
                 empresas_clicked = False
+                empresas_frame = None
 
-                # Try main page first
-                empresas_clicked = page.evaluate("""() => {
-                    const links = document.querySelectorAll('a');
-                    for (const a of links) {
-                        const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
-                        if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui')) {
-                            a.scrollIntoView({block:'center'});
-                            a.click();
-                            return true;
-                        }
-                    }
-                    // Fallback: any <a> with 'empresa'
-                    for (const a of links) {
-                        const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
-                        if (txt.includes('empresa')) {
-                            a.scrollIntoView({block:'center'});
-                            a.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }""")
-
-                # If not found on main page, check inside frames (Scotiabank uses framesets)
-                if not empresas_clicked:
-                    print("[cav_worker] Not found on main page, checking frames...", flush=True)
-                    for frame in page.frames:
-                        if frame == page.main_frame:
-                            continue
-                        try:
-                            empresas_clicked = frame.evaluate("""() => {
-                                const links = document.querySelectorAll('a');
-                                for (const a of links) {
-                                    const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
-                                    if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui') || txt.includes('empresa')) {
-                                        a.scrollIntoView({block:'center'});
-                                        a.click();
-                                        return true;
-                                    }
+                # Search ALL frames for the "Haga Click Aquí" link
+                for frame in page.frames:
+                    try:
+                        result_click = frame.evaluate("""() => {
+                            const links = document.querySelectorAll('a');
+                            for (const a of links) {
+                                const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
+                                const href = (a.href || '').toLowerCase();
+                                if (txt.includes('haga click') || txt.includes('click aquí') || txt.includes('click aqui')) {
+                                    // Check if it calls empresa() function
+                                    const hasEmpresaFn = href.includes('empresa');
+                                    a.scrollIntoView({block:'center'});
+                                    a.click();
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href, hasEmpresaFn };
                                 }
-                                return false;
-                            }""")
-                            if empresas_clicked:
-                                print(f"[cav_worker] ✅ Empresas link found in frame: {frame.name}", flush=True)
-                                break
-                        except Exception:
-                            pass
+                            }
+                            // Fallback: link with 'empresa' in text
+                            for (const a of links) {
+                                const txt = (a.innerText || a.textContent || '').trim().toLowerCase();
+                                if (txt.includes('empresa')) {
+                                    a.scrollIntoView({block:'center'});
+                                    a.click();
+                                    return { clicked: true, text: a.innerText.trim(), href: a.href, hasEmpresaFn: true };
+                                }
+                            }
+                            return { clicked: false };
+                        }""")
+                        if result_click.get('clicked'):
+                            empresas_clicked = True
+                            empresas_frame = frame
+                            is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                            print(f"[cav_worker] ✅ Empresas link clicked in {is_main}: text='{result_click.get('text','')}' href='{result_click.get('href','')}'", flush=True)
+                            break
+                    except Exception as e:
+                        print(f"[cav_worker] Frame {frame.name} click error: {e}", flush=True)
 
                 print(f"[cav_worker] Empresas clicked: {empresas_clicked}", flush=True)
-                # After clicking "Haga Click Aquí" the page may navigate or a frame may reload
-                time.sleep(5)
+
+                # After clicking empresa() the page/frame may navigate.
+                # Wait for any navigation to complete.
+                time.sleep(3)
                 try:
-                    page.wait_for_load_state("domcontentloaded", timeout=20000)
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
                 except Exception:
                     pass
                 time.sleep(5)  # extra wait for empresas form to load
 
-                # Debug: dump ALL form fields we can see (main page + frames)
-                page_debug = page.evaluate("""() => ({
-                    url: location.href,
-                    inputs: Array.from(document.querySelectorAll('input')).map(i => ({
-                        type: i.type, id: i.id, name: i.name, visible: i.offsetParent !== null,
-                        placeholder: i.placeholder || '',
-                    })),
-                    frames: Array.from(document.querySelectorAll('frame, iframe')).map(f => ({
-                        tag: f.tagName, id: f.id, name: f.name, src: (f.src||'').substring(0,150),
-                    })),
-                    text: document.body.innerText.substring(0, 500),
-                })""")
-                print(f"[cav_worker] Page URL: {page_debug['url']}", flush=True)
-                print(f"[cav_worker] Page text: {page_debug['text'][:200]}", flush=True)
-                print(f"[cav_worker] Page inputs: {json.dumps(page_debug['inputs'][:10])}", flush=True)
-                print(f"[cav_worker] Page frames: {json.dumps(page_debug['frames'][:5])}", flush=True)
-
-                # Also dump each frame's fields
+                # ── Step 14b: Dump frame structure AFTER clicking Empresas ──
+                print("[cav_worker] Step 14b: Frame structure AFTER clicking Empresas...", flush=True)
+                all_frame_fields = []
                 for fi, frame in enumerate(page.frames):
-                    if frame == page.main_frame:
-                        continue
                     try:
-                        fdata = frame.evaluate("""() => ({
+                        finfo = frame.evaluate("""() => ({
                             url: location.href,
                             inputs: Array.from(document.querySelectorAll('input')).map(i => ({
-                                type: i.type, id: i.id, name: i.name, visible: i.offsetParent !== null,
+                                type: i.type, id: i.id, name: i.name,
+                                visible: i.offsetParent !== null,
                             })),
-                            text: document.body ? document.body.innerText.substring(0, 200) : '',
+                            text: document.body ? document.body.innerText.substring(0, 300) : '',
+                            forms: Array.from(document.querySelectorAll('form')).map(f => ({
+                                action: (f.action||'').substring(0,120),
+                                method: f.method,
+                                name: f.name,
+                            })),
                         })""")
-                        if fdata['inputs']:
-                            print(f"[cav_worker] Frame {fi} ({frame.name}): url={fdata['url'][:80]} inputs={json.dumps(fdata['inputs'][:10])} text={fdata['text'][:100]}", flush=True)
-                    except Exception:
-                        pass
+                        is_main = "MAIN" if frame == page.main_frame else ""
+                        has_inputs = len(finfo['inputs']) > 0
+                        text_inputs = [i for i in finfo['inputs'] if i['type'] in ('text', '', None) or not i['type']]
+                        pass_inputs = [i for i in finfo['inputs'] if i['type'] == 'password']
+                        print(f"[cav_worker] Frame {fi} {is_main} name='{frame.name}' url={finfo['url'][:100]} inputs={len(finfo['inputs'])} text={len(text_inputs)} pass={len(pass_inputs)}", flush=True)
+                        if finfo['inputs']:
+                            print(f"  inputs: {json.dumps(finfo['inputs'][:10])}", flush=True)
+                        if finfo['forms']:
+                            print(f"  forms: {json.dumps(finfo['forms'][:5])}", flush=True)
+                        if finfo['text'].strip():
+                            print(f"  text: {finfo['text'][:150]}", flush=True)
+                        all_frame_fields.append({
+                            "fi": fi, "name": frame.name, "url": finfo['url'],
+                            "text_inputs": text_inputs, "pass_inputs": pass_inputs,
+                            "text": finfo['text'][:100], "frame": frame,
+                            "forms": finfo.get('forms', []),
+                        })
+                    except Exception as e:
+                        print(f"[cav_worker] Frame {fi} error: {e}", flush=True)
 
-                _snap(page, "20. Scotiabank Empresas login page")
+                _snap(page, "20. Scotiabank después de click Empresas")
 
-                # ── Step 14: Fill Scotiabank Empresas login ──
-                # Empresas login has: RUT Empresa, RUT Persona (operator), and Clave
+                # ── Step 15: Fill Scotiabank Empresas login ──
                 SCOTIA_RUT_EMPRESA = "783557177"
                 SCOTIA_RUT_PERSONA = "188424430"
                 SCOTIA_CLAVE = "Comoestas01"
-                print(f"[cav_worker] Step 14: Filling RUT Empresa={SCOTIA_RUT_EMPRESA}, RUT Persona={SCOTIA_RUT_PERSONA}, Clave...", flush=True)
+                print(f"[cav_worker] Step 15: Filling RUT Empresa={SCOTIA_RUT_EMPRESA}, RUT Persona={SCOTIA_RUT_PERSONA}, Clave...", flush=True)
 
-                def _fill_login(target):
+                # Strategy: find the frame that has the most text inputs (empresas form)
+                # The empresas form should have 2+ text inputs (RUT Empresa + RUT Operador/Persona)
+                # If no frame has 2+, fall back to the frame with 1 text input
+                best_frame = None
+                best_text_count = 0
+                for fdata in all_frame_fields:
+                    tc = len(fdata['text_inputs'])
+                    pc = len(fdata['pass_inputs'])
+                    if tc >= 2 and pc >= 1:
+                        # Perfect: empresas form with 2 RUT fields + password
+                        best_frame = fdata
+                        best_text_count = tc
+                        print(f"[cav_worker] ✅ Empresas form found in frame {fdata['fi']} ({fdata['name']}) with {tc} text + {pc} pass", flush=True)
+                        break
+                    if tc > best_text_count or (tc == best_text_count and pc > 0):
+                        best_frame = fdata
+                        best_text_count = tc
+
+                if best_frame:
+                    print(f"[cav_worker] Using frame {best_frame['fi']} ({best_frame['name']}) for login (text={len(best_frame['text_inputs'])}, pass={len(best_frame['pass_inputs'])})", flush=True)
+                else:
+                    print("[cav_worker] ⚠️ No suitable login frame found!", flush=True)
+
+                def _fill_login(target, is_empresas=False):
                     """Fill login fields on a page or frame.
-                    Scotiabank Empresas may have 2 or 3 input fields:
-                    - 2 fields: RUT + Clave (personal login page before clicking Empresas)
-                    - 3 fields: RUT Empresa + RUT Persona + Clave (empresas login)
+                    is_empresas=True: expects 2 text fields (RUT Empresa + RUT Persona)
+                    is_empresas=False: auto-detect based on field count
                     """
                     creds = {
                         "rutEmpresa": SCOTIA_RUT_EMPRESA,
@@ -1106,21 +1151,25 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                     }
                     return target.evaluate("""(creds) => {
                         const inputs = Array.from(document.querySelectorAll('input'));
-                        const visible = inputs.filter(i => i.offsetParent !== null || i.type === 'hidden');
-                        const textInputs = visible.filter(i => i.type === 'text' || i.type === '' || !i.type);
-                        const passInputs = visible.filter(i => i.type === 'password');
+                        // Include ALL inputs, not just visible ones (frameset pages may report offsetParent=null)
+                        const textInputs = inputs.filter(i => i.type === 'text' || i.type === '' || !i.type);
+                        const passInputs = inputs.filter(i => i.type === 'password');
 
                         const result = {
-                            totalVisible: visible.length,
+                            totalInputs: inputs.length,
                             textCount: textInputs.length,
                             passCount: passInputs.length,
                             fieldsFilled: [],
+                            allInputDetails: inputs.map(i => ({
+                                type: i.type, id: i.id, name: i.name,
+                                visible: i.offsetParent !== null,
+                                value: i.value || '',
+                                maxLength: i.maxLength,
+                            })),
                         };
 
-                        // If 2+ text inputs → first = RUT Empresa, second = RUT Persona
-                        // If 1 text input → just RUT (fill with empresa RUT)
+                        // If 2+ text inputs → Empresas login (RUT Empresa + RUT Persona)
                         if (textInputs.length >= 2) {
-                            // Empresas login: RUT Empresa + RUT Persona
                             textInputs[0].focus();
                             textInputs[0].value = creds.rutEmpresa;
                             textInputs[0].dispatchEvent(new Event('input', {bubbles:true}));
@@ -1133,7 +1182,7 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                             textInputs[1].dispatchEvent(new Event('change', {bubbles:true}));
                             result.fieldsFilled.push('rutPersona:' + textInputs[1].name + '/' + textInputs[1].id);
                         } else if (textInputs.length === 1) {
-                            // Personal login: just RUT
+                            // Single RUT field — fill with empresa RUT
                             textInputs[0].focus();
                             textInputs[0].value = creds.rutEmpresa;
                             textInputs[0].dispatchEvent(new Event('input', {bubbles:true}));
@@ -1141,7 +1190,6 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                             result.fieldsFilled.push('rut:' + textInputs[0].name + '/' + textInputs[0].id);
                         }
 
-                        // Password field
                         if (passInputs.length > 0) {
                             passInputs[0].focus();
                             passInputs[0].value = creds.clave;
@@ -1158,41 +1206,79 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 def _click_ingresar(target):
                     """Click Ingresar / login button."""
                     return target.evaluate("""() => {
-                        const all = document.querySelectorAll('button, input[type=submit], input[type=button], a, input[type=image]');
-                        for (const el of all) {
-                            if (el.offsetParent === null) continue;
-                            const txt = (el.innerText || el.value || el.alt || '').trim().toLowerCase();
-                            if (txt.includes('ingresar') || txt.includes('login') || txt.includes('entrar')) {
+                        // Search for submit buttons, input[type=submit], and links
+                        const candidates = document.querySelectorAll(
+                            'button, input[type=submit], input[type=button], input[type=image], a'
+                        );
+                        for (const el of candidates) {
+                            const txt = (el.innerText || el.value || el.alt || el.title || '').trim().toLowerCase();
+                            const src = (el.src || '').toLowerCase();
+                            if (txt.includes('ingresar') || txt.includes('login') || txt.includes('entrar') ||
+                                src.includes('ingresar') || src.includes('login') || src.includes('entrar')) {
                                 el.scrollIntoView({block:'center'});
                                 el.click();
-                                return true;
+                                return {clicked: true, tag: el.tagName, text: txt, src: src.substring(0,80)};
                             }
                         }
-                        return false;
+                        // Also try submitting any form directly
+                        const forms = document.querySelectorAll('form');
+                        if (forms.length === 1) {
+                            forms[0].submit();
+                            return {clicked: true, tag: 'FORM', text: 'form.submit()'};
+                        }
+                        return {clicked: false};
                     }""")
 
-                # Try main page then frames
-                login_result = _fill_login(page)
-                login_target = page
-                if not login_result.get('rutFound'):
+                # Fill login in the best frame (or try all frames)
+                login_result = None
+                login_target = None
+
+                if best_frame:
+                    login_target = best_frame['frame']
+                    login_result = _fill_login(login_target, is_empresas=(len(best_frame['text_inputs']) >= 2))
+                    print(f"[cav_worker] Login fill result (best frame {best_frame['fi']}): {json.dumps({k:v for k,v in login_result.items() if k != 'allInputDetails'})}", flush=True)
+                    print(f"[cav_worker] All input details: {json.dumps(login_result.get('allInputDetails', []))}", flush=True)
+
+                # If best frame didn't work, try all frames
+                if not login_result or not login_result.get('rutFound'):
+                    print("[cav_worker] Trying all frames for login fields...", flush=True)
                     for frame in page.frames:
-                        if frame == page.main_frame:
-                            continue
                         try:
-                            login_result = _fill_login(frame)
-                            if login_result.get('rutFound'):
+                            lr = _fill_login(frame)
+                            if lr.get('rutFound'):
+                                login_result = lr
                                 login_target = frame
-                                print(f"[cav_worker] Login fields found in frame: {frame.name}", flush=True)
+                                is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                                print(f"[cav_worker] Login fields found in {is_main}: {json.dumps({k:v for k,v in lr.items() if k != 'allInputDetails'})}", flush=True)
                                 break
                         except Exception:
                             pass
 
-                print(f"[cav_worker] Login fill result: {login_result}", flush=True)
+                if not login_result:
+                    login_result = {"error": "no login fields found in any frame"}
+
+                print(f"[cav_worker] Final login result: {json.dumps({k:v for k,v in login_result.items() if k != 'allInputDetails'})}", flush=True)
                 time.sleep(1)
                 _snap(page, "21. RUT + Clave ingresados")
 
-                ingresar_clicked = _click_ingresar(login_target)
-                print(f"[cav_worker] Ingresar clicked: {ingresar_clicked}", flush=True)
+                # Click Ingresar in the same frame where we filled the fields
+                ingresar_result = {"clicked": False}
+                if login_target:
+                    ingresar_result = _click_ingresar(login_target)
+                    print(f"[cav_worker] Ingresar result: {ingresar_result}", flush=True)
+                # If not clicked, try all frames
+                if not ingresar_result.get('clicked'):
+                    for frame in page.frames:
+                        try:
+                            ingresar_result = _click_ingresar(frame)
+                            if ingresar_result.get('clicked'):
+                                is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                                print(f"[cav_worker] Ingresar clicked in {is_main}: {ingresar_result}", flush=True)
+                                break
+                        except Exception:
+                            pass
+
+                print(f"[cav_worker] Ingresar final: {ingresar_result}", flush=True)
                 time.sleep(8)
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=30000)
@@ -1201,14 +1287,14 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 time.sleep(3)
                 _snap(page, "22. Después de Ingresar (Scotiabank)")
 
-                # ── Step 15: Capture post-login state ──
+                # ── Step 16: Capture post-login state ──
                 post_login_url = page.url
                 post_login_text = ""
                 try:
                     post_login_text = page.evaluate("() => document.body ? document.body.innerText.substring(0,1000) : ''")
                 except Exception:
                     pass
-                # Also check frames
+                # Also check frames for content
                 for frame in page.frames:
                     if frame == page.main_frame:
                         continue
@@ -1223,6 +1309,9 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 print(f"[cav_worker] Post-login text: {post_login_text[:300]}", flush=True)
                 _snap(page, "23. Estado post-login Scotiabank")
 
+                # Strip allInputDetails from login_result for response (too verbose)
+                login_result_clean = {k: v for k, v in (login_result or {}).items() if k != 'allInputDetails'}
+
                 result = {
                     "ok": True,
                     "status": "scotiabank_login",
@@ -1230,7 +1319,9 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                     "price": "1430",
                     "post_login_url": post_login_url,
                     "post_login_text": post_login_text[:500],
-                    "login_result": login_result,
+                    "login_result": login_result_clean,
+                    "ingresar_result": ingresar_result,
+                    "empresas_clicked": empresas_clicked,
                     "message": f"CAV para {plate} — Scotiabank Empresas login completado. URL: {post_login_url}",
                     "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
                 }
