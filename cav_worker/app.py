@@ -1342,21 +1342,117 @@ def _fetch_cav(plate: str, email: str = "felipe@autodirecto.cl", debug: bool = F
                 print(f"[cav_worker] Post-login text: {post_login_text[:300]}", flush=True)
                 _snap(page, "23. Estado post-login Scotiabank")
 
+                # ── Step 17: Click "Pagar" on the Scotiabank payment confirmation page ──
+                # After successful login, the page shows payment details and a button to confirm
+                print("[cav_worker] Step 17: Looking for Pagar/Confirmar button on payment page...", flush=True)
+                pagar_result = {"clicked": False}
+
+                def _click_pagar_confirmar(target):
+                    """Click Pagar or Confirmar button on Scotiabank payment page."""
+                    return target.evaluate("""() => {
+                        const candidates = document.querySelectorAll(
+                            'button, input[type=submit], input[type=button], input[type=image], a'
+                        );
+                        // Priority keywords
+                        const keywords = ['pagar', 'confirmar', 'aceptar', 'enviar', 'continuar'];
+                        for (const kw of keywords) {
+                            for (const el of candidates) {
+                                const txt = (el.innerText || el.value || el.alt || el.title || '').trim().toLowerCase();
+                                const src = (el.src || '').toLowerCase();
+                                const name = (el.name || '').toLowerCase();
+                                if (txt.includes(kw) || src.includes(kw) || name.includes(kw)) {
+                                    el.scrollIntoView({block:'center'});
+                                    el.click();
+                                    return {clicked: true, tag: el.tagName, text: txt, src: src.substring(0,80), kw};
+                                }
+                            }
+                        }
+                        return {clicked: false, candidateCount: candidates.length};
+                    }""")
+
+                # Try all frames for the Pagar button
+                for frame in page.frames:
+                    try:
+                        pagar_result = _click_pagar_confirmar(frame)
+                        if pagar_result.get('clicked'):
+                            is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                            print(f"[cav_worker] ✅ Pagar clicked in {is_main}: {pagar_result}", flush=True)
+                            break
+                    except Exception:
+                        pass
+
+                if not pagar_result.get('clicked'):
+                    # Fallback: try submitting any visible form
+                    for frame in page.frames:
+                        try:
+                            submitted = frame.evaluate("""() => {
+                                const forms = document.querySelectorAll('form');
+                                for (const f of forms) {
+                                    if (f.offsetParent !== null || document.contains(f)) {
+                                        f.submit();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }""")
+                            if submitted:
+                                pagar_result = {"clicked": True, "method": "form.submit()"}
+                                is_main = "main" if frame == page.main_frame else f"frame:{frame.name}"
+                                print(f"[cav_worker] ✅ Form submitted in {is_main}", flush=True)
+                                break
+                        except Exception:
+                            pass
+
+                print(f"[cav_worker] Pagar/Confirmar result: {pagar_result}", flush=True)
+
+                if pagar_result.get('clicked'):
+                    time.sleep(8)
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                    _snap(page, "24. Después de Pagar en Scotiabank")
+
+                    # Capture post-payment state
+                    post_pago_url = page.url
+                    post_pago_text = ""
+                    try:
+                        post_pago_text = page.evaluate("() => document.body ? document.body.innerText.substring(0,1000) : ''")
+                    except Exception:
+                        pass
+                    for frame in page.frames:
+                        if frame == page.main_frame:
+                            continue
+                        try:
+                            ft = frame.evaluate("() => document.body ? document.body.innerText.substring(0,500) : ''")
+                            if ft.strip():
+                                post_pago_text += f"\n[frame:{frame.name}] {ft}"
+                        except Exception:
+                            pass
+                    print(f"[cav_worker] Post-pago URL: {post_pago_url}", flush=True)
+                    print(f"[cav_worker] Post-pago text: {post_pago_text[:300]}", flush=True)
+                    _snap(page, "25. Estado final después de pago")
+                else:
+                    post_pago_url = post_login_url
+                    post_pago_text = post_login_text
+
                 # Strip allInputDetails from login_result for response (too verbose)
                 login_result_clean = {k: v for k, v in (login_result or {}).items() if k != 'allInputDetails'}
 
                 result = {
                     "ok": True,
-                    "status": "scotiabank_login",
+                    "status": "scotiabank_payment",
                     "plate": plate,
                     "price": "1430",
                     "post_login_url": post_login_url,
                     "post_login_text": post_login_text[:500],
+                    "post_pago_url": post_pago_url,
+                    "post_pago_text": post_pago_text[:500],
                     "login_result": login_result_clean,
-                    "ingresar_result": ingresar_result,
+                    "pagar_result": pagar_result,
                     "empresas_clicked": empresas_clicked,
-                    "frame_debug_before": frame_debug_before[:5],
-                    "message": f"CAV para {plate} — Scotiabank Empresas login completado. URL: {post_login_url}",
+                    "message": f"CAV para {plate} — Scotiabank pago procesado. URL: {post_pago_url}",
                     "certificate_name": "Certificado Vehículos de anotaciones Vigentes",
                 }
                 if debug:
