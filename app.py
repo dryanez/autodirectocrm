@@ -194,18 +194,115 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/scrape', methods=['POST'])
     def funnels_api_scrape():
-        import subprocess
-        region = request.json.get("region", "santiago")
+        """Re-parse www.facebook.com.har from root, deduplicate, and update leads.
+        - New listings → add
+        - Existing (same FB id) → update last_seen_at, keep status/valuation
+        - Returns detailed stats so the user can see what changed.
+        """
+        import time as _t
+        har_file = funnels_module.find_root_har_file()
+        if not har_file:
+            return jsonify({
+                "success": False,
+                "error": "No www.facebook.com.har found in project root. "
+                         "Go to Facebook Marketplace → open Network tab → scroll → "
+                         "right-click → Save all as HAR → drop in Autodirecto folder."
+            }), 400
+
         try:
-            use_safe_mode = request.json.get("safe_mode", True)
-            cmd = [sys.executable, str(funnels_module.BASE_DIR / "execution/run_pipeline.py"), "--region", region]
-            if use_safe_mode:
-                cmd.append("--safe")
-            subprocess.Popen(cmd, cwd=funnels_module.BASE_DIR)
-            mode_msg = "Safe Mode" if use_safe_mode else "Login Mode"
-            return jsonify({"success": True, "message": f"Scraper started in {mode_msg}!"})
+            # Parse fresh HAR
+            sys.path.insert(0, str(funnels_module.BASE_DIR / "execution"))
+            from parse_har import parse_har as _parse_har
+            fresh_listings = _parse_har(har_file)
+
+            if not fresh_listings:
+                return jsonify({"success": False, "error": "HAR file has 0 marketplace listings."}), 400
+
+            # Build map of existing cached listings by ID
+            existing_map = {}
+            for item in (funnels_module._cached_listings or []):
+                eid = item.get("id") or ""
+                if eid:
+                    existing_map[eid] = item
+
+            now_ts = int(_t.time())
+            new_count = 0
+            updated_count = 0
+            removed_ids = set(existing_map.keys())  # track which old ones are still live
+
+            for raw in fresh_listings:
+                normalized = funnels_module.normalize_apify_item(raw)
+                fid = normalized.get("id") or ""
+                if not fid:
+                    continue
+
+                removed_ids.discard(fid)  # still in marketplace
+
+                if fid in existing_map:
+                    # Update: keep status/valuation/contacted_at, refresh metadata
+                    old = existing_map[fid]
+                    old["title"] = normalized["title"]
+                    old["price"] = normalized["price"]
+                    old["location"] = normalized["location"]
+                    old["photo_url"] = normalized["photo_url"]
+                    old["mileage"] = normalized["mileage"]
+                    old["is_sold"] = normalized["is_sold"]
+                    if normalized.get("seller_name") and not old.get("seller_name"):
+                        old["seller_name"] = normalized["seller_name"]
+                    old["last_seen_at"] = now_ts
+                    updated_count += 1
+                else:
+                    # New listing
+                    normalized["first_seen_at"] = now_ts
+                    normalized["last_seen_at"] = now_ts
+                    existing_map[fid] = normalized
+                    new_count += 1
+
+            # Mark removed listings (no longer in marketplace)
+            gone_count = len(removed_ids)
+            for rid in removed_ids:
+                existing_map[rid].setdefault("gone_since", now_ts)
+
+            # Update cache
+            funnels_module._cached_listings = list(existing_map.values())
+
+            # Also save merged dataset to disk for persistence
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            # Save raw data (Apify-compatible format) for dashboard reload
+            raw_export = []
+            for item in funnels_module._cached_listings:
+                raw_export.append({
+                    "id": item.get("id", ""),
+                    "listingTitle": item.get("title", ""),
+                    "listingPrice": {"amount": str(item.get("price", "")).replace("CLP ", "").replace(",", "")},
+                    "locationText": {"text": item.get("location", "")},
+                    "primaryListingPhoto": {"photo_image_url": item.get("photo_url", "")},
+                    "isSold": item.get("is_sold", False),
+                    "sellerName": item.get("seller_name", ""),
+                    "itemUrl": item.get("url", ""),
+                    "customSubTitlesWithRenderingFlags": [{"subtitle": item.get("mileage", "")}] if item.get("mileage") else [],
+                    "source": "har",
+                })
+            output_path = funnels_module.DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+            output_path.write_text(json.dumps(raw_export, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            har_mtime = datetime.fromtimestamp(har_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+
+            return jsonify({
+                "success": True,
+                "message": f"✅ HAR parsed! {new_count} new, {updated_count} updated, {gone_count} gone",
+                "har_file": har_file.name,
+                "har_date": har_mtime,
+                "new": new_count,
+                "updated": updated_count,
+                "gone": gone_count,
+                "total": len(funnels_module._cached_listings),
+            })
+
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            import traceback
+            print(f"[scrape] Error: {e}\n{traceback.format_exc()}")
+            return jsonify({"success": False, "error": str(e)}), 500
 
     @funnels_bp.route('/api/leads/status', methods=['POST'])
     def funnels_api_update_status():
@@ -397,6 +494,69 @@ if FUNNELS_DIR.exists():
             return jsonify(resp_data)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    # In-memory cache for resolved OG image URLs (listing_id → fresh_url)
+    _og_image_cache = {}
+
+    @funnels_bp.route('/api/img-proxy')
+    def funnels_api_img_proxy():
+        """Proxy Facebook CDN images — avoids expired-URL / CORS issues."""
+        import requests as _req
+        from flask import Response, redirect as _redirect
+
+        url = request.args.get("url", "")
+        listing_id = request.args.get("id", "")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.facebook.com/",
+        }
+
+        def _stream_image(img_url):
+            """Try to fetch and stream an image URL."""
+            try:
+                resp = _req.get(img_url, headers=headers, timeout=8, stream=True)
+                if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+                    return Response(
+                        resp.iter_content(chunk_size=8192),
+                        content_type=resp.headers["content-type"],
+                        headers={"Cache-Control": "public, max-age=86400"},
+                    )
+            except Exception:
+                pass
+            return None
+
+        # 1. Check OG cache first (already resolved a fresh URL for this listing)
+        if listing_id and listing_id in _og_image_cache:
+            result = _stream_image(_og_image_cache[listing_id])
+            if result:
+                return result
+
+        # 2. Try original CDN URL
+        if url:
+            result = _stream_image(url)
+            if result:
+                return result
+
+        # 3. Fallback: fetch FB listing page and extract og:image
+        if listing_id:
+            og_url = f"https://www.facebook.com/marketplace/item/{listing_id}/"
+            try:
+                resp = _req.get(og_url, headers=headers, timeout=10, allow_redirects=True)
+                import re as _re2
+                match = _re2.search(r'<meta\s+property="og:image"\s+content="([^"]+)"', resp.text)
+                if match:
+                    img_url = match.group(1).replace("&amp;", "&")
+                    _og_image_cache[listing_id] = img_url  # cache it
+                    result = _stream_image(img_url)
+                    if result:
+                        return result
+            except Exception:
+                pass
+
+        return _redirect("https://placehold.co/400x176/1e293b/64748b?text=Sin+Foto")
 
     @funnels_bp.route('/api/upload-har', methods=['POST'])
     def funnels_api_upload_har():

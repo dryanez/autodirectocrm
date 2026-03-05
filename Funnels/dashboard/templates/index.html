@@ -46,7 +46,7 @@
                 </button>
                 <button onclick="startScrape()"
                     class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <span>🚀</span> Scrape Now
+                    <span>�</span> Actualizar HAR
                 </button>
                 <span id="total-leads"
                     class="bg-blue-500/20 text-blue-400 text-sm font-medium px-3 py-1 rounded-full border border-blue-500/30">Loading...</span>
@@ -404,7 +404,7 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 if (lead.status === 'ignored') statusColor = 'bg-red-900/50 text-red-400 border border-red-800';
 
                 const photoHtml = lead.photo_url
-                    ? `<img src="${lead.photo_url}" alt="${lead.title}" class="w-full h-44 object-cover bg-slate-800" onerror="this.onerror=null;this.src='https://placehold.co/400x176/1e293b/64748b?text=Sin+Foto';">`
+                    ? `<img src="${apiUrl('/api/img-proxy')}?url=${encodeURIComponent(lead.photo_url)}&id=${lead.id || ''}" alt="${lead.title}" class="w-full h-44 object-cover bg-slate-800" loading="lazy" onerror="this.onerror=null;this.src='https://placehold.co/400x176/1e293b/64748b?text=Sin+Foto';">`
                     : `<div class="w-full h-44 bg-slate-800 flex items-center justify-center text-slate-600 text-5xl">🚗</div>`;
 
                 let valuationContent = '';
@@ -586,24 +586,59 @@ Agente de Ventas | Autodirecto.cl</textarea>
 
         // ── Trigger scrape ───────────────────────────────────────────────
         async function startScrape() {
-            if (!confirm("Se abrirá una ventana de Chrome. ¿Continuar?")) return;
             try {
                 const btn = event.currentTarget;
                 const orig = btn.innerHTML;
-                btn.innerHTML = '<span>⏳</span> Iniciando...';
+                btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> Parseando HAR...';
                 btn.disabled = true;
 
                 const response = await fetch(apiUrl('/api/scrape'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ region: 'santiago' })
+                    body: JSON.stringify({})
                 });
                 const data = await response.json();
-                alert(data.success ? data.message : "Error: " + data.error);
                 btn.innerHTML = orig;
                 btn.disabled = false;
+
+                if (data.success) {
+                    // Show results modal
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60';
+                    modal.innerHTML = `
+                        <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
+                            <h3 class="text-xl font-bold text-white mb-4">🚀 Scrape Completado</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between p-3 bg-green-900/30 rounded-lg border border-green-700/40">
+                                    <span class="text-green-400 font-medium">🆕 Nuevos</span>
+                                    <span class="text-white font-bold">${data.new}</span>
+                                </div>
+                                <div class="flex justify-between p-3 bg-blue-900/30 rounded-lg border border-blue-700/40">
+                                    <span class="text-blue-400 font-medium">🔄 Actualizados</span>
+                                    <span class="text-white font-bold">${data.updated}</span>
+                                </div>
+                                <div class="flex justify-between p-3 bg-red-900/30 rounded-lg border border-red-700/40">
+                                    <span class="text-red-400 font-medium">👋 Ya no están</span>
+                                    <span class="text-white font-bold">${data.gone}</span>
+                                </div>
+                                <div class="flex justify-between p-3 bg-slate-800 rounded-lg border border-slate-600">
+                                    <span class="text-slate-300 font-medium">📊 Total</span>
+                                    <span class="text-white font-bold text-lg">${data.total}</span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-2">HAR: ${data.har_file} (${data.har_date})</p>
+                            </div>
+                            <button onclick="this.closest('.fixed').remove(); loadLeads();"
+                                class="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition-colors">
+                                Cerrar y Recargar
+                            </button>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                } else {
+                    alert("Error: " + (data.error || "Unknown error"));
+                }
             } catch (e) {
-                alert("Error al iniciar el scraper");
+                alert("Error al parsear HAR: " + e.message);
                 console.error(e);
             }
         }

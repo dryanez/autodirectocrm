@@ -190,10 +190,41 @@ def find_latest_apify_json():
     return max(files, key=os.path.getsize)
 
 
+def find_root_har_file():
+    """Look for www.facebook.com.har in the project root (two levels up from Funnels/)."""
+    # BASE_DIR = Funnels/  →  root = Autodirecto/
+    root = BASE_DIR.parent.parent  # SimplyAPI/../ = Autodirecto/
+    har = root / "www.facebook.com.har"
+    if har.exists():
+        return har
+    return None
+
+
+def load_har_listings(har_path: Path) -> list[dict]:
+    """Parse a HAR file and return normalized listings (inline version of parse_har.py)."""
+    sys.path.insert(0, str(BASE_DIR / "execution"))
+    try:
+        from parse_har import parse_har as _parse_har, normalize_har_listing
+        raw_listings = _parse_har(har_path)
+        # Already in Apify-compatible format from normalize_har_listing
+        return [normalize_apify_item(item) for item in raw_listings]
+    except Exception as e:
+        print(f"[data] Error parsing HAR: {e}")
+        return []
+
+
 def load_all_listings():
     """Load and normalize listings from the best available source. Called once at startup."""
 
-    # 1. Raw Apify dataset JSON — full dataset (highest priority for viewing)
+    # 0. HAR file at project root — HIGHEST priority (www.facebook.com.har)
+    har_file = find_root_har_file()
+    if har_file:
+        listings = load_har_listings(har_file)
+        if listings:
+            print(f"[data] Loaded {len(listings)} listings from HAR: {har_file}")
+            return listings
+
+    # 1. Raw Apify dataset JSON — full dataset
     apify_file = find_latest_apify_json()
     if apify_file:
         try:
@@ -296,6 +327,61 @@ def get_leads():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/img-proxy")
+def api_img_proxy():
+    """Proxy Facebook CDN images to avoid expired-URL / CORS issues.
+    Falls back to FB OG image by listing ID if the direct URL fails."""
+    import urllib.parse
+    url = request.args.get("url", "")
+    listing_id = request.args.get("id", "")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.facebook.com/",
+    }
+
+    # Try the original CDN URL first
+    if url:
+        try:
+            resp = requests.get(url, headers=headers, timeout=8, stream=True)
+            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+                from flask import Response
+                return Response(
+                    resp.iter_content(chunk_size=8192),
+                    content_type=resp.headers["content-type"],
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+        except Exception:
+            pass
+
+    # Fallback: use Facebook Graph OG image for the listing
+    if listing_id:
+        og_url = f"https://www.facebook.com/marketplace/item/{listing_id}/"
+        try:
+            resp = requests.get(og_url, headers=headers, timeout=10, allow_redirects=True)
+            # Extract og:image from HTML
+            import re
+            match = re.search(r'<meta\s+property="og:image"\s+content="([^"]+)"', resp.text)
+            if match:
+                img_url = match.group(1).replace("&amp;", "&")
+                img_resp = requests.get(img_url, headers=headers, timeout=8, stream=True)
+                if img_resp.status_code == 200:
+                    from flask import Response
+                    return Response(
+                        img_resp.iter_content(chunk_size=8192),
+                        content_type=img_resp.headers.get("content-type", "image/jpeg"),
+                        headers={"Cache-Control": "public, max-age=86400"},
+                    )
+        except Exception:
+            pass
+
+    # Final fallback: placeholder
+    from flask import redirect
+    return redirect("https://placehold.co/400x176/1e293b/64748b?text=Sin+Foto")
 
 
 @app.route("/api/leads", methods=["GET"])
