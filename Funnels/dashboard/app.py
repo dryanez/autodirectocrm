@@ -399,17 +399,116 @@ def api_reload():
 
 @app.route("/api/scrape", methods=["POST"])
 def trigger_scrape():
-    region = request.json.get("region", "santiago")
+    """
+    Parse www.facebook.com.har from the project root and merge with existing leads.
+    Deduplication rules:
+      - Same listing ID + same price  → skip (no change)
+      - Same listing ID + new price   → update price, refresh photo_url & timestamp
+      - New listing ID                → add as new lead
+      - ID was present before but not in new HAR → mark as 'gone' (still shown, flagged)
+    """
+    global _cached_listings
+    import time as _time_mod
+
+    har_file = find_root_har_file()
+    if not har_file:
+        return jsonify({
+            "success": False,
+            "error": "HAR_NOT_FOUND",
+            "instructions": (
+                "No se encontró www.facebook.com.har en la raíz del proyecto. "
+                "Cómo generarlo: abre Facebook Marketplace en Chrome → F12 → pestaña Red (Network) → "
+                "filtra por 'graphql' → desplázate por los resultados → clic derecho en cualquier "
+                "petición → 'Guardar todo como HAR con contenido' → guarda el archivo como "
+                "'www.facebook.com.har' en la carpeta Autodirecto."
+            )
+        }), 400
+
+    # Parse fresh HAR
+    sys.path.insert(0, str(BASE_DIR / "execution"))
     try:
-        use_safe_mode = request.json.get("safe_mode", True)
-        cmd = [sys.executable, str(BASE_DIR / "execution/run_pipeline.py"), "--region", region]
-        if use_safe_mode:
-            cmd.append("--safe")
-        subprocess.Popen(cmd, cwd=BASE_DIR)
-        mode_msg = "Safe Mode" if use_safe_mode else "Login Mode"
-        return jsonify({"success": True, "message": f"Scraper started in {mode_msg}!"})
+        from parse_har import parse_har as _parse_har
+        raw_new = _parse_har(har_file)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": f"HAR parse error: {e}"}), 500
+
+    if not raw_new:
+        return jsonify({
+            "success": False,
+            "error": "No marketplace listings found in HAR file. Make sure you scrolled through FB Marketplace search results before saving the HAR."
+        }), 400
+
+    # Build lookup maps
+    new_map = {item["id"]: item for item in raw_new if item.get("id")}
+
+    # Load existing dataset JSON for comparison (or use in-memory cache)
+    existing_path = find_latest_apify_json()
+    existing_map = {}
+    if existing_path:
+        try:
+            raw_existing = json.loads(Path(existing_path).read_text(encoding="utf-8"))
+            for item in raw_existing:
+                if item.get("id"):
+                    existing_map[item["id"]] = item
+        except Exception:
+            pass
+
+    # Deduplicate & diff
+    added = 0
+    updated = 0
+    gone_ids = set(existing_map.keys()) - set(new_map.keys())
+
+    merged = dict(existing_map)  # start with all existing
+    now_ts = int(_time_mod.time())
+
+    for item_id, new_item in new_map.items():
+        if item_id not in merged:
+            new_item["first_seen"] = now_ts
+            new_item["last_seen"] = now_ts
+            merged[item_id] = new_item
+            added += 1
+        else:
+            old = merged[item_id]
+            old_price = (old.get("listingPrice") or {}).get("amount", "")
+            new_price = (new_item.get("listingPrice") or {}).get("amount", "")
+            merged[item_id]["last_seen"] = now_ts
+            # Always refresh photo URL (CDN URLs expire)
+            merged[item_id]["primaryListingPhoto"] = new_item.get("primaryListingPhoto", old.get("primaryListingPhoto", {}))
+            if old_price != new_price and new_price:
+                merged[item_id]["listingPrice"] = new_item["listingPrice"]
+                merged[item_id]["price_changed"] = True
+                merged[item_id]["prev_price"] = old_price
+                updated += 1
+            # Always refresh seller name if we now have it
+            if new_item.get("sellerName") and not old.get("sellerName"):
+                merged[item_id]["sellerName"] = new_item["sellerName"]
+
+    # Mark gone listings (still in market, just not in new HAR batch)
+    for gid in gone_ids:
+        if gid in merged:
+            merged[gid]["last_seen_gone"] = now_ts
+
+    final_list = list(merged.values())
+
+    # Save merged dataset
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_path = DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
+    output_path.write_text(json.dumps(final_list, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Reload in-memory cache
+    _cached_listings = load_all_listings()
+
+    return jsonify({
+        "success": True,
+        "new": added,
+        "updated": updated,
+        "gone": len(gone_ids),
+        "total": len(final_list),
+        "cache": len(_cached_listings),
+        "har_file": har_file.name,
+        "har_date": har_file.stat().st_mtime and __import__('datetime').datetime.fromtimestamp(har_file.stat().st_mtime).strftime("%d/%m/%Y %H:%M"),
+    })
 
 
 @app.route("/api/leads/status", methods=["POST"])
