@@ -109,7 +109,8 @@ def camera_job_preflight(token=None):
 
 @app.route("/api/consignaciones/by-plate/<path:plate>", methods=["OPTIONS"])
 @app.route("/api/consignaciones/quick", methods=["OPTIONS"])
-def consignacion_camera_preflight(plate=None):
+@app.route("/api/consignaciones/<int:cid>/photos", methods=["OPTIONS"])
+def consignacion_camera_preflight(plate=None, cid=None):
     return add_camera_cors(app.make_response(""))
 
 # ─── Session cookie — must work cross-domain when deployed on Railway ─────────
@@ -821,6 +822,8 @@ def create_inspeccion():
     """
     Receives the full inspection form from the embedded CRM form,
     proxies it to Supabase appraisals table, then marks the consignacion as parte2_completa.
+    If an appraisal already exists for this consignacion, UPDATE it instead of creating new
+    so that previously uploaded photos are preserved.
     """
     import requests as req_lib
     data = request.json or {}
@@ -846,19 +849,53 @@ def create_inspeccion():
     selling_price = data.pop("precio_publicado", None)    # alias alias
     tasacion = data.get("tasacion")                        # keep in appraisals too
 
-    try:
-        resp = req_lib.post(
-            supabase_url + "/rest/v1/appraisals",
-            json=data,
-            headers=headers,
-            timeout=10
-        )
-        if resp.status_code not in (200, 201):
-            return jsonify({"error": f"Supabase error {resp.status_code}: {resp.text}"}), 502
+    # ── Check if consignacion already has an appraisal (preserve photos!) ─────
+    existing_appraisal_id = None
+    if consignacion_id:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT appraisal_supabase_id FROM consignaciones WHERE id=?",
+                (consignacion_id,)
+            ).fetchone()
+            if row:
+                existing_appraisal_id = row["appraisal_supabase_id"]
 
-        rows = resp.json()
-        appraisal = rows[0] if isinstance(rows, list) and rows else {}
-        appraisal_id = appraisal.get("id")
+    try:
+        if existing_appraisal_id:
+            # UPDATE existing appraisal — photos stay linked to same UUID
+            data["updated_at"] = datetime.now().isoformat()
+            resp = req_lib.patch(
+                supabase_url + "/rest/v1/appraisals",
+                params={"id": "eq." + existing_appraisal_id},
+                json=data,
+                headers=headers,
+                timeout=10
+            )
+            if resp.status_code not in (200, 201, 204):
+                # Patch failed — fall back to creating new
+                print(f"[inspecciones] PATCH appraisal {existing_appraisal_id} failed ({resp.status_code}): {resp.text}, creating new", flush=True)
+                existing_appraisal_id = None
+
+            if existing_appraisal_id:
+                appraisal_id = existing_appraisal_id
+                rows = resp.json() if resp.status_code in (200, 201) else []
+                appraisal = rows[0] if isinstance(rows, list) and rows else {"id": appraisal_id}
+                print(f"[inspecciones] UPDATED existing appraisal {appraisal_id} (photos preserved)", flush=True)
+
+        if not existing_appraisal_id:
+            # CREATE new appraisal
+            resp = req_lib.post(
+                supabase_url + "/rest/v1/appraisals",
+                json=data,
+                headers=headers,
+                timeout=10
+            )
+            if resp.status_code not in (200, 201):
+                return jsonify({"error": f"Supabase error {resp.status_code}: {resp.text}"}), 502
+
+            rows = resp.json()
+            appraisal = rows[0] if isinstance(rows, list) and rows else {}
+            appraisal_id = appraisal.get("id")
 
         # Mark consignacion as parte2_completa and save AI prices
         if consignacion_id and appraisal_id:
@@ -2268,6 +2305,57 @@ def get_consignacion_photos(cid):
         return jsonify({"photos": photos})
     except Exception as e:
         return jsonify({"photos": [], "error": str(e)})
+
+
+@app.route("/api/consignaciones/<int:cid>/photos", methods=["DELETE"])
+def delete_consignacion_photos(cid):
+    """Delete ALL vehicle_images for a consignacion (used by camera 'start fresh')."""
+    import requests as req_lib
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT appraisal_supabase_id FROM consignaciones WHERE id=?", (cid,)
+        ).fetchone()
+    if not row or not row["appraisal_supabase_id"]:
+        return jsonify({"deleted": 0})
+    appraisal_id = row["appraisal_supabase_id"]
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"deleted": 0, "error": "supabase not configured"})
+    try:
+        # 1. Get list of existing images for this appraisal
+        r = req_lib.get(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
+            headers=headers, timeout=8
+        )
+        photos = r.json() if r.status_code == 200 else []
+        if not photos:
+            return jsonify({"deleted": 0})
+
+        # 2. Delete storage objects
+        for p in photos:
+            url = p.get("url", "")
+            # Extract path after /vehicle-images/
+            if "/vehicle-images/" in url:
+                obj_path = url.split("/vehicle-images/", 1)[1]
+                try:
+                    req_lib.delete(
+                        supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
+                        headers=headers, timeout=8
+                    )
+                except Exception:
+                    pass  # best effort
+
+        # 3. Delete DB rows
+        ids_csv = ",".join(str(p["id"]) for p in photos)
+        req_lib.delete(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"id": "in.({})".format(ids_csv)},
+            headers=headers, timeout=8
+        )
+        return jsonify({"deleted": len(photos)})
+    except Exception as e:
+        return jsonify({"deleted": 0, "error": str(e)})
 
 
 @app.route("/api/consignaciones/<int:cid>/fotos", methods=["POST"])
