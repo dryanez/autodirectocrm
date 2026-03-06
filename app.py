@@ -1161,9 +1161,8 @@ def get_inspeccion(appraisal_id):
             params={"select": "*", "id": "eq.{}".format(appraisal_id)},
             headers=headers, timeout=10
         )
-        if r.status_code != 200 or not r.json():
-            return jsonify({"error": "Appraisal not found"}), 404
-        appraisal = r.json()[0]
+        appraisal_rows = r.json() if r.status_code == 200 else []
+        appraisal = appraisal_rows[0] if appraisal_rows else None
 
         # Get photos
         r2 = req_lib.get(
@@ -1172,6 +1171,36 @@ def get_inspeccion(appraisal_id):
             headers=headers, timeout=10
         )
         photos = r2.json() if r2.status_code == 200 else []
+
+        # If no appraisal row but photos exist, build a stub from the consignacion
+        if not appraisal and photos:
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT * FROM consignaciones WHERE appraisal_supabase_id=?",
+                    (appraisal_id,)
+                ).fetchone()
+            if row:
+                c = row_to_dict(row)
+                appraisal = {
+                    "id": appraisal_id,
+                    "vehicle_patente": c.get("plate", ""),
+                    "vehicle_marca": c.get("car_make", ""),
+                    "vehicle_modelo": c.get("car_model", ""),
+                    "vehicle_año": c.get("car_year"),
+                    "vehicle_km": c.get("mileage"),
+                    "client_nombre": c.get("owner_first_name", ""),
+                    "client_apellido": c.get("owner_last_name", ""),
+                    "client_rut": c.get("owner_rut", ""),
+                    "client_telefono": c.get("owner_phone", ""),
+                    "client_email": c.get("owner_email", ""),
+                    "status": "fotos_pendientes",
+                    "_from_consignacion": True,
+                }
+            else:
+                appraisal = {"id": appraisal_id, "status": "fotos_pendientes", "_from_consignacion": True}
+
+        if not appraisal:
+            return jsonify({"error": "Appraisal not found"}), 404
 
         return jsonify({"appraisal": appraisal, "photos": photos})
     except Exception as e:
@@ -2379,7 +2408,11 @@ def upload_consignacion_foto(cid):
 
     # Get or create appraisal_supabase_id for this consignacion
     with get_db() as conn:
-        row = conn.execute("SELECT appraisal_supabase_id FROM consignaciones WHERE id=?", (cid,)).fetchone()
+        row = conn.execute(
+            "SELECT appraisal_supabase_id, plate, car_make, car_model, car_year, mileage, "
+            "owner_full_name, owner_rut, owner_phone, owner_email "
+            "FROM consignaciones WHERE id=?", (cid,)
+        ).fetchone()
     if not row:
         return jsonify({"error": "consignacion not found"}), 404
 
@@ -2390,6 +2423,39 @@ def upload_consignacion_foto(cid):
         with get_db() as conn:
             conn.execute("UPDATE consignaciones SET appraisal_supabase_id=? WHERE id=?", (appraisal_id, cid))
             conn.commit()
+
+        # ── Also create a minimal appraisals row in Supabase so GET /inspecciones/<id> works
+        appraisal_row = {
+            "id": appraisal_id,
+            "vehicle_patente": row["plate"] or "",
+            "vehicle_marca": row["car_make"] or "",
+            "vehicle_modelo": row["car_model"] or "",
+            "vehicle_año": row["car_year"],
+            "vehicle_km": row["mileage"],
+            "client_nombre": (row["owner_full_name"] or "").split(" ")[0],
+            "client_apellido": " ".join((row["owner_full_name"] or "").split(" ")[1:]),
+            "client_rut": row["owner_rut"] or "",
+            "client_telefono": row["owner_phone"] or "",
+            "client_email": row["owner_email"] or "",
+            "status": "fotos_pendientes",
+            "created_at": datetime.now().isoformat(),
+        }
+        try:
+            ar_headers = {
+                "apikey": supabase_key,
+                "Authorization": "Bearer " + supabase_key,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            }
+            ar_resp = req_lib.post(
+                f"{supabase_url}/rest/v1/appraisals",
+                json=appraisal_row,
+                headers=ar_headers,
+                timeout=10,
+            )
+            print(f"[upload_foto] Created appraisal row {appraisal_id} → {ar_resp.status_code}", flush=True)
+        except Exception as ae:
+            print(f"[upload_foto] WARNING: could not create appraisal row: {ae}", flush=True)
 
     # Upload to Supabase Storage
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
