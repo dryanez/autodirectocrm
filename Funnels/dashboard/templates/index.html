@@ -1,12 +1,6 @@
 <!DOCTYPE html>
-<html lang="es" class="dar                <button onclick="showHarModal()"
-                    class="bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <span>📂</span> Importar HAR
-                </button>
-                <button onclick="startScrape(event)"
-                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <span>🔄</span> Actualizar desde HAR
-                </button>ad>
+<html lang="es" class="dark">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FB Marketplace Funnel - Leads</title>
@@ -43,23 +37,48 @@
     <!-- Header -->
     <header class="glass sticky top-0 z-50 border-b border-slate-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 class="text-2xl font-bold text-white tracking-tight">🚗 FB Funnel Dashboard</h1>
-            <div class="flex items-center space-x-3">
-                <button onclick="showHarModal()"
-                    class="bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <span>📂</span> Importar HAR
+            <h1 class="text-2xl font-bold text-white tracking-tight">🚗 FB Funnel</h1>
+            <div class="flex items-center gap-3">
+                <!-- Primary: Live scrape -->
+                <button id="btn-scrape-live" onclick="startLiveScrape()"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-5 rounded-lg flex items-center gap-2 shadow transition-colors">
+                    🕷️ Scrapear Facebook
                 </button>
-                <button onclick="startScrape()"
-                    class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <span>�</span> Actualizar HAR
-                </button>
+
+                <!-- Secondary: HAR dropdown -->
+                <div class="relative" id="har-dropdown-wrapper">
+                    <button onclick="toggleHarDropdown()"
+                        class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-600">
+                        📂 HAR
+                        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div id="har-dropdown"
+                        class="hidden absolute right-0 top-full mt-1 w-52 glass rounded-xl border border-slate-600 shadow-xl z-50 overflow-hidden">
+                        <button onclick="hideHarDropdown(); showHarModal()"
+                            class="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 transition-colors">
+                            📂 <span><strong>Importar</strong> archivo .har</span>
+                        </button>
+                        <div class="border-t border-slate-700"></div>
+                        <button onclick="hideHarDropdown(); startScrape()"
+                            class="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 transition-colors">
+                            🔄 <span><strong>Actualizar</strong> desde HAR guardado</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lead count badge -->
                 <span id="total-leads"
-                    class="bg-blue-500/20 text-blue-400 text-sm font-medium px-3 py-1 rounded-full border border-blue-500/30">Loading...</span>
-                <button onclick="loadLeads()" title="Refresh" class="text-slate-400 hover:text-white transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    class="bg-blue-500/20 text-blue-400 text-sm font-medium px-3 py-1 rounded-full border border-blue-500/30 whitespace-nowrap">
+                    Cargando…
+                </span>
+
+                <!-- Refresh icon -->
+                <button onclick="loadLeads()" title="Recargar leads" class="text-slate-500 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                        </path>
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                     </svg>
                 </button>
             </div>
@@ -591,7 +610,8 @@ Agente de Ventas | Autodirecto.cl</textarea>
 
         // ── Trigger scrape / update from HAR ────────────────────────────
         async function startScrape(event) {
-            const btn = event.currentTarget;
+            const btn = event ? event.currentTarget : document.querySelector('button[onclick="startScrape()"]');
+            if (!btn) return;
             const orig = btn.innerHTML;
             btn.innerHTML = '<span class="inline-block animate-spin">⏳</span> Parseando HAR...';
             btn.disabled = true;
@@ -694,6 +714,181 @@ Agente de Ventas | Autodirecto.cl</textarea>
             }
         }
 
+        // ── Live Playwright Scrape ──────────────────────────────────────
+        let _scrapeJobId = null;
+        let _scrapePoller = null;
+
+        async function startLiveScrape() {
+            const btn = document.getElementById('btn-scrape-live');
+            const origHTML = btn.innerHTML;
+
+            // Show config modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60';
+            modal.id = 'scrape-live-modal';
+            modal.innerHTML = `
+                <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
+                    <h3 class="text-xl font-bold text-white mb-4">🕷️ Scrapear Facebook Marketplace</h3>
+                    <p class="text-slate-400 text-sm mb-4">
+                        Esto abre Chrome con tu sesión de Facebook, navega al Marketplace
+                        y captura todos los autos automáticamente.
+                    </p>
+                    <div class="space-y-4 mb-6">
+                        <div>
+                            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Scrolls (más = más autos)</label>
+                            <input type="range" id="scrape-scrolls" min="10" max="80" value="30" class="w-full mt-1"
+                                oninput="document.getElementById('scrape-scrolls-val').textContent = this.value">
+                            <div class="flex justify-between text-xs text-slate-500 mt-1">
+                                <span>10 (rápido)</span>
+                                <span id="scrape-scrolls-val" class="text-emerald-400 font-bold">30</span>
+                                <span>80 (completo)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-amber-900/30 border border-amber-700/40 rounded-lg p-3 mb-4 text-sm text-amber-300">
+                        ⚠️ Cierra Google Chrome antes de iniciar (el perfil no puede estar en uso).
+                    </div>
+                    <div id="scrape-live-status" class="min-h-[40px] mb-4"></div>
+                    <div class="flex gap-3">
+                        <button onclick="document.getElementById('scrape-live-modal').remove()"
+                            class="flex-1 px-4 py-2.5 text-sm text-slate-400 hover:text-white border border-slate-600 rounded-lg transition-colors">
+                            Cancelar
+                        </button>
+                        <button id="btn-start-scrape" onclick="doStartLiveScrape()"
+                            class="flex-1 px-4 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors">
+                            🚀 Iniciar Scrape
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function doStartLiveScrape() {
+            const btn = document.getElementById('btn-start-scrape');
+            const statusEl = document.getElementById('scrape-live-status');
+            const scrolls = document.getElementById('scrape-scrolls').value;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="inline-block animate-spin">⏳</span> Iniciando...';
+
+            try {
+                const resp = await fetch(apiUrl('/api/scrape-live'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scrolls: parseInt(scrolls), headless: false })
+                });
+                const data = await resp.json();
+
+                if (!data.success) {
+                    statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
+                    btn.disabled = false;
+                    btn.innerHTML = '🚀 Reintentar';
+                    return;
+                }
+
+                _scrapeJobId = data.job_id;
+                statusEl.innerHTML = `
+                    <div class="flex items-center gap-3 p-3 bg-emerald-900/30 border border-emerald-700/40 rounded-lg">
+                        <span class="inline-block animate-spin text-xl">🔄</span>
+                        <div>
+                            <p class="text-emerald-400 font-medium text-sm">Scraping en curso…</p>
+                            <p class="text-slate-400 text-xs">Chrome se abrirá — no lo cierres. ~${Math.round(scrolls * 3 / 60)} min estimado.</p>
+                        </div>
+                    </div>
+                `;
+                btn.style.display = 'none';
+
+                // Update header button too
+                const headerBtn = document.getElementById('btn-scrape-live');
+                headerBtn.innerHTML = '<span class="inline-block animate-spin">🔄</span> Scraping...';
+                headerBtn.disabled = true;
+
+                // Start polling
+                _scrapePoller = setInterval(() => pollScrapeJob(), 3000);
+
+            } catch (e) {
+                statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ Error de red: ' + e.message + '</p>';
+                btn.disabled = false;
+                btn.innerHTML = '🚀 Reintentar';
+            }
+        }
+
+        async function pollScrapeJob() {
+            if (!_scrapeJobId) return;
+            try {
+                const resp = await fetch(apiUrl('/api/scrape-live/' + _scrapeJobId));
+                const data = await resp.json();
+                const statusEl = document.getElementById('scrape-live-status');
+
+                if (data.status === 'running') {
+                    // Still running — update status
+                    if (statusEl) {
+                        statusEl.innerHTML = `
+                            <div class="flex items-center gap-3 p-3 bg-emerald-900/30 border border-emerald-700/40 rounded-lg">
+                                <span class="inline-block animate-spin text-xl">🔄</span>
+                                <div>
+                                    <p class="text-emerald-400 font-medium text-sm">Scraping en curso…</p>
+                                    <p class="text-slate-400 text-xs">Autos encontrados: ${data.listings || 0}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // Done or error — stop polling
+                clearInterval(_scrapePoller);
+                _scrapePoller = null;
+
+                // Reset header button
+                const headerBtn = document.getElementById('btn-scrape-live');
+                headerBtn.innerHTML = '<span>🕷️</span> Scrapear FB';
+                headerBtn.disabled = false;
+
+                if (data.status === 'done') {
+                    // Replace modal content with results
+                    const modal = document.getElementById('scrape-live-modal');
+                    if (modal) {
+                        modal.innerHTML = `
+                            <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
+                                <h3 class="text-xl font-bold text-white mb-4">✅ Scrape Completado</h3>
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between p-3 bg-green-900/30 rounded-lg border border-green-700/40">
+                                        <span class="text-green-400 font-medium">🚗 Autos capturados</span>
+                                        <span class="text-white font-bold">${data.listings}</span>
+                                    </div>
+                                    <div class="flex justify-between p-3 bg-slate-800 rounded-lg border border-slate-600">
+                                        <span class="text-slate-300 font-medium">📊 Total en dashboard</span>
+                                        <span class="text-white font-bold text-lg">${data.cache_total}</span>
+                                    </div>
+                                </div>
+                                <button onclick="document.getElementById('scrape-live-modal').remove(); loadLeads();"
+                                    class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-lg transition-colors">
+                                    Cerrar y Recargar
+                                </button>
+                            </div>
+                        `;
+                    }
+                    showToast('Scrape exitoso', data.listings + ' autos capturados desde Facebook Marketplace');
+                } else {
+                    // Error
+                    if (statusEl) {
+                        statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
+                    }
+                    const startBtn = document.getElementById('btn-start-scrape');
+                    if (startBtn) {
+                        startBtn.style.display = '';
+                        startBtn.disabled = false;
+                        startBtn.innerHTML = '🚀 Reintentar';
+                    }
+                }
+
+                _scrapeJobId = null;
+            } catch (e) {
+                console.error('Poll error:', e);
+            }
+        }
+
         // ── Save seller name (HAR-sourced or manually entered) ───────────
         async function saveSellerName(url, name) {
             try {
@@ -709,6 +904,20 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 console.error('Error saving seller name:', e);
             }
         }
+
+        // ── HAR Dropdown ─────────────────────────────────────────────────
+        function toggleHarDropdown() {
+            const dd = document.getElementById('har-dropdown');
+            dd.classList.toggle('hidden');
+        }
+        function hideHarDropdown() {
+            document.getElementById('har-dropdown').classList.add('hidden');
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const wrapper = document.getElementById('har-dropdown-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) hideHarDropdown();
+        });
 
         // ── HAR Import Modal ─────────────────────────────────────────────
         function showHarModal() {
