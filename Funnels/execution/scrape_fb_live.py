@@ -30,8 +30,7 @@ DEFAULT_SCROLL_STEPS = 30
 SCROLL_PX    = 1200
 SCROLL_DELAY = 2.5
 
-# Real Chrome — must be installed
-CHROME_EXECUTABLE = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# Chrome profile source (session cookies live here)
 CHROME_USER_DATA  = Path.home() / "Library/Application Support/Google/Chrome"
 
 # ─── Global store ───────────────────────────────────────────────────────────────
@@ -143,10 +142,6 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
         print("ERROR: playwright not installed.", file=sys.stderr)
         return []
 
-    if not Path(CHROME_EXECUTABLE).exists():
-        print(f"ERROR: Chrome not found at {CHROME_EXECUTABLE}", file=sys.stderr)
-        return []
-
     if not CHROME_USER_DATA.exists():
         print("ERROR: Chrome user data directory not found!", file=sys.stderr)
         return []
@@ -185,7 +180,7 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=str(tmp_dir),
                 headless=False,
-                executable_path=CHROME_EXECUTABLE,
+                channel="chromium",   # Playwright's bundled Chromium reads the copied profile
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-first-run",
@@ -204,25 +199,33 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
 
             print("🌐 Opening Facebook…", file=sys.stderr)
             await page.goto("https://www.facebook.com", wait_until="domcontentloaded", timeout=30_000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(4)
 
             current_url = page.url
-            print(f"📍 URL: {current_url}", file=sys.stderr)
+            print(f"📍 URL after load: {current_url}", file=sys.stderr)
 
-            logged_in = (
-                "login" not in current_url
-                and "checkpoint" not in current_url
-                and "signup" not in current_url
-            )
+            # Check login: logged-in users land on feed, not /login /checkpoint /signup
+            logged_in = not any(x in current_url for x in ("login", "checkpoint", "signup"))
+
+            # Extra check: if URL looks like feed but page has login form, still not logged in
+            if logged_in:
+                try:
+                    login_form = await page.query_selector('form[action*="login"]')
+                    if login_form:
+                        logged_in = False
+                        print("⚠️  Login form detected despite URL", file=sys.stderr)
+                except Exception:
+                    pass
 
             if not logged_in:
-                print("⚠️  Not logged in — waiting up to 120s for manual login…", file=sys.stderr)
+                print("⚠️  Not logged in. Log in manually in the Chrome window — waiting 120s…", file=sys.stderr)
                 for _ in range(120):
                     await asyncio.sleep(1)
                     u = page.url
-                    if "login" not in u and "checkpoint" not in u and "signup" not in u:
-                        print("✅ Logged in!", file=sys.stderr)
+                    if not any(x in u for x in ("login", "checkpoint", "signup")):
+                        print(f"✅ Logged in! URL: {u}", file=sys.stderr)
                         logged_in = True
+                        await asyncio.sleep(2)
                         break
                 if not logged_in:
                     print("❌ Login timeout — aborting.", file=sys.stderr)
