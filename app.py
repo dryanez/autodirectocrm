@@ -2200,9 +2200,12 @@ def create_quick_consignacion():
     now = datetime.now().isoformat()
     owner_name = (data.get("owner_name") or "").strip()
     owner_phone = (data.get("owner_phone") or "").strip()
+    owner_rut = (data.get("owner_rut") or "").strip()
+    owner_email = (data.get("owner_email") or "").strip()
     car_make = (data.get("car_make") or "").strip()
     car_model = (data.get("car_model") or "").strip()
     car_year = data.get("car_year") or None
+    mileage = data.get("mileage") or None
 
     first = owner_name.split(" ")[0] if owner_name else ""
     last = " ".join(owner_name.split(" ")[1:]) if owner_name else ""
@@ -2211,12 +2214,14 @@ def create_quick_consignacion():
         conn.execute("""
             INSERT INTO consignaciones (
                 owner_first_name, owner_last_name, owner_full_name,
-                owner_phone, plate, car_make, car_model, car_year,
+                owner_phone, owner_rut, owner_email, plate,
+                car_make, car_model, car_year, mileage,
                 status, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             first, last, owner_name,
-            owner_phone, plate, car_make, car_model, car_year,
+            owner_phone, owner_rut, owner_email, plate,
+            car_make, car_model, car_year, mileage,
             "fotos_pendientes", now, now
         ))
         conn.commit()
