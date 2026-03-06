@@ -338,28 +338,32 @@ if FUNNELS_DIR.exists():
             }), 409
 
         # Find a Python that has playwright installed.
-        # Priority: fb app venv > Funnels venv > system python
+        # Check env var override first, then walk well-known paths.
         scraper_path = ROOT / "Funnels" / "execution" / "scrape_fb_live.py"
         scraper_python = None
 
-        candidates = [
-            ROOT.parent / "fb app" / "venv" / "bin" / "python",
-            ROOT / "Funnels" / ".venv" / "bin" / "python",
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                scraper_python = str(candidate)
-                break
+        env_override = os.environ.get("PLAYWRIGHT_PYTHON")
+        if env_override and Path(env_override).exists():
+            scraper_python = env_override
+        else:
+            candidates = [
+                ROOT.parent / "fb app" / "venv" / "bin" / "python",
+                ROOT / "Funnels" / ".venv" / "bin" / "python",
+                # Absolute fallback for local Mac layout
+                Path.home() / "Desktop" / "Wiackowska Group Spa" / "Apps" / "Autodirecto" / "fb app" / "venv" / "bin" / "python",
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    scraper_python = str(candidate)
+                    break
 
         if not scraper_python:
             return jsonify({
                 "success": False,
                 "error": (
-                    "Scrape solo funciona localmente. "
-                    "No se encontró un venv con Playwright. "
-                    "Ejecuta: cd 'fb app' && python3 -m venv venv && "
-                    "source venv/bin/activate && pip install playwright && "
-                    "playwright install chromium"
+                    "No se encontró Python con Playwright. "
+                    "Agrega PLAYWRIGHT_PYTHON=/ruta/venv/bin/python como variable de entorno, "
+                    "o asegúrate de correr el CRM localmente con 'fb app/venv' disponible."
                 )
             }), 400
 

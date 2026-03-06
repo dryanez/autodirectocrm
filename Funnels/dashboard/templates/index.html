@@ -728,25 +728,29 @@ Agente de Ventas | Autodirecto.cl</textarea>
             modal.id = 'scrape-live-modal';
             modal.innerHTML = `
                 <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
-                    <h3 class="text-xl font-bold text-white mb-4">🕷️ Scrapear Facebook Marketplace</h3>
-                    <p class="text-slate-400 text-sm mb-4">
-                        Esto abre Chrome con tu sesión de Facebook, navega al Marketplace
-                        y captura todos los autos automáticamente.
-                    </p>
-                    <div class="space-y-4 mb-6">
+                    <h3 class="text-xl font-bold text-white mb-3">🕷️ Scrapear Facebook Marketplace</h3>
+
+                    <div class="bg-blue-900/30 border border-blue-700/40 rounded-lg p-3 mb-4 text-xs text-blue-300 flex items-start gap-2">
+                        <span class="text-lg leading-none">💻</span>
+                        <span>Este scraper <strong class="text-white">solo funciona localmente</strong> — necesita abrir Chrome con tu sesión de Facebook.<br>
+                        Si estás en el servidor remoto, corre primero <code class="bg-slate-800 px-1 rounded text-emerald-400">python app.py</code> en tu Mac y abre <strong class="text-white">localhost:8080/funnels</strong>.</span>
+                    </div>
+
+                    <div class="space-y-4 mb-5">
                         <div>
-                            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Scrolls (más = más autos)</label>
+                            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Scrolls (más scrolls = más autos)</label>
                             <input type="range" id="scrape-scrolls" min="10" max="80" value="30" class="w-full mt-1"
                                 oninput="document.getElementById('scrape-scrolls-val').textContent = this.value">
                             <div class="flex justify-between text-xs text-slate-500 mt-1">
-                                <span>10 (rápido)</span>
+                                <span>10 (~1 min)</span>
                                 <span id="scrape-scrolls-val" class="text-emerald-400 font-bold">30</span>
-                                <span>80 (completo)</span>
+                                <span>80 (~4 min)</span>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-amber-900/30 border border-amber-700/40 rounded-lg p-3 mb-4 text-sm text-amber-300">
-                        ⚠️ Cierra Google Chrome antes de iniciar (el perfil no puede estar en uso).
+
+                    <div class="bg-amber-900/30 border border-amber-700/40 rounded-lg p-3 mb-4 text-xs text-amber-300">
+                        ⚠️ Cierra Google Chrome antes de iniciar — el perfil no puede estar en uso.
                     </div>
                     <div id="scrape-live-status" class="min-h-[40px] mb-4"></div>
                     <div class="flex gap-3">
@@ -780,7 +784,20 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 const data = await resp.json();
 
                 if (!data.success) {
-                    statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
+                    const isLocalError = data.error && data.error.includes('Playwright');
+                    statusEl.innerHTML = isLocalError ? `
+                        <div class="p-4 bg-amber-900/30 border border-amber-700/50 rounded-xl space-y-3">
+                            <p class="text-amber-300 font-semibold text-sm">⚠️ El scraper requiere tu Mac — no el servidor remoto.</p>
+                            <p class="text-slate-400 text-xs leading-relaxed">
+                                Facebook Marketplace necesita un navegador real con tu sesión iniciada.<br>
+                                Corre el CRM <strong class="text-white">localmente</strong> y luego presiona Scrapear.
+                            </p>
+                            <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-emerald-400 select-all">
+                                cd SimplyAPI &amp;&amp; python app.py
+                            </div>
+                            <p class="text-slate-500 text-xs">Luego abre <strong class="text-slate-300">http://localhost:5050/funnels</strong></p>
+                        </div>
+                    ` : '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
                     btn.disabled = false;
                     btn.innerHTML = '🚀 Reintentar';
                     return;
