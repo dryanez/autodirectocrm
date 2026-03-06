@@ -107,6 +107,11 @@ def add_camera_cors(response):
 def camera_job_preflight(token=None):
     return add_camera_cors(app.make_response(""))
 
+@app.route("/api/consignaciones/by-plate/<path:plate>", methods=["OPTIONS"])
+@app.route("/api/consignaciones/quick", methods=["OPTIONS"])
+def consignacion_camera_preflight(plate=None):
+    return add_camera_cors(app.make_response(""))
+
 # ─── Session cookie — must work cross-domain when deployed on Railway ─────────
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
 app.config["SESSION_COOKIE_SECURE"] = True   # required when SameSite=None
@@ -2098,6 +2103,96 @@ def create_consignacion():
         traceback.print_exc()
 
     return jsonify({"ok": True, "id": new_id, "consignacion": row_to_dict(row or inserted)}), 201
+
+
+# ─── API: Camera App — Plate Lookup & Quick Consignación ─────────────────────
+@app.route("/api/consignaciones/by-plate/<plate>", methods=["GET"])
+def get_consignacion_by_plate(plate):
+    """Lookup consignacion by license plate. Used by camera app to auto-match."""
+    plate = plate.upper().strip().replace(" ", "").replace("-", "").replace(".", "")
+    if not plate or len(plate) < 4:
+        return jsonify({"error": "Patente inválida"}), 400
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM consignaciones WHERE plate=? ORDER BY id DESC LIMIT 1",
+            (plate,)
+        ).fetchone()
+    if not row:
+        return jsonify({"found": False})
+    c = row_to_dict(row)
+    label = f"{c.get('car_make','')} {c.get('car_model','')} {c.get('car_year','')}".strip()
+    return jsonify({
+        "found": True,
+        "consignacion_id": c["id"],
+        "appraisal_id": c.get("appraisal_supabase_id"),
+        "plate": c.get("plate", ""),
+        "label": label or f"Consignación #{c['id']}",
+        "owner_name": c.get("owner_full_name", ""),
+        "status": c.get("status", ""),
+    })
+
+
+@app.route("/api/consignaciones/quick", methods=["POST"])
+def create_quick_consignacion():
+    """Create a minimal consignacion from the camera app with just plate + basic info.
+    If a consignacion already exists for that plate, return it instead."""
+    data = request.json or {}
+    plate = (data.get("plate") or "").upper().strip().replace(" ", "").replace("-", "").replace(".", "")
+    if not plate or len(plate) < 4:
+        return jsonify({"error": "Patente requerida"}), 400
+
+    # Check if one already exists
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM consignaciones WHERE plate=? ORDER BY id DESC LIMIT 1",
+            (plate,)
+        ).fetchone()
+
+    if existing:
+        c = row_to_dict(existing)
+        label = f"{c.get('car_make','')} {c.get('car_model','')} {c.get('car_year','')}".strip()
+        return jsonify({
+            "ok": True, "created": False,
+            "consignacion_id": c["id"],
+            "appraisal_id": c.get("appraisal_supabase_id"),
+            "plate": c.get("plate", plate),
+            "label": label or f"Consignación #{c['id']}",
+        })
+
+    # Create new minimal consignacion
+    now = datetime.now().isoformat()
+    owner_name = (data.get("owner_name") or "").strip()
+    owner_phone = (data.get("owner_phone") or "").strip()
+    car_make = (data.get("car_make") or "").strip()
+    car_model = (data.get("car_model") or "").strip()
+    car_year = data.get("car_year") or None
+
+    first = owner_name.split(" ")[0] if owner_name else ""
+    last = " ".join(owner_name.split(" ")[1:]) if owner_name else ""
+
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO consignaciones (
+                owner_first_name, owner_last_name, owner_full_name,
+                owner_phone, plate, car_make, car_model, car_year,
+                status, created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            first, last, owner_name,
+            owner_phone, plate, car_make, car_model, car_year,
+            "fotos_pendientes", now, now
+        ))
+        conn.commit()
+        new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    label = f"{car_make} {car_model} {car_year or ''}".strip()
+    return jsonify({
+        "ok": True, "created": True,
+        "consignacion_id": new_id,
+        "appraisal_id": None,
+        "plate": plate,
+        "label": label or f"Consignación #{new_id}",
+    }), 201
 
 
 @app.route("/api/consignaciones", methods=["GET"])
