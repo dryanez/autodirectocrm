@@ -9,6 +9,12 @@ from pathlib import Path
 import requests
 from datetime import datetime
 
+# Ensure this directory is on sys.path so `utils` resolves when loaded
+# via importlib from the root app.py (e.g. on Vercel where cwd=/var/task).
+_THIS_DIR = str(Path(__file__).resolve().parent)
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+
 from utils import calculate_liquidity_score, get_region_data
 
 app = Flask(__name__)
