@@ -45,6 +45,18 @@
                     🕷️ Scrapear Facebook
                 </button>
 
+                <!-- SSE Scrape -->
+                <button id="btn-scrape-sse" onclick="startScrapeSse()"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow transition-colors">
+                    🚀 Scrape Live
+                </button>
+
+                <!-- Auto-Messenger -->
+                <button id="btn-send-messages" onclick="startMessaging()"
+                    class="bg-green-600 hover:bg-green-500 text-white text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow transition-colors">
+                    💬 Send Messages
+                </button>
+
                 <!-- Secondary: HAR dropdown -->
                 <div class="relative" id="har-dropdown-wrapper">
                     <button onclick="toggleHarDropdown()"
@@ -85,6 +97,48 @@
         </div>
     </header>
 
+    <!-- Scrape SSE Progress Banner (hidden by default) -->
+    <div id="scrape-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-indigo-900/95 backdrop-blur text-white px-6 py-3 shadow-xl">
+        <div class="max-w-7xl mx-auto flex items-center gap-4">
+            <div class="text-lg">🚀</div>
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <span id="scrape-log" class="text-sm font-medium truncate max-w-xl">Iniciando...</span>
+                    <span id="scrape-pct" class="text-sm font-bold ml-4">0%</span>
+                </div>
+                <div class="w-full bg-indigo-700 rounded-full h-2">
+                    <div id="scrape-bar" class="bg-green-400 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-indigo-300 mt-1">
+                    <span id="scrape-vehicles"></span>
+                    <span>Scraping Facebook Marketplace...</span>
+                </div>
+            </div>
+            <button onclick="document.getElementById('scrape-banner').classList.add('hidden')" class="text-indigo-300 hover:text-white text-xl ml-2">&times;</button>
+        </div>
+    </div>
+
+    <!-- Messaging SSE Progress Banner (hidden by default) -->
+    <div id="msg-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-green-900/95 backdrop-blur text-white px-6 py-3 shadow-xl">
+        <div class="max-w-7xl mx-auto flex items-center gap-4">
+            <div class="text-lg">💬</div>
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <span id="msg-log" class="text-sm font-medium truncate max-w-xl">Iniciando mensajes...</span>
+                    <span id="msg-pct" class="text-sm font-bold ml-4">0%</span>
+                </div>
+                <div class="w-full bg-green-700 rounded-full h-2">
+                    <div id="msg-bar" class="bg-yellow-400 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-green-300 mt-1">
+                    <span id="msg-sent"></span>
+                    <span>Enviando mensajes · 5–8 min entre cada uno</span>
+                </div>
+            </div>
+            <button onclick="document.getElementById('msg-banner').classList.add('hidden')" class="text-green-300 hover:text-white text-xl ml-2">&times;</button>
+        </div>
+    </div>
+
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
@@ -100,6 +154,8 @@
                         class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Contactados</button>
                     <button onclick="switchTab('ignored')" id="tab-ignored"
                         class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Ignorados</button>
+                    <button onclick="switchTab('outside')" id="tab-outside"
+                        class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Fuera de Región</button>
                     <button onclick="switchTab('all')" id="tab-all"
                         class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Todos</button>
                 </div>
@@ -284,7 +340,8 @@ Así tú obtienes el monto que buscas sin tener que lidiar con extraños ni trá
 ¿Te hace sentido esa cifra para conversar?
 
 Quedo atento,
-Felipe Yanez
+WhatsApp: +56940441470
+Felipe Yañez
 Agente de Ventas | Autodirecto.cl</textarea>
                             <button onclick="copyMessage(this, '${lead.url}')" class="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded px-3 flex flex-col items-center justify-center gap-1 transition-colors w-16" title="Copiar y Contactar">
                                 <span class="text-xl">📋</span>
@@ -346,8 +403,9 @@ Agente de Ventas | Autodirecto.cl</textarea>
         function switchTab(status) {
             document.getElementById('status-filter').value = status;
 
-            ['new', 'contacted', 'ignored', 'all'].forEach(s => {
+            ['new', 'contacted', 'ignored', 'outside', 'all'].forEach(s => {
                 const btn = document.getElementById('tab-' + s);
+                if (!btn) return;
                 if (s === status) {
                     btn.classList.add('border-blue-500', 'text-blue-400', 'border-b-2');
                     btn.classList.remove('text-slate-400', 'hover:text-white');
@@ -371,7 +429,18 @@ Agente de Ventas | Autodirecto.cl</textarea>
             const yearFilter = parseInt(document.getElementById('year-filter').value) || 0;
 
             const filtered = allLeads.filter(lead => {
-                if (statusFilter !== 'all' && (lead.status || 'new') !== statusFilter) return false;
+                // Status & Region Logic
+                const status = lead.status || 'new';
+                
+                if (statusFilter === 'outside') {
+                    // "Fuera de Región" tab — only show non-V-Region cars
+                    if (lead.is_v_region) return false;
+                } else if (statusFilter !== 'all') {
+                    // Regular tabs (Nuevos, Contactados, Ignorados) only show V Region cars
+                    if (!lead.is_v_region) return false;
+                    if (status !== statusFilter) return false;
+                }
+
                 if (yearFilter && lead.year && lead.year < yearFilter) return false;
                 const { brand, model } = parseBrandModel(lead.title);
                 if (brandFilter && brand.toLowerCase() !== brandFilter) return false;
@@ -448,6 +517,9 @@ Agente de Ventas | Autodirecto.cl</textarea>
                         ${photoHtml}
                         ${lead.is_sold ? `<span class="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">VENDIDO</span>` : ''}
                         <div class="absolute top-2 right-2 flex flex-col items-end gap-1">
+                            <span class="px-2 py-1 text-xs font-bold rounded-md bg-orange-500/20 text-orange-300 shadow-sm border border-orange-500/30">
+                                🔥 ${lead.score || 0}/100
+                            </span>
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor} capitalize shadow-sm">
                                 ${lead.status || 'new'}
                             </span>
@@ -465,6 +537,7 @@ Agente de Ventas | Autodirecto.cl</textarea>
                         <div class="space-y-1 text-sm text-slate-400">
                             <div class="flex items-center">
                                 <span class="w-5 text-center mr-2">📍</span> ${lead.location || 'N/A'}
+                                ${lead.is_v_region && lead.distance_to_vina !== undefined && lead.distance_to_vina !== 9999 ? `<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 whitespace-nowrap">${lead.distance_to_vina}km a Viña</span>` : ''}
                             </div>
                             <div class="flex items-center">
                                 <span class="w-5 text-center mr-2">📅</span> ${lead.year || '----'}
@@ -1101,6 +1174,105 @@ Agente de Ventas | Autodirecto.cl</textarea>
             } finally {
                 btn.disabled = false;
             }
+        }
+
+        // ── SSE Scrape (Playwright live scrape with progress banner) ──────
+        function startScrapeSse() {
+            const banner   = document.getElementById('scrape-banner');
+            const bar      = document.getElementById('scrape-bar');
+            const pctEl    = document.getElementById('scrape-pct');
+            const logEl    = document.getElementById('scrape-log');
+            const vehEl    = document.getElementById('scrape-vehicles');
+
+            // Show banner
+            banner.classList.remove('hidden');
+            bar.style.width = '0%';
+            bar.classList.remove('bg-blue-400', 'bg-red-400');
+            bar.classList.add('bg-green-400');
+            pctEl.textContent = '0%';
+            logEl.textContent = 'Iniciando scraper...';
+            vehEl.textContent = '';
+
+            const evtSource = new EventSource(apiUrl('/api/scrape-sse'));
+
+            evtSource.onmessage = (e) => {
+                let msg;
+                try { msg = JSON.parse(e.data); } catch { return; }
+
+                const pct = msg.pct || 0;
+                bar.style.width = pct + '%';
+                pctEl.textContent = pct + '%';
+                if (msg.log) logEl.textContent = msg.log;
+                if (msg.vehicles) vehEl.textContent = `${msg.vehicles} vehículos encontrados`;
+
+                if (msg.done) {
+                    evtSource.close();
+                    bar.classList.remove('bg-green-400');
+                    bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
+                    // Reload leads after short delay
+                    setTimeout(() => {
+                        loadLeads();
+                        setTimeout(() => banner.classList.add('hidden'), 4000);
+                    }, 1500);
+                }
+            };
+
+            evtSource.onerror = () => {
+                evtSource.close();
+                logEl.textContent = '❌ Connection lost or scraper exited.';
+                bar.classList.remove('bg-green-400');
+                bar.classList.add('bg-red-400');
+            };
+        }
+
+        // ── Auto-Messenger via SSE ──────────────────────────────────────
+        function startMessaging() {
+            const limit = prompt('¿Cuántos mensajes enviar? (máx recomendado: 50)', '10');
+            if (!limit || isNaN(limit)) return;
+
+            const banner = document.getElementById('msg-banner');
+            const bar    = document.getElementById('msg-bar');
+            const pctEl  = document.getElementById('msg-pct');
+            const logEl  = document.getElementById('msg-log');
+            const sentEl = document.getElementById('msg-sent');
+
+            banner.classList.remove('hidden');
+            bar.style.width = '0%';
+            bar.classList.remove('bg-blue-400', 'bg-red-400');
+            bar.classList.add('bg-yellow-400');
+            pctEl.textContent = '0%';
+            logEl.textContent = 'Iniciando auto-messenger...';
+            sentEl.textContent = '';
+
+            const evtSource = new EventSource(apiUrl(`/api/auto_message?limit=${limit}`));
+
+            evtSource.onmessage = (e) => {
+                let msg;
+                try { msg = JSON.parse(e.data); } catch { return; }
+
+                const pct = msg.pct || 0;
+                bar.style.width = pct + '%';
+                pctEl.textContent = pct + '%';
+                if (msg.log) logEl.textContent = msg.log;
+                if (msg.sent !== undefined) sentEl.textContent = `${msg.sent} mensaje(s) enviado(s)`;
+
+                if (msg.done) {
+                    evtSource.close();
+                    bar.classList.remove('bg-yellow-400');
+                    bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
+                    setTimeout(() => {
+                        loadLeads();
+                        setTimeout(() => banner.classList.add('hidden'), 5000);
+                    }, 2000);
+                }
+            };
+
+            evtSource.onerror = () => {
+                evtSource.close();
+                logEl.textContent = '❌ Connection lost or messenger exited.';
+                bar.classList.remove('bg-yellow-400');
+                bar.classList.add('bg-red-400');
+            };
         }
 
         // Init

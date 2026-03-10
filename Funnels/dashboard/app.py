@@ -1,11 +1,15 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response, stream_with_context
 import csv
 import json
 import os
 import sys
+import subprocess
 import glob
 from pathlib import Path
 import requests
+from datetime import datetime
+
+from utils import calculate_liquidity_score, get_region_data
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB — HAR files can be large
@@ -153,7 +157,7 @@ def normalize_apify_item(item):
         or ""
     )
 
-    return {
+    lead = {
         "id": item.get("id", ""),
         "url": url,
         "title": title,
@@ -166,6 +170,12 @@ def normalize_apify_item(item):
         "seller_name": seller_name,
         "status": "new",
     }
+
+    # Enrich with liquidity score and region data
+    lead["score"] = calculate_liquidity_score(lead)
+    lead.update(get_region_data(location))
+
+    return lead
 
 
 def find_latest_apify_json():
@@ -321,6 +331,16 @@ def get_leads():
             item_copy["valuation"] = None
             
         results.append(item_copy)
+
+    # Sort priority:
+    # 1. V Region first (True > False)
+    # 2. Closest to Viña del Mar first
+    # 3. Highest Liquidity Score first
+    results.sort(key=lambda x: (
+        not x.get("is_v_region", False),   # V Region first
+        x.get("distance_to_vina", 9999),   # Closest to Viña first
+        -x.get("score", 0)                 # Highest score first
+    ))
     return results
 
 
@@ -749,6 +769,148 @@ def api_bridge_match():
     except Exception as e:
         print(f"[bridge] Error: {e}")
         return jsonify({"success": False, "error": str(e), "matched": False}), 500
+
+
+# ── SSE: Auto-Messenger ──────────────────────────────────────────────────────
+@app.route("/api/auto_message", methods=["POST", "GET"])
+def trigger_auto_message():
+    """Stream auto-messenger output via SSE."""
+    limit = request.args.get("limit", 50, type=int)
+
+    def generate():
+        yield f"data: {json.dumps({'log': f'💬 Starting auto-messenger (limit: {limit} leads)...', 'pct': 0})}\n\n"
+
+        messenger_script = BASE_DIR / "auto_messenger.py"
+        if not messenger_script.exists():
+            # Also check parent dir (SimplyAPI/)
+            messenger_script = BASE_DIR.parent / "auto_messenger.py"
+        if not messenger_script.exists():
+            yield f"data: {json.dumps({'log': '❌ auto_messenger.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
+            return
+
+        cmd = [sys.executable, str(messenger_script), "--limit", str(limit)]
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+
+        proc = subprocess.Popen(
+            cmd, cwd=str(messenger_script.parent),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env, bufsize=1
+        )
+
+        sent = 0
+        total = limit
+
+        for line in proc.stdout:
+            line = line.rstrip()
+            if not line:
+                continue
+            if "✅ Marked" in line or "Message sent" in line:
+                sent += 1
+            pct = min(95, int((sent / max(total, 1)) * 90))
+            yield f"data: {json.dumps({'log': line, 'pct': pct, 'sent': sent})}\n\n"
+
+        proc.wait()
+        success = proc.returncode == 0
+        done_msg = f"✅ Done! Sent {sent} message(s)." if success else "❌ Messenger exited with errors."
+        yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'sent': sent, 'done': True, 'success': success})}\n\n"
+
+        # Reload leads data
+        global _cached_listings
+        _cached_listings = load_all_listings()
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── SSE: Live Playwright Scrape with SSE streaming ───────────────────────────
+@app.route("/api/scrape-sse", methods=["POST", "GET"])
+def trigger_scrape_sse():
+    """Stream Playwright scraper output via SSE, then send WhatsApp notification on completion."""
+    WHATSAPP_NUMBER = "4917632407062"
+    CALLMEBOT_API_KEY = "4106204"
+
+    def _wa_encode(text):
+        """Encode text for CallMeBot URL (official format)."""
+        out = str(text)
+        out = out.replace(' ', '%20')
+        out = out.replace(':', '%3A')
+        out = out.replace('/', '%2F')
+        out = out.replace('\n', '%0A')
+        return out
+
+    # Find the scraper script
+    fb_app_dir = BASE_DIR.parent.parent / "fb app"
+    scraper_script = fb_app_dir / "scrape_marketplace.py"
+
+    def generate():
+        yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
+
+        if not scraper_script.exists():
+            yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
+            return
+
+        cmd = [sys.executable, str(scraper_script)]
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+
+        proc = subprocess.Popen(
+            cmd, cwd=str(fb_app_dir),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env, bufsize=1
+        )
+
+        total_scrolls = 40  # matches scraper default
+        scroll_count = 0
+        vehicle_count = 0
+
+        for line in proc.stdout:
+            line = line.rstrip()
+            if not line:
+                continue
+
+            # Parse scroll progress
+            if "Scroll " in line and "/" in line:
+                try:
+                    part = line.split("Scroll ")[1].split(" — ")[0]
+                    cur, tot = part.split("/")
+                    scroll_count = int(cur)
+                    total_scrolls = int(tot)
+                    if "vehicles" in line:
+                        vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                except Exception:
+                    pass
+
+            pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
+
+            yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+
+        proc.wait()
+        success = proc.returncode == 0
+
+        # Reload cached listings
+        global _cached_listings
+        _cached_listings = load_all_listings()
+
+        done_msg = f"✅ Scrape complete! {vehicle_count} vehicles saved." if success else "❌ Scraper exited with errors."
+        yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'vehicles': vehicle_count, 'done': True, 'success': success})}\n\n"
+
+        # WhatsApp notification via CallMeBot
+        try:
+            msg = f"🚗 Autodirecto Scraper\n{done_msg} ({datetime.now().strftime('%H:%M')})"
+            wa_url = (
+                f"https://api.callmebot.com/whatsapp.php"
+                f"?phone={WHATSAPP_NUMBER}"
+                f"&text={_wa_encode(msg)}"
+                f"&apikey={CALLMEBOT_API_KEY}"
+            )
+            resp = requests.get(wa_url, timeout=8)
+            print(f"[whatsapp] Response: {resp.status_code} {resp.text[:100]}")
+        except Exception as e:
+            print(f"[whatsapp] Notification failed: {e}")
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 if __name__ == "__main__":
