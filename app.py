@@ -2696,14 +2696,22 @@ def update_consignacion(cid):
 
 @app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
 def delete_consignacion(cid):
-    """Permanently delete a single consignacion."""
+    """Permanently delete a single consignacion + its linked CRM lead."""
     try:
         with get_db() as conn:
-            row = conn.execute("SELECT id FROM consignaciones WHERE id=?", (cid,)).fetchone()
+            row = conn.execute("SELECT id, plate FROM consignaciones WHERE id=?", (cid,)).fetchone()
             if not row:
                 return jsonify({"error": "Not found"}), 404
+            plate = row_to_dict(row).get("plate")
             conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
             conn.commit()
+            # Also delete the matching CRM lead
+            if plate:
+                try:
+                    conn.execute("DELETE FROM crm_leads WHERE plate=?", (plate,))
+                    conn.commit()
+                except Exception as e_crm:
+                    print(f"[delete_consignacion] CRM lead cleanup warning: {e_crm}", flush=True)
         return jsonify({"ok": True, "deleted": cid})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2711,7 +2719,8 @@ def delete_consignacion(cid):
 
 @app.route("/api/consignaciones/bulk-delete", methods=["POST"])
 def bulk_delete_consignaciones():
-    """Delete multiple consignaciones by ID list. Body: {"ids": [1, 2, 3]}"""
+    """Delete multiple consignaciones by ID list + their linked CRM leads.
+    Body: {"ids": [1, 2, 3]}"""
     data = request.json or {}
     ids = data.get("ids", [])
     if not ids or not isinstance(ids, list):
@@ -2720,12 +2729,34 @@ def bulk_delete_consignaciones():
     if not ids:
         return jsonify({"error": "no valid ids"}), 400
     try:
-        placeholders = ",".join("?" * len(ids))
+        # 1. Fetch plates before deleting (for CRM lead cleanup)
+        plates = []
         with get_db() as conn:
-            conn.execute(f"DELETE FROM consignaciones WHERE id IN ({placeholders})", ids)
+            for cid in ids:
+                row = conn.execute("SELECT plate FROM consignaciones WHERE id=?", (cid,)).fetchone()
+                if row:
+                    p = row_to_dict(row).get("plate")
+                    if p:
+                        plates.append(p)
+
+        # 2. Delete consignaciones one by one (avoids IN-clause parser issues)
+        with get_db() as conn:
+            for cid in ids:
+                conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
             conn.commit()
-        return jsonify({"ok": True, "deleted": ids})
+
+        # 3. Delete matching CRM leads
+        with get_db() as conn:
+            for plate in plates:
+                try:
+                    conn.execute("DELETE FROM crm_leads WHERE plate=?", (plate,))
+                except Exception:
+                    pass
+            conn.commit()
+
+        return jsonify({"ok": True, "deleted": ids, "crm_leads_cleaned": plates})
     except Exception as e:
+        print(f"[bulk_delete] Error: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
 
 

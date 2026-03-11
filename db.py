@@ -334,7 +334,13 @@ def _parse_where_clause(where_str, params):
         m = re.match(r"([a-zA-Z_.]+)\s+IN\s*\(([^)]+)\)", cond, re.I)
         if m:
             col = m.group(1).strip()
-            vals = [v.strip().strip("'\"") for v in m.group(2).split(",")]
+            inner = m.group(2)
+            # Check if the IN clause uses ? placeholders
+            placeholder_count = inner.count('?')
+            if placeholder_count > 0:
+                vals = [str(next_param()) for _ in range(placeholder_count)]
+            else:
+                vals = [v.strip().strip("'\"") for v in inner.split(",")]
             filters[col] = f"in.({','.join(vals)})"
             continue
 
@@ -342,7 +348,12 @@ def _parse_where_clause(where_str, params):
         m = re.match(r"([a-zA-Z_.]+)\s+NOT\s+IN\s*\(([^)]+)\)", cond, re.I)
         if m:
             col = m.group(1).strip()
-            vals = [v.strip().strip("'\"") for v in m.group(2).split(",")]
+            inner = m.group(2)
+            placeholder_count = inner.count('?')
+            if placeholder_count > 0:
+                vals = [str(next_param()) for _ in range(placeholder_count)]
+            else:
+                vals = [v.strip().strip("'\"") for v in inner.split(",")]
             filters[col] = f"not.in.({','.join(vals)})"
             continue
 
