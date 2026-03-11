@@ -2300,6 +2300,51 @@ def create_quick_consignacion():
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+    # ── Create CRM lead so it shows up in the CRM pipeline ──
+    try:
+        with get_crm_conn() as crm:
+            # Check if a CRM lead already exists for this plate
+            existing_lead = None
+            if plate:
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
+                ).fetchone()
+            if not existing_lead and owner_rut:
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE rut=? LIMIT 1", (owner_rut,)
+                ).fetchone()
+            if not existing_lead and owner_phone:
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE phone=? LIMIT 1", (owner_phone,)
+                ).fetchone()
+
+            if existing_lead:
+                # Update existing lead stage
+                crm.execute(
+                    "UPDATE crm_leads SET stage=?, plate=?, updated_at=? WHERE id=?",
+                    ("nuevo", plate, now, existing_lead["id"])
+                )
+                crm.commit()
+                print(f"[quick_consig] Updated existing CRM lead #{existing_lead['id']} for plate {plate}", flush=True)
+            else:
+                # Create new CRM lead
+                crm.execute("""
+                    INSERT INTO crm_leads (
+                        first_name, last_name, full_name, rut, phone, country_code, email,
+                        plate, car_make, car_model, car_year, mileage,
+                        stage, source, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    first, last, owner_name,
+                    owner_rut, owner_phone, "+56", owner_email,
+                    plate, car_make, car_model, car_year, mileage,
+                    "nuevo", "camera_app", now, now
+                ))
+                crm.commit()
+                print(f"[quick_consig] Created new CRM lead for plate {plate}", flush=True)
+    except Exception as e:
+        print(f"[quick_consig] CRM lead creation error: {e}", flush=True)
+
     label = f"{car_make} {car_model} {car_year or ''}".strip()
     return jsonify({
         "ok": True, "created": True,
