@@ -220,9 +220,11 @@ async def do_login(page) -> bool:
                 if await loc.count() > 0 and await loc.first.is_visible():
                     await loc.first.click()
                     await asyncio.sleep(0.3)
-                    await loc.first.fill(FB_EMAIL)
+                    await loc.first.fill("")          # clear first
+                    await asyncio.sleep(0.2)
+                    await page.keyboard.type(FB_EMAIL, delay=50)   # type char-by-char
                     email_filled = True
-                    print(f"   ✅ Email filled via {sel}", file=sys.stderr)
+                    print(f"   ✅ Email typed via {sel}", file=sys.stderr)
                     break
             except Exception:
                 pass
@@ -243,9 +245,11 @@ async def do_login(page) -> bool:
                 if await loc.count() > 0 and await loc.first.is_visible():
                     await loc.first.click()
                     await asyncio.sleep(0.3)
-                    await loc.first.fill(FB_PASSWORD)
+                    await loc.first.fill("")          # clear first
+                    await asyncio.sleep(0.2)
+                    await page.keyboard.type(FB_PASSWORD, delay=50)  # type char-by-char
                     pass_filled = True
-                    print(f"   ✅ Password filled via {sel}", file=sys.stderr)
+                    print(f"   ✅ Password typed via {sel}", file=sys.stderr)
                     break
             except Exception:
                 pass
@@ -308,6 +312,167 @@ async def do_login(page) -> bool:
         print(f"❌ Login error: {e}", file=sys.stderr)
         import traceback; traceback.print_exc(file=sys.stderr)
         return False
+
+
+async def _handle_marketplace_login_wall(page, context, target_url: str):
+    """
+    Handle the Facebook login wall / modal that appears on marketplace pages.
+    Facebook shows an overlay with email + password fields even if cookies are set.
+    This fills them with credentials and submits — exactly like the Marketing version did.
+    """
+    await asyncio.sleep(2)
+
+    # Look for ANY visible email field on the page (modal, overlay, or inline)
+    email_selectors = [
+        'input[name="email"]',
+        '#email',
+        'input[type="email"]',
+        'input[placeholder*="E-Mail"]',
+        'input[placeholder*="email"]',
+        'input[placeholder*="correo"]',
+        'input[placeholder*="Telefon"]',
+        'input[placeholder*="phone"]',
+    ]
+
+    email_field = None
+    for sel in email_selectors:
+        try:
+            loc = page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                email_field = loc.first
+                print(f"⚠️  Login wall detected — found email field via: {sel}", file=sys.stderr)
+                break
+        except Exception:
+            pass
+
+    if not email_field:
+        print("✅ No login wall — marketplace loaded fine.", file=sys.stderr)
+        return
+
+    # ── TYPE email (character by character for reliability) ──────────────
+    try:
+        await email_field.click()
+        await asyncio.sleep(0.3)
+        # Clear any existing text first
+        await email_field.fill("")
+        await asyncio.sleep(0.2)
+        # Type character by character like a human
+        await page.keyboard.type(FB_EMAIL, delay=50)
+        print(f"   ✅ Typed email: {FB_EMAIL}", file=sys.stderr)
+    except Exception as e:
+        print(f"   ❌ Failed to type email: {e}", file=sys.stderr)
+        return
+
+    await asyncio.sleep(0.5)
+
+    # ── TYPE password ───────────────────────────────────────────────────
+    pass_selectors = [
+        'input[name="pass"]',
+        '#pass',
+        'input[type="password"]',
+        'input[placeholder*="Passwort"]',
+        'input[placeholder*="password"]',
+        'input[placeholder*="contraseña"]',
+    ]
+
+    pass_field = None
+    for sel in pass_selectors:
+        try:
+            loc = page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                pass_field = loc.first
+                break
+        except Exception:
+            pass
+
+    if not pass_field:
+        print("   ❌ No password field found on login wall.", file=sys.stderr)
+        return
+
+    try:
+        await pass_field.click()
+        await asyncio.sleep(0.3)
+        await pass_field.fill("")
+        await asyncio.sleep(0.2)
+        await page.keyboard.type(FB_PASSWORD, delay=50)
+        print(f"   ✅ Typed password", file=sys.stderr)
+    except Exception as e:
+        print(f"   ❌ Failed to type password: {e}", file=sys.stderr)
+        return
+
+    await asyncio.sleep(0.5)
+
+    # ── CLICK submit button ─────────────────────────────────────────────
+    login_btn_selectors = [
+        'button[name="login"]',
+        '#loginbutton',
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Anmelden")',
+        'button:has-text("Iniciar sesión")',
+        'button:has-text("Log In")',
+        'button:has-text("Log in")',
+        '[data-testid="royal_login_button"]',
+        'button[data-testid="login_button"]',
+    ]
+
+    btn_clicked = False
+    for sel in login_btn_selectors:
+        try:
+            btn = page.locator(sel)
+            if await btn.count() > 0 and await btn.first.is_visible():
+                await btn.first.click()
+                btn_clicked = True
+                print(f"   ✅ Clicked login button: {sel}", file=sys.stderr)
+                break
+        except Exception:
+            pass
+
+    if not btn_clicked:
+        # Fallback: press Enter
+        print("   ⚠️ No button found — pressing Enter…", file=sys.stderr)
+        await page.keyboard.press("Enter")
+
+    # ── Wait for login to complete ──────────────────────────────────────
+    print("   ⏳ Waiting for login wall to clear…", file=sys.stderr)
+    for i in range(20):
+        await asyncio.sleep(2)
+        url = page.url
+        print(f"     [{i*2}s] {url[:80]}", file=sys.stderr)
+
+        if "checkpoint" in url:
+            print("   ⚠️ Security checkpoint — waiting 90s for manual action…", file=sys.stderr)
+            await asyncio.sleep(90)
+            break
+
+        # Check if the email field is gone (modal dismissed)
+        still_visible = False
+        for sel in email_selectors[:3]:
+            try:
+                if await page.locator(sel).count() > 0 and await page.locator(sel).first.is_visible():
+                    still_visible = True
+                    break
+            except Exception:
+                pass
+
+        if not still_visible:
+            print("   ✅ Login wall cleared!", file=sys.stderr)
+            break
+
+    # Save cookies after successful wall login
+    try:
+        cookies = await context.cookies()
+        COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
+        print(f"   💾 Saved {len(cookies)} cookies after login wall", file=sys.stderr)
+    except Exception:
+        pass
+
+    # If we got redirected away from marketplace, navigate back
+    await asyncio.sleep(2)
+    if "marketplace" not in page.url:
+        print(f"   🌐 Navigating back to marketplace…", file=sys.stderr)
+        await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
+        await asyncio.sleep(5)
 
 
 async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
@@ -403,45 +568,9 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
             await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
             await asyncio.sleep(5)
 
-        # Check for login modal overlay (dismiss the X or fill the form)
-        try:
-            close_btn = page.locator('[aria-label="Close"], [aria-label="Cerrar"], [aria-label="Schließen"]')
-            if await close_btn.count() > 0:
-                # There might be a close button on a login modal — but we need to be logged in
-                # Check if there's an email field in a dialog/modal
-                modal_email = page.locator('div[role="dialog"] input[name="email"], div[role="dialog"] #email')
-                if await modal_email.count() > 0:
-                    print("⚠️  Login modal detected on marketplace — filling credentials…", file=sys.stderr)
-                    await modal_email.first.fill(FB_EMAIL)
-                    await asyncio.sleep(0.5)
-                    modal_pass = page.locator('div[role="dialog"] input[name="pass"], div[role="dialog"] input[type="password"]')
-                    if await modal_pass.count() > 0:
-                        await modal_pass.first.fill(FB_PASSWORD)
-                        await asyncio.sleep(0.5)
-                    # Click the login button inside the modal
-                    for sel in ['div[role="dialog"] button[name="login"]', 'div[role="dialog"] button[type="submit"]',
-                                'div[role="dialog"] button:has-text("Anmelden")', 'div[role="dialog"] button:has-text("Log In")',
-                                'div[role="dialog"] button:has-text("Iniciar sesión")']:
-                        try:
-                            btn = page.locator(sel)
-                            if await btn.count() > 0:
-                                await btn.first.click()
-                                print(f"   ✅ Modal login submitted via {sel}", file=sys.stderr)
-                                await asyncio.sleep(5)
-                                break
-                        except Exception:
-                            pass
-                    # Save cookies
-                    try:
-                        cookies = await context.cookies()
-                        COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
-                    except Exception:
-                        pass
-                    # Re-navigate to marketplace
-                    await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
-                    await asyncio.sleep(5)
-        except Exception as e:
-            print(f"   (modal check: {e})", file=sys.stderr)
+        # Check for login modal / overlay that Facebook shows on marketplace
+        # This catches the "Mehr auf Facebook ansehen" overlay or any login form
+        await _handle_marketplace_login_wall(page, context, target_url)
 
         print(f"\n🔄 Smart scrape: target {TARGET_LEADS} qualifying V-Region leads (max {scroll_steps} scrolls)…\n", file=sys.stderr)
         for i in range(1, scroll_steps + 1):
