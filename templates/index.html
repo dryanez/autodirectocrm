@@ -2767,8 +2767,25 @@
             <div class="flex items-center gap-3">
                 <i class="ph ph-clipboard-text text-xl text-amber-400"></i>
                 <h2 class="text-lg font-semibold text-white">Consignaciones</h2>
+                <!-- Multi-select toolbar (shown when selecting) -->
+                <template x-if="consigSelecting && consigSelected.length > 0">
+                    <div class="flex items-center gap-2 ml-2">
+                        <span class="text-sm text-amber-400 font-semibold" x-text="consigSelected.length + ' seleccionada' + (consigSelected.length !== 1 ? 's' : '')"></span>
+                        <button @click="deleteSelectedConsigs()"
+                            class="flex items-center gap-1.5 bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                            <i class="ph ph-trash"></i> Eliminar
+                        </button>
+                    </div>
+                </template>
             </div>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
+                <!-- Select mode toggle -->
+                <button @click="consigSelecting=!consigSelecting; consigSelected=[]"
+                    :class="consigSelecting ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5">
+                    <i class="ph ph-check-square"></i>
+                    <span x-text="consigSelecting ? 'Cancelar' : 'Seleccionar'"></span>
+                </button>
                 <template
                     x-for="f in [['todas','Todas'],['fotos_pendientes','📸 Fotos'],['pendiente','Pendientes'],['parte1_completa','Parte 1'],['parte2_completa','Parte 2'],['en_venta','En Venta']]"
                     :key="f[0]">
@@ -2784,9 +2801,20 @@
             <div class="flex-1 overflow-y-auto p-6 space-y-3">
                 <template x-for="c in consignaciones" :key="c.id">
                     <div class="glass rounded-xl p-5 transition-all duration-200 cursor-pointer"
-                        :class="consigDetail?.id === c.id ? 'border-2 border-amber-400 shadow-xl shadow-amber-500/25 bg-amber-500/10 scale-[1.02] ring-2 ring-amber-400/30' : 'border border-slate-700 hover:border-amber-500/30'"
-                        @click="openConsignacion(c.id)">
+                        :class="[
+                            consigSelected.includes(c.id) ? 'border-2 border-red-400 bg-red-500/10 ring-2 ring-red-400/30' :
+                            (consigDetail?.id === c.id && !consigSelecting) ? 'border-2 border-amber-400 shadow-xl shadow-amber-500/25 bg-amber-500/10 scale-[1.02] ring-2 ring-amber-400/30' :
+                            'border border-slate-700 hover:border-amber-500/30'
+                        ]"
+                        @click="consigSelecting ? (consigSelected.includes(c.id) ? consigSelected = consigSelected.filter(id => id !== c.id) : consigSelected.push(c.id)) : openConsignacion(c.id)">
                         <div class="flex items-start justify-between">
+                            <!-- Checkbox (visible in select mode) -->
+                            <div x-show="consigSelecting" class="mr-3 mt-0.5 shrink-0">
+                                <div class="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
+                                    :class="consigSelected.includes(c.id) ? 'bg-red-500 border-red-500' : 'border-slate-500'">
+                                    <i x-show="consigSelected.includes(c.id)" class="ph ph-check text-white text-xs" style="display:none;"></i>
+                                </div>
+                            </div>
                             <div class="flex-1">
                                 <!-- Header row -->
                                 <div class="flex items-center gap-3 mb-2">
@@ -4989,6 +5017,8 @@
                 consigDetail: null,
                 consigDetailOpen: false,
                 consigEdits: {},
+                consigSelected: [],
+                consigSelecting: false,
 
                 // ─── Inspection State ──────────────────────────────────────
                 inspectionOpen: false,
@@ -5845,6 +5875,35 @@
                         : '/api/consignaciones';
                     const res = await fetch(url);
                     this.consignaciones = await res.json();
+                },
+
+                async deleteSelectedConsigs() {
+                    if (this.consigSelected.length === 0) return;
+                    const count = this.consigSelected.length;
+                    const label = count === 1 ? '1 consignación' : `${count} consignaciones`;
+                    if (!confirm(`⚠️ ¿Eliminar permanentemente ${label}? Esta acción no se puede deshacer.`)) return;
+                    try {
+                        const res = await this.authFetch('/api/consignaciones/bulk-delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ids: this.consigSelected })
+                        });
+                        const result = await res.json();
+                        if (res.ok) {
+                            // Close detail panel if one of the deleted items was open
+                            if (this.consigDetail && this.consigSelected.includes(this.consigDetail.id)) {
+                                this.consigDetailOpen = false;
+                                this.consigDetail = null;
+                            }
+                            this.consigSelected = [];
+                            this.consigSelecting = false;
+                            await this.loadConsignaciones();
+                        } else {
+                            alert('❌ Error al eliminar: ' + (result.error || 'unknown'));
+                        }
+                    } catch (e) {
+                        alert('❌ Error: ' + e.message);
+                    }
                 },
 
                 async openConsignacion(id) {

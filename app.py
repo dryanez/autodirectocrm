@@ -2694,6 +2694,41 @@ def update_consignacion(cid):
     return jsonify(result)
 
 
+@app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
+def delete_consignacion(cid):
+    """Permanently delete a single consignacion."""
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT id FROM consignaciones WHERE id=?", (cid,)).fetchone()
+            if not row:
+                return jsonify({"error": "Not found"}), 404
+            conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
+            conn.commit()
+        return jsonify({"ok": True, "deleted": cid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/consignaciones/bulk-delete", methods=["POST"])
+def bulk_delete_consignaciones():
+    """Delete multiple consignaciones by ID list. Body: {"ids": [1, 2, 3]}"""
+    data = request.json or {}
+    ids = data.get("ids", [])
+    if not ids or not isinstance(ids, list):
+        return jsonify({"error": "ids list required"}), 400
+    ids = [int(i) for i in ids if str(i).isdigit()]
+    if not ids:
+        return jsonify({"error": "no valid ids"}), 400
+    try:
+        placeholders = ",".join("?" * len(ids))
+        with get_db() as conn:
+            conn.execute(f"DELETE FROM consignaciones WHERE id IN ({placeholders})", ids)
+            conn.commit()
+        return jsonify({"ok": True, "deleted": ids})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=None):
     """
     When a consignacion status changes, find any matching CRM lead
