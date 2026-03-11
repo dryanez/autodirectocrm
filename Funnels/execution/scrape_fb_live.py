@@ -19,9 +19,12 @@ from datetime import datetime
 # ─── Config ─────────────────────────────────────────────────────────────────────
 DEFAULT_TARGET_URL = (
     "https://www.facebook.com/marketplace/106647439372422/search/"
-    "?minPrice=8000000&query=Vehicles&exact=false&radius=20"
+    "?minPrice=4000000&query=Vehicles&exact=false&radius=20"
 )
-DEFAULT_SCROLL_STEPS = 30
+MAX_SCROLLS          = 2000      # safety cap — never scroll more than this
+TARGET_LEADS         = 500       # stop early when we reach this many qualifying V-Region leads
+MIN_PRICE_CLP        = 4_000_000 # 4 million CLP minimum
+DEFAULT_SCROLL_STEPS = MAX_SCROLLS
 SCROLL_PX    = 1200
 SCROLL_DELAY = 2.5
 
@@ -31,12 +34,45 @@ FB_PASSWORD = "Todaysiagoodday01@"
 # Session cookies saved here after first login — reused on next runs
 COOKIES_FILE = Path(__file__).parent.parent / "fb_cookies.json"
 
+# ─── V Region communes (lowercase) ─────────────────────────────────────────────
+V_REGION_COMMUNES = {
+    "viña del mar", "vina del mar", "concón", "concon",
+    "valparaíso", "valparaiso", "quilpué", "quilpue",
+    "villa alemana", "quintero", "limache", "olmué", "olmue",
+    "casablanca", "quillota", "la cruz", "puchuncaví", "puchuncavi",
+    "calera", "nogales", "hijuelas", "algarrobo",
+    "el quisco", "el tabo", "san antonio", "cartagena", "santo domingo",
+}
+
 # ─── Global store ───────────────────────────────────────────────────────────────
 vehicles: dict[str, dict] = {}
+qualifying_count = 0
 graphql_count = 0
 
 
+def _is_v_region(text: str) -> bool:
+    """Check if location text contains a V Region commune."""
+    if not text:
+        return False
+    loc = text.lower().strip()
+    return any(commune in loc for commune in V_REGION_COMMUNES)
+
+
+def _parse_price_clp(amount_str: str, formatted: str) -> int:
+    """Extract numeric CLP value."""
+    if amount_str and amount_str != "0":
+        try:
+            return int(amount_str)
+        except (ValueError, TypeError):
+            pass
+    if not formatted:
+        return 0
+    digits = "".join(ch for ch in formatted if ch.isdigit())
+    return int(digits) if digits else 0
+
+
 def parse_feed_units(data: dict):
+    global qualifying_count
     try:
         edges = data["data"]["marketplace_search"]["feed_units"]["edges"]
     except (KeyError, TypeError):
@@ -59,6 +95,11 @@ def parse_feed_units(data: dict):
                 or ", ".join(p for p in [rev.get("city", ""), rev.get("state", "")] if p)
                 or ""
             )
+            # V Region + price qualification
+            price_clp = _parse_price_clp(price_info.get("amount", "0"), price_info.get("formatted_amount", ""))
+            is_v = _is_v_region(location_text)
+            qualifies = is_v and price_clp >= MIN_PRICE_CLP
+
             subtitles = listing.get("custom_sub_titles_with_rendering_flags") or []
             custom_sub_titles = [{"subtitle": s.get("subtitle", "")} for s in subtitles]
             primary_photo = listing.get("primary_listing_photo") or {}
@@ -79,11 +120,18 @@ def parse_feed_units(data: dict):
                 "isSold": listing.get("is_sold", False),
                 "sellerName": seller.get("name", ""),
                 "sellerId": seller.get("id", ""),
+                "v_region": is_v,
+                "qualifies": qualifies,
                 "source": "scraper",
                 "scraped_at": datetime.now().isoformat(),
             }
+            if qualifies:
+                qualifying_count += 1
+                tag = f"🟢 Q{qualifying_count:>3}/{TARGET_LEADS}"
+            else:
+                tag = "⚪ skip"
             print(
-                f"  ✅ [{len(vehicles):>3}] {title[:50]:<50} | "
+                f"  {tag} [{len(vehicles):>4}] {title[:45]:<45} | "
                 f"{price_info.get('formatted_amount', 'N/A'):<18} | {location_text}",
                 file=sys.stderr,
             )
@@ -113,29 +161,116 @@ async def handle_response(response):
 async def do_login(page) -> bool:
     print("🔐 Logging in with credentials…", file=sys.stderr)
     try:
-        await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=30_000)
-        await asyncio.sleep(2)
+        # Go to FB home (NOT /login — the Spanish version has the form right on the homepage)
+        await page.goto("https://www.facebook.com/", wait_until="domcontentloaded", timeout=30_000)
+        await asyncio.sleep(4)
 
-        # Dismiss cookie banner if present
-        try:
-            for selector in ['[data-testid="cookie-policy-manage-dialog-accept-button"]',
-                             'button[title="Allow all cookies"]',
-                             'button:has-text("Allow all cookies")',
-                             'button:has-text("Accept all")']:
+        print(f"   Page URL: {page.url}", file=sys.stderr)
+        print(f"   Page title: {await page.title()}", file=sys.stderr)
+
+        # Dismiss any cookie / consent banner FIRST
+        for selector in [
+            'button:has-text("Permitir todas las cookies")',
+            'button:has-text("Permitir")',
+            'button:has-text("Allow all cookies")',
+            'button:has-text("Accept all")',
+            'button:has-text("Decline optional cookies")',
+            'button:has-text("Rechazar cookies opcionales")',
+            '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+            'button[data-cookiebanner="accept_button"]',
+            'button[data-cookiebanner="accept_only_essential_button"]',
+        ]:
+            try:
                 btn = page.locator(selector)
                 if await btn.count() > 0:
                     await btn.first.click()
-                    await asyncio.sleep(1)
+                    print(f"   ✅ Dismissed banner: {selector}", file=sys.stderr)
+                    await asyncio.sleep(2)
                     break
-        except Exception:
-            pass
+            except Exception:
+                pass
 
-        await page.locator('#email').wait_for(timeout=10_000)
-        await page.locator('#email').fill(FB_EMAIL)
-        await asyncio.sleep(0.4)
-        await page.locator('#pass').fill(FB_PASSWORD)
-        await asyncio.sleep(0.4)
-        await page.locator('#loginbutton').click()
+        # If already logged in (no login form visible), skip
+        url_now = page.url
+        if not any(x in url_now for x in ("login", "checkpoint", "signup", "recover")):
+            # Check if there's actually a login form on the page
+            email_count = await page.locator('#email').count()
+            if email_count == 0:
+                print("✅ Already logged in — no login form found.", file=sys.stderr)
+                return True
+
+        # ── Fill EMAIL ───────────────────────────────────────────────────
+        email_filled = False
+        for sel in ['#email', 'input[name="email"]', 'input[type="email"]', 'input[id="email"]']:
+            try:
+                loc = page.locator(sel)
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    await asyncio.sleep(0.3)
+                    await loc.first.fill(FB_EMAIL)
+                    email_filled = True
+                    print(f"   ✅ Email filled via {sel}", file=sys.stderr)
+                    break
+            except Exception:
+                pass
+
+        if not email_filled:
+            await page.screenshot(path="/tmp/fb_login_debug.png")
+            print(f"❌ Could not find email field. URL: {page.url}", file=sys.stderr)
+            print("   Screenshot: /tmp/fb_login_debug.png", file=sys.stderr)
+            return False
+
+        await asyncio.sleep(0.5)
+
+        # ── Fill PASSWORD ────────────────────────────────────────────────
+        pass_filled = False
+        for sel in ['#pass', 'input[name="pass"]', 'input[type="password"]']:
+            try:
+                loc = page.locator(sel)
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    await asyncio.sleep(0.3)
+                    await loc.first.fill(FB_PASSWORD)
+                    pass_filled = True
+                    print(f"   ✅ Password filled via {sel}", file=sys.stderr)
+                    break
+            except Exception:
+                pass
+
+        if not pass_filled:
+            print("❌ Could not find password field.", file=sys.stderr)
+            return False
+
+        await asyncio.sleep(0.5)
+
+        # ── CLICK LOGIN BUTTON ───────────────────────────────────────────
+        # This is the key — FB in Spanish says "Iniciar sesión"
+        login_clicked = False
+        for sel in [
+            'button[name="login"]',
+            '#loginbutton',
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'button:has-text("Iniciar sesión")',
+            'button:has-text("Log In")',
+            'button:has-text("Log in")',
+            '[data-testid="royal_login_button"]',
+        ]:
+            try:
+                loc = page.locator(sel)
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    login_clicked = True
+                    print(f"   ✅ Clicked login via {sel}", file=sys.stderr)
+                    break
+            except Exception:
+                pass
+
+        if not login_clicked:
+            # Last resort: press Enter in the password field
+            print("   ⚠️ No login button found — pressing Enter…", file=sys.stderr)
+            await page.keyboard.press("Enter")
+            login_clicked = True
 
         print("⏳ Waiting for login redirect…", file=sys.stderr)
         for i in range(30):
@@ -149,7 +284,7 @@ async def do_login(page) -> bool:
                     return True
                 print("❌ Checkpoint not cleared.", file=sys.stderr)
                 return False
-            if not any(x in url for x in ("login", "signup")):
+            if not any(x in url for x in ("login", "signup", "recover")):
                 print("✅ Login successful!", file=sys.stderr)
                 return True
 
@@ -235,18 +370,23 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
         await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(5)
 
-        print(f"\n🔄 Scrolling {scroll_steps} times…\n", file=sys.stderr)
+        print(f"\n🔄 Smart scrape: target {TARGET_LEADS} qualifying V-Region leads (max {scroll_steps} scrolls)…\n", file=sys.stderr)
         for i in range(1, scroll_steps + 1):
             await page.evaluate(f"window.scrollBy(0, {SCROLL_PX})")
             print(
-                f"  Scroll {i:>2}/{scroll_steps} — {len(vehicles)} vehicles | {graphql_count} GraphQL hits",
+                f"  Scroll {i:>4}/{scroll_steps} — {qualifying_count}/{TARGET_LEADS} qualifying | {len(vehicles)} total | {graphql_count} GraphQL",
                 file=sys.stderr,
             )
             await asyncio.sleep(SCROLL_DELAY)
 
+            # ── Smart stop: enough qualifying leads ──
+            if qualifying_count >= TARGET_LEADS:
+                print(f"\n🎯 Reached {qualifying_count} qualifying V-Region leads! Stopping early.", file=sys.stderr)
+                break
+
         await asyncio.sleep(3)
         await browser.close()
-        print(f"\n✅ Done! {len(vehicles)} vehicles captured.", file=sys.stderr)
+        print(f"\n✅ Done! {len(vehicles)} total vehicles | {qualifying_count} qualifying V-Region leads.", file=sys.stderr)
 
     return list(vehicles.values())
 
