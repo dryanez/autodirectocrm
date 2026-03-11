@@ -890,9 +890,15 @@ def create_inspeccion():
                 timeout=10
             )
             if resp.status_code not in (200, 201, 204):
-                # Patch failed — fall back to creating new
-                print(f"[inspecciones] PATCH appraisal {existing_appraisal_id} failed ({resp.status_code}): {resp.text}, creating new", flush=True)
+                # Patch failed — fall back to creating new but keep the same UUID
+                print(f"[inspecciones] PATCH appraisal {existing_appraisal_id} failed ({resp.status_code}): {resp.text}, creating new with same ID", flush=True)
                 existing_appraisal_id = None
+            else:
+                # Check if PATCH actually matched any rows (Supabase returns [] if no match)
+                rows = resp.json() if resp.status_code in (200, 201) else []
+                if isinstance(rows, list) and len(rows) == 0:
+                    print(f"[inspecciones] PATCH returned empty — appraisal row doesn't exist in Supabase, creating new with same ID", flush=True)
+                    existing_appraisal_id = None
 
             if existing_appraisal_id:
                 appraisal_id = existing_appraisal_id
@@ -901,7 +907,21 @@ def create_inspeccion():
                 print(f"[inspecciones] UPDATED existing appraisal {appraisal_id} (photos preserved)", flush=True)
 
         if not existing_appraisal_id:
-            # CREATE new appraisal
+            # CREATE new appraisal — use the existing UUID if photos were already uploaded
+            # so the photos (vehicle_images) stay linked to this appraisal
+            orig_appraisal_id = None
+            if consignacion_id:
+                with get_db() as conn:
+                    row = conn.execute(
+                        "SELECT appraisal_supabase_id FROM consignaciones WHERE id=?",
+                        (consignacion_id,)
+                    ).fetchone()
+                    if row and row["appraisal_supabase_id"]:
+                        orig_appraisal_id = row["appraisal_supabase_id"]
+
+            if orig_appraisal_id:
+                data["id"] = orig_appraisal_id  # Reuse the UUID so photos stay linked
+
             resp = req_lib.post(
                 supabase_url + "/rest/v1/appraisals",
                 json=data,
@@ -1211,11 +1231,11 @@ def get_inspeccion(appraisal_id):
                     "client_rut": c.get("owner_rut", ""),
                     "client_telefono": c.get("owner_phone", ""),
                     "client_email": c.get("owner_email", ""),
-                    "status": "fotos_pendientes",
+                    "status": "draft",
                     "_from_consignacion": True,
                 }
             else:
-                appraisal = {"id": appraisal_id, "status": "fotos_pendientes", "_from_consignacion": True}
+                appraisal = {"id": appraisal_id, "status": "draft", "_from_consignacion": True}
 
         if not appraisal:
             return jsonify({"error": "Appraisal not found"}), 404
@@ -2450,12 +2470,14 @@ def upload_consignacion_foto(cid):
             "vehicle_modelo": row["car_model"] or "",
             "vehicle_año": row["car_year"],
             "vehicle_km": row["mileage"],
-            "client_nombre": (row["owner_full_name"] or "").split(" ")[0],
-            "client_apellido": " ".join((row["owner_full_name"] or "").split(" ")[1:]),
-            "client_rut": row["owner_rut"] or "",
+            "client_nombre": (row["owner_full_name"] or "").split(" ")[0] or "Pendiente",
+            "client_apellido": " ".join((row["owner_full_name"] or "").split(" ")[1:]) or ".",
+            "client_rut": row["owner_rut"] or "000000000",
             "client_telefono": row["owner_phone"] or "",
             "client_email": row["owner_email"] or "",
-            "status": "fotos_pendientes",
+            "vehicle_transmision": "Manual",
+            "vehicle_combustible": "Bencina",
+            "status": "draft",
             "created_at": datetime.now().isoformat(),
         }
         try:
@@ -2627,6 +2649,7 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
     """
     # Map consignacion status → CRM stage
     status_to_stage = {
+        "fotos_pendientes": "nuevo",
         "pendiente":       "nuevo",
         "parte1_completa": "agendado",
         "parte2_completa": "inspeccionado",
