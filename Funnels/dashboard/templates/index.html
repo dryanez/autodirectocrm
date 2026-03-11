@@ -39,19 +39,13 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold text-white tracking-tight">🚗 FB Funnel</h1>
             <div class="flex items-center gap-3">
-                <!-- Primary: Live scrape -->
+                <!-- Primary: Live scrape (polling-based, shows config modal) -->
                 <button id="btn-scrape-live" onclick="startLiveScrape()"
                     class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-5 rounded-lg flex items-center gap-2 shadow transition-colors">
                     🕷️ Scrapear Facebook
                 </button>
 
-                <!-- SSE Scrape -->
-                <button id="btn-scrape-sse" onclick="startScrapeSse()"
-                    class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow transition-colors">
-                    🚀 Scrape Live
-                </button>
-
-                <!-- Auto-Messenger -->
+                <!-- Auto-Messenger (local only — needs Playwright + Chrome) -->
                 <button id="btn-send-messages" onclick="startMessaging()"
                     class="bg-green-600 hover:bg-green-500 text-white text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow transition-colors">
                     💬 Send Messages
