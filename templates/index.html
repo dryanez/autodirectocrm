@@ -3109,7 +3109,7 @@
                                 </button>
                                 <!-- WhatsApp: send signing link to owner -->
                                 <a x-show="consigDetail?.owner_phone"
-                                    :href="'https://wa.me/' + normalizeChileanPhone((consigDetail?.owner_country_code||'+56') + (consigDetail?.owner_phone||'')) + '?text=' + encodeURIComponent('Hola ' + (consigDetail?.owner_first_name||'') + ', te enviamos el link para firmar tu contrato de consignación con Auto Directo 🚗✍️\n\nhttps://api.simpleapi.cl/contrato/firmar/' + consigDetail?.id)"
+                                    :href="'https://wa.me/' + normalizeChileanPhone(consigDetail?.owner_phone||'') + '?text=' + encodeURIComponent('Hola ' + (consigDetail?.owner_first_name||'') + ', te enviamos el link para firmar tu contrato de consignación con Auto Directo 🚗✍️\n\nhttps://api.simpleapi.cl/contrato/firmar/' + consigDetail?.id)"
                                     target="_blank"
                                     class="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
                                     title="Enviar link de firma por WhatsApp">
@@ -6132,13 +6132,18 @@
 
                 // ─── Send photo link to car owner ─────────────────────
                 normalizeChileanPhone(raw) {
-                    const n = (raw || '').toString().replace(/\s+/g, '').replace(/[^0-9+]/g, '');
+                    let n = (raw || '').toString().replace(/\s+/g, '').replace(/[^0-9+]/g, '');
                     if (!n) return '';
-                    if (n.startsWith('+'))                          return n;
-                    if (n.startsWith('569') && n.length === 11)    return '+' + n;
-                    if (n.startsWith('56')  && n.length === 11)    return '+' + n;
-                    if (n.startsWith('9')   && n.length === 9)     return '+56' + n;
-                    return '+56' + n.replace(/^0+/, '');
+                    // Strip leading + and any country code prefix to get pure digits
+                    n = n.replace(/^\+/, '');
+                    // If starts with 56 and the rest is a 9-digit mobile (9xxxxxxxx), strip 56
+                    if (n.startsWith('56') && n.length >= 11) n = n.substring(2);
+                    // Remove leading zeros
+                    n = n.replace(/^0+/, '');
+                    // Chilean mobile: 9 digits starting with 9
+                    if (n.startsWith('9') && n.length === 9) return '56' + n;
+                    // Fallback: prepend 56 and hope for the best
+                    return '56' + n;
                 },
 
                 async openSendPhotoLink(consignacionId, label, ownerPhone) {
