@@ -275,7 +275,6 @@
         /* ── Screen 2: Contract Viewer ──────────────────────── */
         .contract-screen {
             flex: 1;
-            display: flex;
             flex-direction: column;
         }
         .contract-header {
@@ -335,7 +334,6 @@
         /* ── Screen 3: Signature ────────────────────────────── */
         .signature-screen {
             flex: 1;
-            display: flex;
             flex-direction: column;
             background: white;
         }
@@ -397,7 +395,6 @@
         /* ── Screen 4: Success ──────────────────────────────── */
         .success-screen {
             flex: 1;
-            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -832,7 +829,12 @@
         // ── Screen 3: Signature Canvas ──────────────────────
         function goToSignature() {
             showScreen(3);
-            initCanvas();
+            // Wait for DOM paint before measuring canvas dimensions
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    initCanvas();
+                });
+            });
         }
 
         let canvas, ctx, isDrawing = false, hasDrawn = false;
