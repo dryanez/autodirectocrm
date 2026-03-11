@@ -11,10 +11,20 @@ Usage:
 
 import asyncio
 import json
+import os
 import sys
 import argparse
 from pathlib import Path
 from datetime import datetime
+
+# ─── Load .env if present ────────────────────────────────────────────────────────
+_env_file = Path(__file__).parent.parent / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
 
 # ─── Config ─────────────────────────────────────────────────────────────────────
 DEFAULT_TARGET_URL = (
@@ -28,8 +38,8 @@ DEFAULT_SCROLL_STEPS = MAX_SCROLLS
 SCROLL_PX    = 1200
 SCROLL_DELAY = 2.5
 
-FB_EMAIL    = "felipe@autodirecto.cl"
-FB_PASSWORD = "Todaysiagoodday01@"
+FB_EMAIL    = os.environ.get("FB_EMAIL", "REDACTED_EMAIL")
+FB_PASSWORD = os.environ.get("FB_PASSWORD", "REDACTED_PASSWORD")
 
 # Session cookies saved here after first login — reused on next runs
 COOKIES_FILE = Path(__file__).parent.parent / "fb_cookies.json"
@@ -159,23 +169,26 @@ async def handle_response(response):
 
 
 async def do_login(page) -> bool:
-    print("🔐 Logging in with credentials…", file=sys.stderr)
+    print(f"🔐 Logging in as {FB_EMAIL}…", file=sys.stderr)
     try:
-        # Go to FB home (NOT /login — the Spanish version has the form right on the homepage)
-        await page.goto("https://www.facebook.com/", wait_until="domcontentloaded", timeout=30_000)
+        # Go to /login directly — most reliable across all locales
+        await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=30_000)
         await asyncio.sleep(4)
 
         print(f"   Page URL: {page.url}", file=sys.stderr)
         print(f"   Page title: {await page.title()}", file=sys.stderr)
 
-        # Dismiss any cookie / consent banner FIRST
+        # Dismiss any cookie / consent banner FIRST (multi-language)
         for selector in [
             'button:has-text("Permitir todas las cookies")',
             'button:has-text("Permitir")',
             'button:has-text("Allow all cookies")',
             'button:has-text("Accept all")',
+            'button:has-text("Alle Cookies erlauben")',
+            'button:has-text("Alle akzeptieren")',
             'button:has-text("Decline optional cookies")',
             'button:has-text("Rechazar cookies opcionales")',
+            'button:has-text("Optionale Cookies ablehnen")',
             '[data-testid="cookie-policy-manage-dialog-accept-button"]',
             'button[data-cookiebanner="accept_button"]',
             'button[data-cookiebanner="accept_only_essential_button"]',
@@ -244,7 +257,7 @@ async def do_login(page) -> bool:
         await asyncio.sleep(0.5)
 
         # ── CLICK LOGIN BUTTON ───────────────────────────────────────────
-        # This is the key — FB in Spanish says "Iniciar sesión"
+        # Multi-language: Spanish, English, German
         login_clicked = False
         for sel in [
             'button[name="login"]',
@@ -254,6 +267,7 @@ async def do_login(page) -> bool:
             'button:has-text("Iniciar sesión")',
             'button:has-text("Log In")',
             'button:has-text("Log in")',
+            'button:has-text("Anmelden")',
             '[data-testid="royal_login_button"]',
         ]:
             try:
@@ -369,6 +383,65 @@ async def run_scrape(target_url: str, scroll_steps: int) -> list[dict]:
         print(f"\n🌐 Navigating to Marketplace…", file=sys.stderr)
         await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(5)
+
+        # ── Handle login modal/popup that may appear on marketplace ──────
+        # Facebook sometimes shows "See more on Facebook" overlay even after login
+        url_now = page.url
+        if any(x in url_now for x in ("login", "checkpoint")):
+            print("⚠️  Redirected to login — attempting login…", file=sys.stderr)
+            if not await do_login(page):
+                await browser.close()
+                return []
+            # Save cookies after successful login
+            try:
+                cookies = await context.cookies()
+                COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
+                print(f"💾 Saved cookies after marketplace login redirect", file=sys.stderr)
+            except Exception:
+                pass
+            # Navigate back to marketplace
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
+            await asyncio.sleep(5)
+
+        # Check for login modal overlay (dismiss the X or fill the form)
+        try:
+            close_btn = page.locator('[aria-label="Close"], [aria-label="Cerrar"], [aria-label="Schließen"]')
+            if await close_btn.count() > 0:
+                # There might be a close button on a login modal — but we need to be logged in
+                # Check if there's an email field in a dialog/modal
+                modal_email = page.locator('div[role="dialog"] input[name="email"], div[role="dialog"] #email')
+                if await modal_email.count() > 0:
+                    print("⚠️  Login modal detected on marketplace — filling credentials…", file=sys.stderr)
+                    await modal_email.first.fill(FB_EMAIL)
+                    await asyncio.sleep(0.5)
+                    modal_pass = page.locator('div[role="dialog"] input[name="pass"], div[role="dialog"] input[type="password"]')
+                    if await modal_pass.count() > 0:
+                        await modal_pass.first.fill(FB_PASSWORD)
+                        await asyncio.sleep(0.5)
+                    # Click the login button inside the modal
+                    for sel in ['div[role="dialog"] button[name="login"]', 'div[role="dialog"] button[type="submit"]',
+                                'div[role="dialog"] button:has-text("Anmelden")', 'div[role="dialog"] button:has-text("Log In")',
+                                'div[role="dialog"] button:has-text("Iniciar sesión")']:
+                        try:
+                            btn = page.locator(sel)
+                            if await btn.count() > 0:
+                                await btn.first.click()
+                                print(f"   ✅ Modal login submitted via {sel}", file=sys.stderr)
+                                await asyncio.sleep(5)
+                                break
+                        except Exception:
+                            pass
+                    # Save cookies
+                    try:
+                        cookies = await context.cookies()
+                        COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
+                    except Exception:
+                        pass
+                    # Re-navigate to marketplace
+                    await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
+                    await asyncio.sleep(5)
+        except Exception as e:
+            print(f"   (modal check: {e})", file=sys.stderr)
 
         print(f"\n🔄 Smart scrape: target {TARGET_LEADS} qualifying V-Region leads (max {scroll_steps} scrolls)…\n", file=sys.stderr)
         for i in range(1, scroll_steps + 1):
