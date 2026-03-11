@@ -3070,14 +3070,25 @@
                         <!-- CONTRACT -->
                         <div x-show="consigDetail?.appraisal_supabase_id || consigDetail?.status !== 'pendiente'"
                             class="mt-1">
-                            <button @click="openContract(consigDetail.id)"
-                                class="w-full flex items-center justify-center gap-2 text-white py-2 rounded-lg text-sm font-medium transition-colors"
-                                :class="consigDetail?.contract_signed_at ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-700 hover:bg-amber-600'">
-                                <i class="ph text-base"
-                                    :class="consigDetail?.contract_signed_at ? 'ph-check-circle' : 'ph-file-text'"></i>
-                                <span
-                                    x-text="consigDetail?.contract_signed_at ? 'Ver Contrato Firmado' : 'Generar / Firmar Contrato'"></span>
-                            </button>
+                            <div class="flex gap-2">
+                                <button @click="openContract(consigDetail.id)"
+                                    class="flex-1 flex items-center justify-center gap-2 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+                                    :class="consigDetail?.contract_signed_at ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-700 hover:bg-amber-600'">
+                                    <i class="ph text-base"
+                                        :class="consigDetail?.contract_signed_at ? 'ph-check-circle' : 'ph-file-text'"></i>
+                                    <span
+                                        x-text="consigDetail?.contract_signed_at ? 'Ver Firmado' : 'Generar / Firmar'"></span>
+                                </button>
+                                <!-- WhatsApp: send signing link to owner -->
+                                <a x-show="consigDetail?.owner_phone"
+                                    :href="'https://wa.me/' + normalizeChileanPhone((consigDetail?.owner_country_code||'+56') + (consigDetail?.owner_phone||'')) + '?text=' + encodeURIComponent('Hola ' + (consigDetail?.owner_first_name||'') + ', te enviamos el link para firmar tu contrato de consignación con Auto Directo 🚗✍️\n\nhttps://api.simpleapi.cl/contrato/firmar/' + consigDetail?.id)"
+                                    target="_blank"
+                                    class="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                                    title="Enviar link de firma por WhatsApp">
+                                    <i class="ph ph-whatsapp-logo text-base"></i>
+                                    <span>Enviar</span>
+                                </a>
+                            </div>
                         </div>
                         <!-- PUBLISH TO WEBSITE -->
                         <div x-show="consigDetail?.appraisal_supabase_id" class="mt-1">
