@@ -865,10 +865,10 @@ def create_inspeccion():
     ai_instant_buy_price = data.pop("ai_instant_buy_price", None)
     owner_price = data.pop("owner_price", None)            # Precio Cliente (what owner receives)
     selling_price = data.pop("precio_publicado", None)     # Precio Publicación
-    # Auto-calculate Precio Publicación = Precio Cliente × 1.045 (4.5% commission)
+    # Auto-calculate Precio Publicación = Precio Cliente × 1.04641 (3.9% + IVA)
     if owner_price and not selling_price:
         try:
-            selling_price = round(int(owner_price) * 1.045)
+            selling_price = round(int(owner_price) * 1.04641)
         except:
             pass
     tasacion = data.get("tasacion")                        # keep in appraisals too
@@ -1433,7 +1433,7 @@ def get_inspeccion_pdf(appraisal_id):
     <div class="price-box">
       <div class="price-row"><span class="price-label">Precio Cliente</span><span class="price-val main">{precio_cli}</span></div>
       <div class="price-row"><span class="price-label">Precio Publicación</span><span class="price-val">{precio_pub}</span></div>
-      <div class="price-row"><span class="price-label">Comisión (4,5%)</span><span class="price-val">{comision}</span></div>
+      <div class="price-row"><span class="price-label">Comisión (3,9% + IVA)</span><span class="price-val">{comision}</span></div>
       <div class="price-row"><span class="price-label">Tasación Fiscal</span><span class="price-val">{tasacion}</span></div>
       <div class="price-row"><span class="price-label">N° Dueños</span><span class="price-val">{duenos}</span></div>
     </div>
@@ -1508,7 +1508,7 @@ def get_inspeccion_pdf(appraisal_id):
         tasacion=fmt_price(a.get("tasacion")),
         precio_cli=fmt_price(a.get("precio_publicado") or a.get("owner_price")),
         precio_pub=fmt_price(a.get("precio_sugerido") or a.get("selling_price")),
-        comision="4,5%",
+        comision="3,9% + IVA",
         duenos=a.get("num_dueños") or "—",
         permiso_badge='<span class="badge badge-green">Vigente</span>' if a.get("permiso_circulacion") else '<span class="badge badge-slate">—</span>',
         revision_badge='<span class="badge badge-green">Vigente</span>' if a.get("revision_tecnica") else '<span class="badge badge-slate">—</span>',
@@ -3787,14 +3787,14 @@ def _build_contract_pdf(consig, appraisal=None):
     soap        = "Pagado" if a.get("soap") else "Pendiente"
     num_llaves  = a.get("num_llaves","")
     tasacion    = a.get("tasacion", 0)
-    # ── PRICING LOGIC — fixed 4.5% commission ──
+    # ── PRICING LOGIC — fixed 3.9% + IVA commission ──
     # PRECIO CLIENTE (owner payout) — what the owner wants to receive
     precio_cli = c.get("owner_price") or a.get("precio_publicado") or 0
     try:
         precio_cli = int(precio_cli)
     except:
         precio_cli = 0
-    # PRECIO PUBLICACIÓN = Precio Cliente × 1.045
+    # PRECIO PUBLICACIÓN = Precio Cliente × 1.04641 (3.9% + 19% IVA on that)
     precio_pub = c.get("selling_price") or c.get("ai_market_price") or a.get("precio_sugerido") or 0
     try:
         precio_pub = int(precio_pub)
@@ -3802,7 +3802,7 @@ def _build_contract_pdf(consig, appraisal=None):
         precio_pub = 0
     # If we have precio_cli but no precio_pub, calculate it
     if precio_cli and not precio_pub:
-        precio_pub = round(precio_cli * 1.045)
+        precio_pub = round(precio_cli * 1.04641)
     comision_calc = precio_pub - precio_cli if precio_pub > precio_cli else 0
     observaciones = a.get("observaciones","") or c.get("condition_notes","") or "No se registran observaciones."
     comision    = a.get("comision") or c.get("commission_pct") or 0.10
@@ -3870,7 +3870,7 @@ def _build_contract_pdf(consig, appraisal=None):
         '• Pagar los gastos de publicación y edición del vehículo, monto que corresponde a '
         '<b>$50.000</b>, en caso de retirar el auto dentro de los primeros 30 días de la fecha de publicación.<br/>'
         '• Pagar el precio cobrado por el consignatario para la gestión de la venta del vehículo '
-        '(comisión del <b>4,5%</b> sobre el Precio Cliente).<br/>'
+        '(comisión del <b>3,9% + IVA</b> sobre el Precio Cliente).<br/>'
         '• Entregar el vehículo dado en consignación para su venta con toda la documentación '
         'requerida por la legislación vigente.<br/>'
         '• Entregar el vehículo en perfectas condiciones mecánicas de uso, para ser puesto a la venta.<br/>'
@@ -3920,7 +3920,7 @@ def _build_contract_pdf(consig, appraisal=None):
         ["PRECIO CLIENTE", fmt_clp(precio_cli), "PRECIO PUBLICACIÓN", fmt_clp(precio_pub)],
     ]
     if comision_calc or tasacion:
-        price_data.append(["COMISIÓN (4,5%)", fmt_clp(comision_calc), "TASACIÓN FISCAL", fmt_clp(tasacion) if tasacion else "—"])
+        price_data.append(["COMISIÓN (3,9%+IVA)", fmt_clp(comision_calc), "TASACIÓN FISCAL", fmt_clp(tasacion) if tasacion else "—"])
     pt = Table(price_data, colWidths=[110, 110, 120, 120])
     pt.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),

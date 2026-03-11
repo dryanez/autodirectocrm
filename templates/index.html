@@ -709,7 +709,7 @@
                                 <div>
                                     <label class="text-[10px] text-slate-500 uppercase">💰 Precio Cliente (dueño)</label>
                                     <input type="number" :value="invDetail?.owner_price"
-                                        @change="updateInvField('owner_price', parseInt($event.target.value)); updateInvField('selling_price', Math.round(parseInt($event.target.value) * 1.045))"
+                                        @change="updateInvField('owner_price', parseInt($event.target.value)); updateInvField('selling_price', Math.round(parseInt($event.target.value) * 1.04641))"
                                         class="w-full bg-slate-900 border border-blue-700/50 rounded-lg px-3 py-2 text-sm text-blue-400 font-bold focus:border-blue-500 focus:outline-none">
                                 </div>
                             </div>
@@ -717,7 +717,7 @@
                                 class="text-xs text-slate-500 bg-slate-800/30 rounded-lg px-3 py-2">
                                 📊 Comisión:
                                 <span class="text-amber-400 font-mono font-bold" x-text="formatCLP((invDetail?.selling_price||0) - (invDetail?.owner_price||0))"></span>
-                                · <span class="text-amber-400">4.5%</span>
+                                · <span class="text-amber-400">3,9% + IVA</span>
                             </div>
                         </div>
                         <!-- Status -->
@@ -1502,7 +1502,7 @@
                             <span class="text-amber-400 font-bold"
                                 x-text="formatCLP((crmDetail?.estimated_value || 0) - (crmDetail?.ai_consignacion_price || 0))"></span>
                             <span class="mx-1">·</span>
-                            <span class="text-amber-400">4.5%</span>
+                            <span class="text-amber-400">3,9% + IVA</span>
                             <span class="block mt-0.5 text-slate-600">Precio Publicación − Precio Cliente = Comisión</span>
                         </div>
                     </div>
@@ -2413,14 +2413,14 @@
                                 :value="insp.precioCliente ? new Intl.NumberFormat('es-CL').format(insp.precioCliente) : ''"
                                 @input="insp.precioCliente = parseInt($event.target.value.replace(/\D/g, '')) || null;
                                         $event.target.value = insp.precioCliente ? new Intl.NumberFormat('es-CL').format(insp.precioCliente) : '';
-                                        insp.precioPublicacion = insp.precioCliente ? Math.round(insp.precioCliente * 1.045) : null;
+                                        insp.precioPublicacion = insp.precioCliente ? Math.round(insp.precioCliente * 1.04641) : null;
                                         insp.comision = insp.precioCliente ? (insp.precioPublicacion - insp.precioCliente) : null;"
                                 class="insp-input text-lg font-bold" placeholder="Ej: 8.000.000">
                         </div>
-                        <!-- AUTO-CALCULATED: Precio Publicación = Precio Cliente + 4.5% -->
+                        <!-- AUTO-CALCULATED: Precio Publicación = Precio Cliente + 3.9% + IVA -->
                         <div class="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
                             <label class="block text-xs text-green-400 font-bold mb-1">📢 PRECIO PUBLICACIÓN (CLP)</label>
-                            <p class="text-[10px] text-green-600 mb-2">Precio Cliente + 4.5% comisión · Se publica en la web · Contrato de Venta</p>
+                            <p class="text-[10px] text-green-600 mb-2">Precio Cliente + 3,9% + IVA · Se publica en la web · Contrato de Venta</p>
                             <input type="text"
                                 :value="insp.precioPublicacion ? new Intl.NumberFormat('es-CL').format(insp.precioPublicacion) : ''"
                                 class="insp-input text-lg font-bold bg-slate-900/50 cursor-not-allowed" readonly
@@ -2429,7 +2429,7 @@
                         <!-- Commission display -->
                         <div x-show="insp.precioCliente" class="bg-slate-800/60 rounded-xl p-3 text-sm">
                             <div class="flex justify-between items-center">
-                                <span class="text-slate-400 font-bold">📊 Comisión (4.5%)</span>
+                                <span class="text-slate-400 font-bold">📊 Comisión (3,9% + IVA)</span>
                                 <span class="text-amber-400 font-bold font-mono"
                                     x-text="insp.comision ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.comision) : '$0'"></span>
                             </div>
@@ -2647,7 +2647,7 @@
                                     x-text="insp.precioPublicacion ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.precioPublicacion) : '—'"></span>
                             </div>
                             <div x-show="insp.precioCliente" class="flex justify-between items-center py-2 border-b border-white/5">
-                                <span class="text-amber-400">📊 Comisión (4.5%)</span>
+                                <span class="text-amber-400">📊 Comisión (3,9% + IVA)</span>
                                 <span class="text-amber-300 font-mono"
                                     x-text="insp.comision ? new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'}).format(insp.comision) : '—'"></span>
                             </div>
@@ -3006,7 +3006,7 @@
                                 📊 Comisión:
                                 <span class="text-amber-400 font-mono font-bold" x-text="formatCLP((consigDetail?.selling_price||0) - (consigDetail?.owner_price||0))"></span>
                                 <span class="mx-1">·</span>
-                                <span class="text-amber-400">4.5%</span>
+                                <span class="text-amber-400">3,9% + IVA</span>
                             </div>
                         </div>
                     </div>
@@ -3280,7 +3280,7 @@
                         <div>
                             <label class="block text-sm text-slate-400 mb-1">💰 Precio Cliente (CLP)</label>
                             <input type="number" x-model="newCar.owner_price"
-                                @input="newCar.selling_price = newCar.owner_price ? Math.round(newCar.owner_price * 1.045) : null"
+                                @input="newCar.selling_price = newCar.owner_price ? Math.round(newCar.owner_price * 1.04641) : null"
                                 class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
                                 required>
                         </div>
@@ -3291,8 +3291,8 @@
                                 readonly>
                         </div>
                         <div>
-                            <label class="block text-sm text-slate-400 mb-1">📊 Comisión (fija 4.5%)</label>
-                            <input type="text" value="4.5%"
+                            <label class="block text-sm text-slate-400 mb-1">📊 Comisión (3,9% + IVA)</label>
+                            <input type="text" value="3,9% + IVA"
                                 class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-amber-400 focus:outline-none cursor-not-allowed"
                                 readonly>
                         </div>
@@ -5625,10 +5625,10 @@
                         revisionVence: '',
                         soap: null,
                         soapCompania: '',
-                        // Pricing — Precio Cliente is the core input, Publicación = Cliente × 1.045
+                        // Pricing — Precio Cliente is the core input, Publicación = Cliente × 1.04641 (3.9% + IVA)
                         precioCliente: c?.owner_price || null,
-                        precioPublicacion: c?.owner_price ? Math.round((c?.owner_price) * 1.045) : (c?.selling_price || null),
-                        comision: c?.owner_price ? Math.round((c?.owner_price) * 1.045) - c?.owner_price : null,
+                        precioPublicacion: c?.owner_price ? Math.round((c?.owner_price) * 1.04641) : (c?.selling_price || null),
+                        comision: c?.owner_price ? Math.round((c?.owner_price) * 1.04641) - c?.owner_price : null,
                         aiMarketPrice: c?.ai_market_price || null,
                         aiInstantBuyPrice: c?.ai_instant_buy_price || null,
                         tasacion: c?.market_value || null,
@@ -5705,14 +5705,14 @@
                             vence_revision: this.insp.revisionVence || null,
                             soap: this.insp.soap,
                             soap_compania: this.insp.soapCompania || null,
-                            // Pricing — Precio Cliente + auto-calculated Publicación (4.5%)
+                            // Pricing — Precio Cliente + auto-calculated Publicación (3.9% + IVA)
                             ai_market_price: this.insp.aiMarketPrice || null,
                             ai_instant_buy_price: this.insp.aiInstantBuyPrice || null,
                             owner_price: this.insp.precioCliente || null,
                             tasacion: this.insp.tasacion || null,
                             precio_publicado: this.insp.precioPublicacion || null,
                             precio_sugerido: this.insp.precioPublicacion || null,
-                            comision: 0.045,
+                            comision: 0.04641,
                             'num_dueños': this.insp.numDuenos || null,
                             // Legal
                             en_prenda: this.insp.enPrenda,
