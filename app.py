@@ -198,339 +198,82 @@ if FUNNELS_DIR.exists():
                 pass
         return jsonify({"success": True, "count": len(funnels_module._cached_listings)})
 
-    @funnels_bp.route('/api/scrape', methods=['POST'])
+    @funnels_bp.route('/api/scrape', methods=['POST', 'GET'])
     def funnels_api_scrape():
-        """Re-parse www.facebook.com.har from root, deduplicate, and update leads.
-        - New listings → add
-        - Existing (same FB id) → update last_seen_at, keep status/valuation
-        - Returns detailed stats so the user can see what changed.
-        """
-        import time as _t
-        har_file = funnels_module.find_root_har_file()
-        if not har_file:
-            return jsonify({
-                "success": False,
-                "error": "No www.facebook.com.har found in project root. "
-                         "Go to Facebook Marketplace → open Network tab → scroll → "
-                         "right-click → Save all as HAR → drop in Autodirecto folder."
-            }), 400
+        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
+        import subprocess as _sp
+        import requests as _requests
+        WHATSAPP_NUMBER = "4917632407062"
+        CALLMEBOT_API_KEY = "4106204"
 
-        try:
-            # Parse fresh HAR
-            sys.path.insert(0, str(funnels_module.BASE_DIR / "execution"))
-            from parse_har import parse_har as _parse_har
-            fresh_listings = _parse_har(har_file)
+        def _wa_encode(text):
+            out = str(text)
+            for old, new in [(' ', '%20'), (':', '%3A'), ('/', '%2F'), ('\n', '%0A')]:
+                out = out.replace(old, new)
+            return out
 
-            if not fresh_listings:
-                return jsonify({"success": False, "error": "HAR file has 0 marketplace listings."}), 400
+        fb_app_dir = ROOT.parent / "fb app"
+        scraper_script = fb_app_dir / "scrape_marketplace.py"
 
-            # Build map of existing cached listings by ID
-            existing_map = {}
-            for item in (funnels_module._cached_listings or []):
-                eid = item.get("id") or ""
-                if eid:
-                    existing_map[eid] = item
+        def generate():
+            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
 
-            now_ts = int(_t.time())
-            new_count = 0
-            updated_count = 0
-            removed_ids = set(existing_map.keys())  # track which old ones are still live
+            if not scraper_script.exists():
+                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
 
-            for raw in fresh_listings:
-                normalized = funnels_module.normalize_apify_item(raw)
-                fid = normalized.get("id") or ""
-                if not fid:
+            cmd = [sys.executable, str(scraper_script)]
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+
+            proc = _sp.Popen(
+                cmd, cwd=str(fb_app_dir),
+                stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                text=True, env=env, bufsize=1
+            )
+
+            total_scrolls = 40
+            scroll_count = 0
+            vehicle_count = 0
+
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
                     continue
 
-                removed_ids.discard(fid)  # still in marketplace
+                if "Scroll " in line and "/" in line:
+                    try:
+                        part = line.split("Scroll ")[1].split(" — ")[0]
+                        cur, tot = part.split("/")
+                        scroll_count = int(cur)
+                        total_scrolls = int(tot)
+                        if "vehicles" in line:
+                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                    except Exception:
+                        pass
 
-                if fid in existing_map:
-                    # Update: keep status/valuation/contacted_at, refresh metadata
-                    old = existing_map[fid]
-                    old["title"] = normalized["title"]
-                    old["price"] = normalized["price"]
-                    old["location"] = normalized["location"]
-                    old["photo_url"] = normalized["photo_url"]
-                    old["mileage"] = normalized["mileage"]
-                    old["is_sold"] = normalized["is_sold"]
-                    if normalized.get("seller_name") and not old.get("seller_name"):
-                        old["seller_name"] = normalized["seller_name"]
-                    old["last_seen_at"] = now_ts
-                    updated_count += 1
-                else:
-                    # New listing
-                    normalized["first_seen_at"] = now_ts
-                    normalized["last_seen_at"] = now_ts
-                    existing_map[fid] = normalized
-                    new_count += 1
+                pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
+                yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
 
-            # Mark removed listings (no longer in marketplace)
-            gone_count = len(removed_ids)
-            for rid in removed_ids:
-                existing_map[rid].setdefault("gone_since", now_ts)
+            proc.wait()
+            success = proc.returncode == 0
 
-            # Update cache
-            funnels_module._cached_listings = list(existing_map.values())
+            # Reload cached listings
+            funnels_module._cached_listings = funnels_module.load_all_listings()
 
-            # Also save merged dataset to disk for persistence
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            # Save raw data (Apify-compatible format) for dashboard reload
-            raw_export = []
-            for item in funnels_module._cached_listings:
-                raw_export.append({
-                    "id": item.get("id", ""),
-                    "listingTitle": item.get("title", ""),
-                    "listingPrice": {"amount": str(item.get("price", "")).replace("CLP ", "").replace(",", "")},
-                    "locationText": {"text": item.get("location", "")},
-                    "primaryListingPhoto": {"photo_image_url": item.get("photo_url", "")},
-                    "isSold": item.get("is_sold", False),
-                    "sellerName": item.get("seller_name", ""),
-                    "itemUrl": item.get("url", ""),
-                    "customSubTitlesWithRenderingFlags": [{"subtitle": item.get("mileage", "")}] if item.get("mileage") else [],
-                    "source": "har",
-                })
-            output_path = funnels_module.DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_har.json"
-            output_path.write_text(json.dumps(raw_export, ensure_ascii=False, indent=2), encoding="utf-8")
+            done_msg = f"✅ Scrape complete! {vehicle_count} vehicles saved." if success else "❌ Scraper exited with errors."
+            yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'vehicles': vehicle_count, 'done': True, 'success': success})}\n\n"
 
-            har_mtime = datetime.fromtimestamp(har_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-
-            return jsonify({
-                "success": True,
-                "message": f"✅ HAR parsed! {new_count} new, {updated_count} updated, {gone_count} gone",
-                "har_file": har_file.name,
-                "har_date": har_mtime,
-                "new": new_count,
-                "updated": updated_count,
-                "gone": gone_count,
-                "total": len(funnels_module._cached_listings),
-            })
-
-        except Exception as e:
-            import traceback
-            print(f"[scrape] Error: {e}\n{traceback.format_exc()}")
-            return jsonify({"success": False, "error": str(e)}), 500
-
-    # ── Live Playwright scrape ────────────────────────────────────────────
-    # Tracks the state of background scrape jobs
-    _scrape_jobs = {}  # job_id → { status, pid, started, listings, error }
-
-    @funnels_bp.route('/api/scrape-live', methods=['POST'])
-    def funnels_api_scrape_live():
-        """
-        Launch the FB app Playwright scraper as a background subprocess.
-        Uses the fb app's own venv (which has playwright installed).
-        Returns a job_id that the client can poll via /api/scrape-live/<job_id>.
-        """
-        import subprocess
-        import uuid
-        import threading
-
-        data = request.get_json(silent=True) or {}
-        scrolls = data.get("scrolls", 30)
-        headless = data.get("headless", False)
-
-        # Only allow one scrape at a time
-        active = [j for j in _scrape_jobs.values() if j["status"] == "running"]
-        if active:
-            return jsonify({
-                "success": False,
-                "error": "Ya hay un scrape en curso. Espera a que termine."
-            }), 409
-
-        # Find a Python that has playwright installed.
-        # Check env var override first, then walk well-known paths.
-        scraper_path = ROOT / "Funnels" / "execution" / "scrape_fb_live.py"
-        scraper_python = None
-
-        env_override = os.environ.get("PLAYWRIGHT_PYTHON")
-        if env_override and Path(env_override).exists():
-            scraper_python = env_override
-        else:
-            candidates = [
-                ROOT.parent / "fb app" / "venv" / "bin" / "python",
-                ROOT / "Funnels" / ".venv" / "bin" / "python",
-                # Absolute fallback for local Mac layout
-                Path.home() / "Desktop" / "Wiackowska Group Spa" / "Apps" / "Autodirecto" / "fb app" / "venv" / "bin" / "python",
-            ]
-            for candidate in candidates:
-                if candidate.exists():
-                    scraper_python = str(candidate)
-                    break
-
-        if not scraper_python:
-            return jsonify({
-                "success": False,
-                "error": (
-                    "No se encontró Python con Playwright. "
-                    "Agrega PLAYWRIGHT_PYTHON=/ruta/venv/bin/python como variable de entorno, "
-                    "o asegúrate de correr el CRM localmente con 'fb app/venv' disponible."
-                )
-            }), 400
-
-        job_id = str(uuid.uuid4())[:8]
-        output_path = funnels_module.DATA_WRITE_DIR / f"scrape_live_{job_id}.json"
-
-        _scrape_jobs[job_id] = {
-            "status": "running",
-            "started": datetime.now().isoformat(),
-            "output_path": str(output_path),
-            "listings": 0,
-            "error": None,
-        }
-
-        def _run_scraper():
+            # WhatsApp notification via CallMeBot
             try:
-                cmd = [
-                    scraper_python, str(scraper_path),
-                    "--output", str(output_path),
-                    "--scrolls", str(scrolls),
-                ]
-                if headless:
-                    cmd.append("--headless")
-
-                print(f"[scrape-live] Starting: {' '.join(cmd)}")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=600,  # 10 min max
-                )
-
-                stderr_log = result.stderr[-2000:] if result.stderr else ""
-                print(f"[scrape-live] Process exited with code {result.returncode}")
-                if stderr_log:
-                    print(f"[scrape-live] stderr (last 2000):\n{stderr_log}")
-
-                if result.returncode != 0:
-                    _scrape_jobs[job_id]["status"] = "error"
-                    _scrape_jobs[job_id]["error"] = f"Process exited with code {result.returncode}: {stderr_log[-500:]}"
-                    return
-
-                # Read output
-                if output_path.exists():
-                    raw = json.loads(output_path.read_text(encoding="utf-8"))
-                    count = len(raw) if isinstance(raw, list) else 0
-                    _scrape_jobs[job_id]["listings"] = count
-
-                    if count > 0:
-                        # Merge with existing cache
-                        _merge_scrape_results(raw)
-                        _scrape_jobs[job_id]["status"] = "done"
-                    else:
-                        _scrape_jobs[job_id]["status"] = "error"
-                        _scrape_jobs[job_id]["error"] = "Scraper finished but found 0 listings."
-                else:
-                    _scrape_jobs[job_id]["status"] = "error"
-                    _scrape_jobs[job_id]["error"] = "Output file not created."
-
-            except subprocess.TimeoutExpired:
-                _scrape_jobs[job_id]["status"] = "error"
-                _scrape_jobs[job_id]["error"] = "Scrape timed out after 10 minutes."
+                msg = f"🚗 Autodirecto Scraper\n{done_msg} ({datetime.now().strftime('%H:%M')})"
+                wa_url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_NUMBER}&text={_wa_encode(msg)}&apikey={CALLMEBOT_API_KEY}"
+                _requests.get(wa_url, timeout=8)
             except Exception as e:
-                _scrape_jobs[job_id]["status"] = "error"
-                _scrape_jobs[job_id]["error"] = str(e)
+                print(f"[whatsapp] Notification failed: {e}")
 
-        thread = threading.Thread(target=_run_scraper, daemon=True)
-        thread.start()
-
-        return jsonify({"success": True, "job_id": job_id})
-
-    def _merge_scrape_results(new_listings: list):
-        """Merge freshly scraped listings into the Funnels cache."""
-        import time as _t
-        now_ts = int(_t.time())
-
-        existing_map = {}
-        for item in (funnels_module._cached_listings or []):
-            eid = item.get("id") or ""
-            if eid:
-                existing_map[eid] = item
-
-        new_count = 0
-        updated_count = 0
-
-        for raw in new_listings:
-            normalized = funnels_module.normalize_apify_item(raw)
-            fid = normalized.get("id") or ""
-            if not fid:
-                continue
-
-            if fid in existing_map:
-                old = existing_map[fid]
-                old["title"] = normalized["title"]
-                old["price"] = normalized["price"]
-                old["location"] = normalized["location"]
-                old["photo_url"] = normalized["photo_url"]
-                old["mileage"] = normalized["mileage"]
-                old["is_sold"] = normalized["is_sold"]
-                if normalized.get("seller_name") and not old.get("seller_name"):
-                    old["seller_name"] = normalized["seller_name"]
-                old["last_seen_at"] = now_ts
-                updated_count += 1
-            else:
-                normalized["first_seen_at"] = now_ts
-                normalized["last_seen_at"] = now_ts
-                existing_map[fid] = normalized
-                new_count += 1
-
-        funnels_module._cached_listings = list(existing_map.values())
-
-        # Persist as dataset JSON
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        raw_export = []
-        for item in funnels_module._cached_listings:
-            raw_export.append({
-                "id": item.get("id", ""),
-                "listingTitle": item.get("title", ""),
-                "listingPrice": {"amount": str(item.get("price", "")).replace("CLP ", "").replace(",", "")},
-                "locationText": {"text": item.get("location", "")},
-                "primaryListingPhoto": {"photo_image_url": item.get("photo_url", "")},
-                "isSold": item.get("is_sold", False),
-                "sellerName": item.get("seller_name", ""),
-                "itemUrl": item.get("url", ""),
-                "customSubTitlesWithRenderingFlags": [{"subtitle": item.get("mileage", "")}] if item.get("mileage") else [],
-                "source": "scraper",
-            })
-        output_path = funnels_module.DATA_WRITE_DIR / f"dataset_facebook-marketplace-scraper_{timestamp}_scrape.json"
-        output_path.write_text(json.dumps(raw_export, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[scrape-live] Merged: {new_count} new, {updated_count} updated → {len(funnels_module._cached_listings)} total")
-
-        # Sync to Supabase so data persists across deploys
-        try:
-            with get_db() as conn:
-                for item in funnels_module._cached_listings:
-                    item_id = item.get("id") or item.get("url", "")
-                    if not item_id:
-                        continue
-                    existing = conn.execute(
-                        "SELECT id FROM funnel_listings WHERE id=?", (item_id,)
-                    ).fetchone()
-                    if not existing:
-                        cols = ", ".join(item.keys())
-                        placeholders = ", ".join("?" for _ in item)
-                        conn.execute(
-                            f"INSERT OR IGNORE INTO funnel_listings ({cols}) VALUES ({placeholders})",
-                            list(str(v) if v is not None else None for v in item.values())
-                        )
-                conn.commit()
-            print(f"[scrape-live] Synced to Supabase")
-        except Exception as e:
-            print(f"[scrape-live] Supabase sync warning: {e}")
-
-    @funnels_bp.route('/api/scrape-live/<job_id>', methods=['GET'])
-    def funnels_api_scrape_status(job_id):
-        """Poll the status of a background scrape job."""
-        job = _scrape_jobs.get(job_id)
-        if not job:
-            return jsonify({"error": "Job not found"}), 404
-        return jsonify({
-            "job_id": job_id,
-            "status": job["status"],
-            "started": job["started"],
-            "listings": job["listings"],
-            "error": job["error"],
-            "cache_total": len(funnels_module._cached_listings or []),
-        })
+        return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @funnels_bp.route('/api/leads/status', methods=['POST'])
     def funnels_api_update_status():
@@ -868,84 +611,6 @@ if FUNNELS_DIR.exists():
             print(f"[har-upload] Exception: {e}")
             return jsonify({"error": str(e)}), 500
 
-    # ── SSE: Live Playwright Scrape with streaming progress ───────────────
-    @funnels_bp.route('/api/scrape-sse', methods=['POST', 'GET'])
-    def funnels_api_scrape_sse():
-        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
-        WHATSAPP_NUMBER = "4917632407062"
-        CALLMEBOT_API_KEY = "4106204"
-
-        def _wa_encode(text):
-            out = str(text)
-            for old, new in [(' ', '%20'), (':', '%3A'), ('/', '%2F'), ('\n', '%0A')]:
-                out = out.replace(old, new)
-            return out
-
-        # Find the scraper script
-        fb_app_dir = ROOT.parent / "fb app"
-        scraper_script = fb_app_dir / "scrape_marketplace.py"
-
-        def generate():
-            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
-
-            if not scraper_script.exists():
-                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
-                return
-
-            cmd = [sys.executable, str(scraper_script)]
-            env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"
-
-            import subprocess as _sp
-            proc = _sp.Popen(
-                cmd, cwd=str(fb_app_dir),
-                stdout=_sp.PIPE, stderr=_sp.STDOUT,
-                text=True, env=env, bufsize=1
-            )
-
-            total_scrolls = 40
-            scroll_count = 0
-            vehicle_count = 0
-
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line:
-                    continue
-
-                if "Scroll " in line and "/" in line:
-                    try:
-                        part = line.split("Scroll ")[1].split(" — ")[0]
-                        cur, tot = part.split("/")
-                        scroll_count = int(cur)
-                        total_scrolls = int(tot)
-                        if "vehicles" in line:
-                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
-                    except Exception:
-                        pass
-
-                pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
-                yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
-
-            proc.wait()
-            success = proc.returncode == 0
-
-            # Reload cached listings
-            funnels_module._cached_listings = funnels_module.load_all_listings()
-
-            done_msg = f"✅ Scrape complete! {vehicle_count} vehicles saved." if success else "❌ Scraper exited with errors."
-            yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'vehicles': vehicle_count, 'done': True, 'success': success})}\n\n"
-
-            # WhatsApp notification via CallMeBot
-            try:
-                msg = f"🚗 Autodirecto Scraper\n{done_msg} ({datetime.now().strftime('%H:%M')})"
-                wa_url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_NUMBER}&text={_wa_encode(msg)}&apikey={CALLMEBOT_API_KEY}"
-                _requests.get(wa_url, timeout=8)
-            except Exception as e:
-                print(f"[whatsapp] Notification failed: {e}")
-
-        return Response(stream_with_context(generate()), mimetype="text/event-stream",
-                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
     # ── SSE: Auto-Messenger ───────────────────────────────────────────────
     @funnels_bp.route('/api/auto_message', methods=['POST', 'GET'])
     def funnels_api_auto_message():
@@ -953,12 +618,17 @@ if FUNNELS_DIR.exists():
         limit = request.args.get("limit", 50, type=int)
 
         def generate():
-            yield f"data: {json.dumps({'log': f'💬 Starting auto-messenger (limit: {limit} leads)...', 'pct': 0})}\n\n"
+            yield f"data: {json.dumps({'log': f'� Starting auto-messenger (limit: {limit} leads)...', 'pct': 0})}\n\n"
 
-            messenger_script = ROOT / "Funnels" / "auto_messenger.py"
+            messenger_script = ROOT.parent / "auto_messenger.py"
             if not messenger_script.exists():
-                yield f"data: {json.dumps({'log': '❌ auto_messenger.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
-                return
+                # Also check inside Funnels/
+                messenger_script2 = ROOT / "Funnels" / "auto_messenger.py"
+                if messenger_script2.exists():
+                    messenger_script = messenger_script2
+                else:
+                    yield f"data: {json.dumps({'log': '❌ auto_messenger.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    return
 
             cmd = [sys.executable, str(messenger_script), "--limit", str(limit)]
             env = os.environ.copy()
@@ -4627,6 +4297,25 @@ def download_contract(cid):
     dl_name = filename or "contrato_{}_{}.pdf".format(cid, consig.get("plate","").upper().replace(" ",""))
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
                      as_attachment=False, download_name=dl_name)
+
+
+# ─── Public: Contract Signing Page (mobile-first) ─────────────────────────────
+
+@app.route("/contrato/firmar")
+@app.route("/contrato/firmar/<int:cid>")
+def contract_signing_page(cid=None):
+    """Serve the mobile-first contract signing page.
+    Can be opened with just /contrato/firmar (plate lookup) or
+    /contrato/firmar/<cid> (direct link to a specific consignacion).
+    Share via WhatsApp/SMS: https://autodirectocrm.vercel.app/contrato/firmar/42
+    """
+    return render_template("firmar_contrato.html")
+
+
+@app.route("/api/consignaciones/<int:cid>/contrato/firmar", methods=["OPTIONS"])
+def contract_sign_preflight(cid):
+    """CORS preflight for contract signing."""
+    return add_camera_cors(app.make_response(""))
 
 
 # ─── API: Compradores (Buyers) ────────────────────────────────────────────────

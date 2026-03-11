@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Firmar Contrato — Autodirecto</title>
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --navy: #1a1a2e;
+            --navy-light: #16213e;
+            --accent: #4f46e5;
+            --accent-light: #6366f1;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 8px;
+            --shadow: 0 4px 24px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 40px rgba(0,0,0,0.12);
+        }
+
+        html { height: 100%; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-800);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Header ─────────────────────────────────────────── */
+        .header {
+            background: var(--navy);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-logo {
+            width: 36px; height: 36px;
+            background: white;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 16px; color: var(--navy);
+        }
+        .header-text { color: white; }
+        .header-text h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+        .header-text p { font-size: 11px; opacity: 0.6; margin-top: 1px; }
+
+        /* ── Stepper ────────────────────────────────────────── */
+        .stepper {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px 20px 8px;
+            background: white;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .step-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            transition: all 0.3s ease;
+        }
+        .step-dot.active { background: var(--accent); transform: scale(1.2); }
+        .step-dot.done { background: var(--success); }
+
+        /* ── Content ────────────────────────────────────────── */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        .screen {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            animation: fadeIn 0.3s ease;
+        }
+        .screen.active { display: flex; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes checkmark {
+            0% { stroke-dashoffset: 100; }
+            100% { stroke-dashoffset: 0; }
+        }
+
+        /* ── Screen 1: Plate Input ──────────────────────────── */
+        .plate-screen {
+            padding: 32px 20px;
+            text-align: center;
+        }
+        .plate-screen .icon-circle {
+            width: 80px; height: 80px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+        }
+        .plate-screen h2 {
+            font-size: 22px; font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+        .plate-screen p {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+
+        .plate-input-wrap {
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 6px;
+            display: flex;
+            gap: 8px;
+            max-width: 360px;
+            margin: 0 auto 16px;
+            transition: border-color 0.2s;
+        }
+        .plate-input-wrap:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(79,70,229,0.1);
+        }
+        .plate-input-wrap input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            padding: 12px;
+            background: transparent;
+            color: var(--gray-900);
+        }
+        .plate-input-wrap input::placeholder {
+            color: var(--gray-300);
+            letter-spacing: 4px;
+            font-weight: 400;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { transform: scale(0.97); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            color: white;
+            box-shadow: 0 4px 16px rgba(79,70,229,0.3);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 20px rgba(79,70,229,0.4); }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            box-shadow: 0 4px 16px rgba(16,185,129,0.3);
+        }
+
+        .btn-outline {
+            background: white;
+            color: var(--gray-700);
+            border: 2px solid var(--gray-200);
+        }
+
+        .btn-block { width: 100%; }
+        .btn-lg { padding: 16px 32px; font-size: 16px; border-radius: var(--radius); }
+
+        .error-msg {
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+        }
+        .error-msg.show { display: block; }
+
+        /* ── Vehicle Info Card ──────────────────────────────── */
+        .vehicle-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            max-width: 360px;
+            margin: 20px auto 0;
+            text-align: left;
+            display: none;
+        }
+        .vehicle-card.show { display: block; animation: fadeIn 0.3s ease; }
+        .vehicle-card .vc-plate {
+            display: inline-block;
+            background: var(--navy);
+            color: white;
+            padding: 4px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .vehicle-card .vc-name {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+        .vehicle-card .vc-owner {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+        .vehicle-card .vc-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 10px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        /* ── Screen 2: Contract Viewer ──────────────────────── */
+        .contract-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .contract-header {
+            padding: 16px 20px;
+            background: white;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .contract-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 2px;
+        }
+        .contract-header p {
+            font-size: 12px;
+            color: var(--gray-400);
+        }
+        .pdf-viewer {
+            flex: 1;
+            background: var(--gray-100);
+            position: relative;
+            min-height: 60vh;
+        }
+        .pdf-viewer iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            position: absolute;
+            inset: 0;
+        }
+        .contract-footer {
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid var(--gray-100);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .contract-footer .accept-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .contract-footer .accept-row input[type="checkbox"] {
+            width: 22px;
+            height: 22px;
+            margin-top: 2px;
+            accent-color: var(--accent);
+            flex-shrink: 0;
+        }
+        .contract-footer .accept-row label {
+            font-size: 13px;
+            color: var(--gray-600);
+            line-height: 1.4;
+        }
+
+        /* ── Screen 3: Signature ────────────────────────────── */
+        .signature-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+        .sig-header {
+            padding: 16px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .sig-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+        .sig-header p {
+            font-size: 13px;
+            color: var(--gray-400);
+        }
+        .sig-canvas-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+        .sig-canvas-wrap .hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: var(--gray-300);
+            font-weight: 500;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .sig-canvas-wrap .hint.hidden { opacity: 0; }
+        #signatureCanvas {
+            width: 100%;
+            max-width: 500px;
+            height: 220px;
+            border: 2px dashed var(--gray-200);
+            border-radius: var(--radius);
+            touch-action: none;
+            cursor: crosshair;
+            background: white;
+        }
+        .sig-actions {
+            display: flex;
+            gap: 10px;
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid var(--gray-100);
+        }
+        .sig-actions .btn { flex: 1; }
+
+        /* ── Screen 4: Success ──────────────────────────────── */
+        .success-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+            text-align: center;
+        }
+        .success-checkmark {
+            width: 100px; height: 100px;
+            background: var(--success-light);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 24px;
+            animation: scaleIn 0.5s ease;
+        }
+        .success-checkmark svg {
+            width: 50px; height: 50px;
+            stroke: var(--success);
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .success-checkmark svg path {
+            stroke-dasharray: 100;
+            animation: checkmark 0.6s ease 0.3s forwards;
+            stroke-dashoffset: 100;
+        }
+        .success-screen h2 {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+        .success-screen p {
+            font-size: 14px;
+            color: var(--gray-500);
+            line-height: 1.6;
+            max-width: 320px;
+            margin-bottom: 32px;
+        }
+        .success-screen .detail-box {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            padding: 16px 20px;
+            width: 100%;
+            max-width: 340px;
+            text-align: left;
+            margin-bottom: 24px;
+        }
+        .success-screen .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+        .success-screen .detail-row span:first-child { color: var(--gray-400); }
+        .success-screen .detail-row span:last-child { font-weight: 600; color: var(--gray-800); }
+
+        /* ── Loading Spinner ─────────────────────────────────── */
+        .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 999;
+        }
+        .loading-overlay.show { display: flex; }
+        .loading-overlay .spinner {
+            border-color: var(--gray-200);
+            border-top-color: var(--accent);
+            width: 40px; height: 40px;
+        }
+        .loading-overlay p { color: var(--gray-500); font-size: 14px; }
+
+        /* ── Already Signed State ───────────────────────────── */
+        .already-signed {
+            padding: 32px 20px;
+            text-align: center;
+        }
+        .already-signed .icon-circle {
+            width: 80px; height: 80px;
+            background: var(--success-light);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+        }
+        .already-signed h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+        .already-signed p {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 24px;
+        }
+
+        /* ── Footer ─────────────────────────────────────────── */
+        .page-footer {
+            padding: 16px 20px;
+            text-align: center;
+            font-size: 11px;
+            color: var(--gray-400);
+            background: white;
+            border-top: 1px solid var(--gray-100);
+        }
+        .page-footer a { color: var(--accent); text-decoration: none; }
+
+        /* ── Landscape signature ─────────────────────────────── */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .sig-canvas-wrap { padding: 10px; }
+            #signatureCanvas { height: 160px; }
+            .sig-header { padding: 10px 20px; }
+            .sig-header h2 { font-size: 15px; }
+        }
+
+        /* ── Tablet+ ────────────────────────────────────────── */
+        @media (min-width: 640px) {
+            .plate-screen { padding: 48px 32px; }
+            .plate-screen h2 { font-size: 26px; }
+            .plate-screen .icon-circle { width: 96px; height: 96px; font-size: 44px; }
+            .contract-header { padding: 20px 32px; }
+            .contract-footer { padding: 20px 32px; }
+            #signatureCanvas { height: 280px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-logo">AD</div>
+        <div class="header-text">
+            <h1>Autodirecto</h1>
+            <p>Firma de Contrato de Consignación</p>
+        </div>
+    </div>
+
+    <!-- Stepper -->
+    <div class="stepper">
+        <div class="step-dot active" data-step="1"></div>
+        <div class="step-dot" data-step="2"></div>
+        <div class="step-dot" data-step="3"></div>
+        <div class="step-dot" data-step="4"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p id="loadingText">Buscando tu contrato...</p>
+    </div>
+
+    <div class="content">
+
+        <!-- ═══ SCREEN 1: License Plate Input ═══ -->
+        <div class="screen plate-screen active" id="screen1">
+            <div class="icon-circle">📋</div>
+            <h2>Firma tu Contrato</h2>
+            <p>Ingresa la patente del vehículo en consignación para acceder a tu contrato y firmarlo digitalmente.</p>
+
+            <div class="plate-input-wrap">
+                <input type="text" id="plateInput" placeholder="ABC123"
+                       maxlength="8" autocomplete="off" autocapitalize="characters"
+                       inputmode="text">
+            </div>
+
+            <button class="btn btn-primary btn-lg btn-block" id="btnSearchPlate"
+                    style="max-width:360px;margin:0 auto" onclick="searchPlate()">
+                🔍 Buscar Contrato
+            </button>
+
+            <p class="error-msg" id="plateError"></p>
+
+            <div class="vehicle-card" id="vehicleCard">
+                <div class="vc-plate" id="vcPlate"></div>
+                <div class="vc-name" id="vcName"></div>
+                <div class="vc-owner" id="vcOwner"></div>
+                <div class="vc-status" id="vcStatus"></div>
+                <div style="margin-top:16px">
+                    <button class="btn btn-primary btn-block" onclick="goToContract()">
+                        📄 Ver y Firmar Contrato
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ SCREEN 2: Contract PDF Viewer ═══ -->
+        <div class="screen contract-screen" id="screen2">
+            <div class="contract-header">
+                <h2>📄 Contrato de Consignación</h2>
+                <p>Lee el contrato completo antes de firmar</p>
+            </div>
+            <div class="pdf-viewer">
+                <iframe id="contractPdf" title="Contrato PDF"></iframe>
+            </div>
+            <div class="contract-footer">
+                <div class="accept-row">
+                    <input type="checkbox" id="acceptCheck">
+                    <label for="acceptCheck">
+                        He leído y acepto los términos del contrato de consignación.
+                        Entiendo las condiciones económicas y las obligaciones descritas.
+                    </label>
+                </div>
+                <button class="btn btn-primary btn-lg btn-block" id="btnSign"
+                        disabled onclick="goToSignature()">
+                    ✍️ Firmar Contrato
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ SCREEN 3: Full-Screen Signature ═══ -->
+        <div class="screen signature-screen" id="screen3">
+            <div class="sig-header">
+                <h2>✍️ Tu Firma</h2>
+                <p>Dibuja tu firma en el recuadro</p>
+            </div>
+            <div class="sig-canvas-wrap">
+                <span class="hint" id="sigHint">Dibuja aquí tu firma</span>
+                <canvas id="signatureCanvas"></canvas>
+            </div>
+            <div class="sig-actions">
+                <button class="btn btn-outline" onclick="clearSignature()">
+                    🗑️ Limpiar
+                </button>
+                <button class="btn btn-success btn-lg" id="btnSubmitSig" onclick="submitSignature()" disabled>
+                    ✅ Firmar y Aceptar
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ SCREEN 4: Success ═══ -->
+        <div class="screen success-screen" id="screen4">
+            <div class="success-checkmark">
+                <svg viewBox="0 0 50 50">
+                    <path d="M14 27 l7 7 l15 -15"/>
+                </svg>
+            </div>
+            <h2>¡Firma Exitosa!</h2>
+            <p>Tu contrato ha sido firmado correctamente. Recibirás un correo electrónico con una copia del contrato firmado.</p>
+
+            <div class="detail-box">
+                <div class="detail-row">
+                    <span>Vehículo</span>
+                    <span id="successVehicle">—</span>
+                </div>
+                <div class="detail-row">
+                    <span>Patente</span>
+                    <span id="successPlate">—</span>
+                </div>
+                <div class="detail-row">
+                    <span>Firmado</span>
+                    <span id="successDate">—</span>
+                </div>
+                <div class="detail-row">
+                    <span>Estado</span>
+                    <span style="color:var(--success)">✅ Firmado</span>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-lg" id="btnDownload" onclick="downloadContract()">
+                📥 Descargar Contrato
+            </button>
+        </div>
+
+        <!-- ═══ Already Signed (shown when contract already signed) ═══ -->
+        <div class="screen already-signed" id="screenSigned">
+            <div class="icon-circle">✅</div>
+            <h2>Contrato Ya Firmado</h2>
+            <p>Este contrato ya fue firmado previamente. Puedes descargar una copia.</p>
+            <button class="btn btn-primary btn-lg" onclick="downloadContract()">
+                📥 Descargar Contrato Firmado
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="page-footer">
+        © 2026 <a href="https://autodirecto.cl">Autodirecto</a> · Wiackowska Group SpA
+    </div>
+
+    <script>
+        // ── Config ──────────────────────────────────────────
+        const API_BASE = window.location.origin;
+        let consignacionId = null;
+        let vehicleLabel = '';
+        let plateStr = '';
+
+        // Check if we have a direct consignacion ID in the URL (e.g. /contrato/firmar/42)
+        const pathParts = window.location.pathname.split('/');
+        const urlCid = pathParts[pathParts.length - 1];
+        if (urlCid && /^\d+$/.test(urlCid)) {
+            // Direct link with consignacion ID — skip plate screen
+            consignacionId = parseInt(urlCid);
+            loadContractDirect(consignacionId);
+        }
+
+        // ── Screen Navigation ───────────────────────────────
+        function showScreen(n) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            const target = n === 'signed' ? 'screenSigned' : 'screen' + n;
+            document.getElementById(target).classList.add('active');
+
+            document.querySelectorAll('.step-dot').forEach(d => {
+                const step = parseInt(d.dataset.step);
+                d.classList.remove('active', 'done');
+                if (n === 'signed') { d.classList.add('done'); }
+                else if (step < n) d.classList.add('done');
+                else if (step === n) d.classList.add('active');
+            });
+        }
+
+        // ── Loading ─────────────────────────────────────────
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text || 'Cargando...';
+            document.getElementById('loadingOverlay').classList.add('show');
+        }
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('show');
+        }
+
+        // ── Screen 1: Search by Plate ───────────────────────
+        document.getElementById('plateInput').addEventListener('input', function() {
+            this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            document.getElementById('vehicleCard').classList.remove('show');
+            document.getElementById('plateError').classList.remove('show');
+        });
+
+        document.getElementById('plateInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') searchPlate();
+        });
+
+        async function searchPlate() {
+            const plate = document.getElementById('plateInput').value.trim();
+            if (!plate || plate.length < 4) {
+                showError('Ingresa una patente válida (mínimo 4 caracteres)');
+                return;
+            }
+
+            showLoading('Buscando vehículo...');
+            try {
+                const resp = await fetch(API_BASE + '/api/consignaciones/by-plate/' + plate);
+                const data = await resp.json();
+
+                if (!data.found) {
+                    hideLoading();
+                    showError('No se encontró una consignación para la patente ' + plate + '. Verifica que sea correcta.');
+                    return;
+                }
+
+                consignacionId = data.consignacion_id;
+                plateStr = data.plate || plate;
+                vehicleLabel = data.label || '';
+
+                // Show vehicle card
+                document.getElementById('vcPlate').textContent = plateStr;
+                document.getElementById('vcName').textContent = vehicleLabel;
+                document.getElementById('vcOwner').textContent = data.owner_name ? '👤 ' + data.owner_name : '';
+                document.getElementById('vcStatus').innerHTML = '📋 ' + (data.status || 'Activa');
+                document.getElementById('vehicleCard').classList.add('show');
+
+                hideLoading();
+            } catch (err) {
+                hideLoading();
+                showError('Error de conexión. Intenta nuevamente.');
+                console.error(err);
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('plateError');
+            el.textContent = msg;
+            el.classList.add('show');
+        }
+
+        // ── Direct link load ────────────────────────────────
+        async function loadContractDirect(cid) {
+            showLoading('Cargando tu contrato...');
+            try {
+                const resp = await fetch(API_BASE + '/api/consignaciones/' + cid);
+                if (!resp.ok) { hideLoading(); showError('Contrato no encontrado'); return; }
+                const data = await resp.json();
+
+                consignacionId = cid;
+                plateStr = data.plate || '';
+                vehicleLabel = [data.car_make, data.car_model, data.car_year].filter(Boolean).join(' ');
+
+                // Check if already signed
+                if (data.contract_signed_at) {
+                    hideLoading();
+                    showScreen('signed');
+                    return;
+                }
+
+                hideLoading();
+                goToContract();
+            } catch (err) {
+                hideLoading();
+                console.error(err);
+            }
+        }
+
+        // ── Screen 2: Contract Viewer ───────────────────────
+        function goToContract() {
+            showScreen(2);
+            // Load contract PDF
+            const pdfUrl = API_BASE + '/api/consignaciones/' + consignacionId + '/contrato';
+            document.getElementById('contractPdf').src = pdfUrl;
+        }
+
+        // Checkbox → enable sign button
+        document.getElementById('acceptCheck').addEventListener('change', function() {
+            document.getElementById('btnSign').disabled = !this.checked;
+        });
+
+        // ── Screen 3: Signature Canvas ──────────────────────
+        function goToSignature() {
+            showScreen(3);
+            initCanvas();
+        }
+
+        let canvas, ctx, isDrawing = false, hasDrawn = false;
+
+        function initCanvas() {
+            canvas = document.getElementById('signatureCanvas');
+            ctx = canvas.getContext('2d');
+
+            // High DPI support
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#1a1a2e';
+
+            hasDrawn = false;
+            document.getElementById('sigHint').classList.remove('hidden');
+            document.getElementById('btnSubmitSig').disabled = true;
+
+            // Touch events
+            canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+            canvas.addEventListener('touchend', onTouchEnd);
+
+            // Mouse events (desktop fallback)
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('mouseleave', onMouseUp);
+        }
+
+        function getPos(e, isTouch) {
+            const rect = canvas.getBoundingClientRect();
+            if (isTouch) {
+                return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+            }
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function onTouchStart(e) { e.preventDefault(); startDraw(getPos(e, true)); }
+        function onTouchMove(e) { e.preventDefault(); draw(getPos(e, true)); }
+        function onTouchEnd() { endDraw(); }
+        function onMouseDown(e) { startDraw(getPos(e, false)); }
+        function onMouseMove(e) { if (isDrawing) draw(getPos(e, false)); }
+        function onMouseUp() { endDraw(); }
+
+        function startDraw(pos) {
+            isDrawing = true;
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            if (!hasDrawn) {
+                hasDrawn = true;
+                document.getElementById('sigHint').classList.add('hidden');
+                document.getElementById('btnSubmitSig').disabled = false;
+            }
+        }
+        function draw(pos) {
+            if (!isDrawing) return;
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+        }
+        function endDraw() { isDrawing = false; }
+
+        function clearSignature() {
+            if (!ctx) return;
+            const dpr = window.devicePixelRatio || 1;
+            ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+            hasDrawn = false;
+            document.getElementById('sigHint').classList.remove('hidden');
+            document.getElementById('btnSubmitSig').disabled = true;
+        }
+
+        // ── Submit Signature ────────────────────────────────
+        async function submitSignature() {
+            if (!hasDrawn) return;
+
+            showLoading('Firmando contrato...');
+
+            const sigData = canvas.toDataURL('image/png');
+
+            try {
+                const resp = await fetch(API_BASE + '/api/consignaciones/' + consignacionId + '/contrato/firmar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ signature: sigData })
+                });
+
+                const result = await resp.json();
+
+                if (!resp.ok) {
+                    hideLoading();
+                    alert('Error: ' + (result.error || 'No se pudo firmar'));
+                    return;
+                }
+
+                // Success!
+                hideLoading();
+
+                document.getElementById('successVehicle').textContent = vehicleLabel || '—';
+                document.getElementById('successPlate').textContent = plateStr || '—';
+                document.getElementById('successDate').textContent = new Date().toLocaleDateString('es-CL', {
+                    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                showScreen(4);
+
+            } catch (err) {
+                hideLoading();
+                alert('Error de conexión. Intenta nuevamente.');
+                console.error(err);
+            }
+        }
+
+        // ── Download Contract ───────────────────────────────
+        function downloadContract() {
+            if (!consignacionId) return;
+            window.open(API_BASE + '/api/consignaciones/' + consignacionId + '/contrato/descargar', '_blank');
+        }
+    </script>
+</body>
+</html>
