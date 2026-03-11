@@ -1284,23 +1284,22 @@ def update_inspeccion(appraisal_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/inspecciones/<appraisal_id>/pdf", methods=["GET"])
-def get_inspeccion_pdf(appraisal_id):
+def _build_inspeccion_html(appraisal_id):
     """
-    Generate a beautiful PDF inspection report.
-    Uses HTML → PDF via WeasyPrint if available, otherwise returns HTML.
+    Fetch appraisal + photos from Supabase and render the full inspection HTML report.
+    Returns (html_string, appraisal_dict) or raises RuntimeError on failure.
     """
     import requests as req_lib
     supabase_url, headers = _supa_headers()
     if not supabase_url:
-        return jsonify({"error": "Supabase not configured"}), 500
+        raise RuntimeError("Supabase not configured")
 
     # Fetch data
     r = req_lib.get(supabase_url + "/rest/v1/appraisals",
                     params={"select": "*", "id": "eq.{}".format(appraisal_id)},
                     headers=headers, timeout=10)
     if r.status_code != 200 or not r.json():
-        return jsonify({"error": "Not found"}), 404
+        raise RuntimeError("Appraisal not found")
     a = r.json()[0]
 
     # Fetch photos
@@ -1527,6 +1526,20 @@ def get_inspeccion_pdf(appraisal_id):
         id_short=appraisal_id[:8] if appraisal_id else "—",
     )
 
+    return html, a
+
+
+@app.route("/api/inspecciones/<appraisal_id>/pdf", methods=["GET"])
+def get_inspeccion_pdf(appraisal_id):
+    """
+    Generate a beautiful PDF inspection report.
+    Uses HTML → PDF via WeasyPrint if available, otherwise returns HTML.
+    """
+    try:
+        html, a = _build_inspeccion_html(appraisal_id)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 404
+
     # Check if they want PDF format
     fmt = request.args.get("format", "html")
     if fmt == "pdf":
@@ -1549,10 +1562,9 @@ def get_inspeccion_pdf(appraisal_id):
 @app.route("/api/inspecciones/<appraisal_id>/email", methods=["POST"])
 def send_inspeccion_email(appraisal_id):
     """
-    Send the inspection report via Resend (autochile.cl domain).
+    Send the inspection report via Resend (autodirecto.cl domain).
     Body: { "to": "email@example.com", "cc": "...", "subject": "..." }
     """
-    import requests as req_lib
     data = request.json or {}
     to_email = data.get("to")
     if not to_email:
@@ -1562,36 +1574,24 @@ def send_inspeccion_email(appraisal_id):
     if not resend_key:
         return jsonify({"error": "RESEND_API_KEY no configurada en .env"}), 500
 
-    # Fetch the HTML report
-    supabase_url, headers = _supa_headers()
-    r = req_lib.get(supabase_url + "/rest/v1/appraisals",
-                    params={"select": "*", "id": "eq.{}".format(appraisal_id)},
-                    headers=headers, timeout=10)
-    if r.status_code != 200 or not r.json():
-        return jsonify({"error": "Appraisal not found"}), 404
-    a = r.json()[0]
+    # Build the report HTML directly (no localhost self-call)
+    try:
+        html_body, a = _build_inspeccion_html(appraisal_id)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 404
 
     patente = (a.get("vehicle_patente") or "").upper()
-    marca = a.get("vehicle_marca") or ""
-    modelo = a.get("vehicle_modelo") or ""
-    año = a.get("vehicle_año") or ""
-
-    # Get the full HTML by calling our own PDF endpoint
-    import urllib.request
-    try:
-        local_url = "http://127.0.0.1:8080/api/inspecciones/{}/pdf".format(appraisal_id)
-        with urllib.request.urlopen(local_url, timeout=10) as resp:
-            html_body = resp.read().decode("utf-8")
-    except Exception as e:
-        return jsonify({"error": "Could not generate report: {}".format(e)}), 500
+    marca   = a.get("vehicle_marca") or ""
+    modelo  = a.get("vehicle_modelo") or ""
+    año     = a.get("vehicle_año") or ""
 
     subject = data.get("subject") or "Informe de Inspección — {} {} {} · {}".format(
         marca, modelo, año, patente
     )
 
-    # Send via Resend API
+    # Send via Resend API — from verified autodirecto.cl domain
     email_payload = {
-        "from": "Auto Directo <inspeccion@autochile.cl>",
+        "from": "Auto Directo <inspeccion@autodirecto.cl>",
         "to": [to_email],
         "subject": subject,
         "html": html_body,
@@ -1600,6 +1600,7 @@ def send_inspeccion_email(appraisal_id):
         email_payload["cc"] = [data["cc"]] if isinstance(data["cc"], str) else data["cc"]
 
     try:
+        import requests as req_lib
         resp = req_lib.post(
             "https://api.resend.com/emails",
             json=email_payload,
