@@ -3109,7 +3109,7 @@
                                 </button>
                                 <!-- WhatsApp: send signing link to owner -->
                                 <a x-show="consigDetail?.owner_phone"
-                                    :href="'https://wa.me/' + normalizeChileanPhone(consigDetail?.owner_phone||'') + '?text=' + encodeURIComponent('Hola ' + (consigDetail?.owner_first_name||'') + ', te enviamos el link para firmar tu contrato de consignación con Auto Directo 🚗✍️\n\nhttps://api.simpleapi.cl/contrato/firmar/' + consigDetail?.id)"
+                                    :href="'https://wa.me/' + normalizeChileanPhone(consigDetail?.owner_phone||'') + '?text=' + encodeURIComponent('Hola ' + (consigDetail?.owner_first_name||'') + ', te enviamos el link para firmar tu contrato de consignación con Auto Directo 🚗✍️\n\nhttps://autodirectocrm.vercel.app/contrato/firmar/' + consigDetail?.id)"
                                     target="_blank"
                                     class="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
                                     title="Enviar link de firma por WhatsApp">
