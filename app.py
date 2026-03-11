@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests as _requests
-from flask import Flask, jsonify, render_template, request, session, send_file
+from flask import Flask, Response, jsonify, render_template, request, session, send_file, stream_with_context
 
 ROOT = Path(__file__).parent
 if str(ROOT) not in sys.path:
@@ -867,6 +867,132 @@ if FUNNELS_DIR.exists():
         except Exception as e:
             print(f"[har-upload] Exception: {e}")
             return jsonify({"error": str(e)}), 500
+
+    # ── SSE: Live Playwright Scrape with streaming progress ───────────────
+    @funnels_bp.route('/api/scrape-sse', methods=['POST', 'GET'])
+    def funnels_api_scrape_sse():
+        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
+        WHATSAPP_NUMBER = "4917632407062"
+        CALLMEBOT_API_KEY = "4106204"
+
+        def _wa_encode(text):
+            out = str(text)
+            for old, new in [(' ', '%20'), (':', '%3A'), ('/', '%2F'), ('\n', '%0A')]:
+                out = out.replace(old, new)
+            return out
+
+        # Find the scraper script
+        fb_app_dir = ROOT.parent / "fb app"
+        scraper_script = fb_app_dir / "scrape_marketplace.py"
+
+        def generate():
+            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
+
+            if not scraper_script.exists():
+                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
+
+            cmd = [sys.executable, str(scraper_script)]
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+
+            import subprocess as _sp
+            proc = _sp.Popen(
+                cmd, cwd=str(fb_app_dir),
+                stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                text=True, env=env, bufsize=1
+            )
+
+            total_scrolls = 40
+            scroll_count = 0
+            vehicle_count = 0
+
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+
+                if "Scroll " in line and "/" in line:
+                    try:
+                        part = line.split("Scroll ")[1].split(" — ")[0]
+                        cur, tot = part.split("/")
+                        scroll_count = int(cur)
+                        total_scrolls = int(tot)
+                        if "vehicles" in line:
+                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                    except Exception:
+                        pass
+
+                pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
+                yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+
+            proc.wait()
+            success = proc.returncode == 0
+
+            # Reload cached listings
+            funnels_module._cached_listings = funnels_module.load_all_listings()
+
+            done_msg = f"✅ Scrape complete! {vehicle_count} vehicles saved." if success else "❌ Scraper exited with errors."
+            yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'vehicles': vehicle_count, 'done': True, 'success': success})}\n\n"
+
+            # WhatsApp notification via CallMeBot
+            try:
+                msg = f"🚗 Autodirecto Scraper\n{done_msg} ({datetime.now().strftime('%H:%M')})"
+                wa_url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_NUMBER}&text={_wa_encode(msg)}&apikey={CALLMEBOT_API_KEY}"
+                _requests.get(wa_url, timeout=8)
+            except Exception as e:
+                print(f"[whatsapp] Notification failed: {e}")
+
+        return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ── SSE: Auto-Messenger ───────────────────────────────────────────────
+    @funnels_bp.route('/api/auto_message', methods=['POST', 'GET'])
+    def funnels_api_auto_message():
+        """Stream auto-messenger output via SSE."""
+        limit = request.args.get("limit", 50, type=int)
+
+        def generate():
+            yield f"data: {json.dumps({'log': f'💬 Starting auto-messenger (limit: {limit} leads)...', 'pct': 0})}\n\n"
+
+            messenger_script = ROOT / "Funnels" / "auto_messenger.py"
+            if not messenger_script.exists():
+                yield f"data: {json.dumps({'log': '❌ auto_messenger.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
+
+            cmd = [sys.executable, str(messenger_script), "--limit", str(limit)]
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+
+            import subprocess as _sp
+            proc = _sp.Popen(
+                cmd, cwd=str(messenger_script.parent),
+                stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                text=True, env=env, bufsize=1
+            )
+
+            sent = 0
+            total = limit
+
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                if "✅ Marked" in line or "Message sent" in line:
+                    sent += 1
+                pct = min(95, int((sent / max(total, 1)) * 90))
+                yield f"data: {json.dumps({'log': line, 'pct': pct, 'sent': sent})}\n\n"
+
+            proc.wait()
+            success = proc.returncode == 0
+            done_msg = f"✅ Done! Sent {sent} message(s)." if success else "❌ Messenger exited with errors."
+            yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'sent': sent, 'done': True, 'success': success})}\n\n"
+
+            # Reload leads data
+            funnels_module._cached_listings = funnels_module.load_all_listings()
+
+        return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     app.register_blueprint(funnels_bp)
     print("  ✅ Funnels dashboard mounted at /funnels")
