@@ -120,17 +120,33 @@ async def main(cookies_path: str):
         )
 
         # ── Load saved FB cookies ──
+        # Only pass the 7 fields Playwright accepts; skip cookies with non-ASCII
+        # values (decryption artifacts that would cause Protocol errors).
+        VALID_SAME_SITE = {"Strict", "Lax", "None"}
         pw_cookies = []
+        skipped = 0
         for c in cookies:
+            val = c.get("value", "")
+            try:
+                val.encode("ascii")          # Playwright requires ASCII-safe values
+            except UnicodeEncodeError:
+                skipped += 1
+                continue
             pw_cookies.append({
-                "name":   c["name"],
-                "value":  c["value"],
-                "domain": c.get("domain", ".facebook.com"),
-                "path":   c.get("path", "/"),
-                "httpOnly": c.get("httpOnly", False),
-                "secure":   c.get("secure", False),
-                "sameSite": c.get("sameSite", "Lax") if c.get("sameSite") in ("Strict","Lax","None") else "Lax",
+                "name":     c["name"],
+                "value":    val,
+                "domain":   c.get("domain", ".facebook.com"),
+                "path":     c.get("path", "/"),
+                "httpOnly": bool(c.get("httpOnly", False)),
+                "secure":   bool(c.get("secure", False)),
+                "sameSite": c.get("sameSite") if c.get("sameSite") in VALID_SAME_SITE else "Lax",
             })
+        if skipped:
+            print(f"⚠️  Skipped {skipped} cookies with non-ASCII values (re-save session from Mac)", flush=True)
+        if not pw_cookies:
+            print("❌ Todas las cookies son inválidas. Guarda de nuevo tu sesión desde el botón '💾 Guardar Sesión FB' en tu Mac.", flush=True)
+            await browser.close()
+            sys.exit(1)
         await context.add_cookies(pw_cookies)
         print(f"🍪 Loaded {len(pw_cookies)} FB cookies", flush=True)
 

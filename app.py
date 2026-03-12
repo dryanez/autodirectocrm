@@ -282,9 +282,17 @@ if FUNNELS_DIR.exists():
                             # Remove PKCS7 padding
                             pad_len = plaintext[-1] if plaintext else 0
                             if isinstance(pad_len, int) and 0 < pad_len <= 16:
-                                value = plaintext[:-pad_len].decode("utf-8", errors="replace")
-                            else:
-                                value = plaintext.decode("utf-8", errors="replace")
+                                plaintext = plaintext[:-pad_len]
+                            # Use strict decoding — skip cookies with binary garbage
+                            try:
+                                value = plaintext.decode("utf-8")
+                            except UnicodeDecodeError:
+                                try:
+                                    value = plaintext.decode("latin-1")
+                                    # If it has non-ASCII chars, skip — Playwright won't accept it
+                                    value.encode("ascii")
+                                except (UnicodeDecodeError, UnicodeEncodeError):
+                                    continue
                         except Exception:
                             continue
                     elif encrypted:
