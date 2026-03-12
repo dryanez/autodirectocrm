@@ -1,29 +1,14 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FB Marketplace Funnel - Leads</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: { 900: '#0f172a', 800: '#1e293b', 700: '#334155' },
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; }
         select { min-width: 130px; }
-        .glass { background: rgba(30,41,59,0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .animate-slide-in { animation: slideIn 0.3s ease-out; }
     </style>
     <script>
         // Detect base path so API calls work both standalone (/api/leads) and embedded (/funnels/api/leads)
@@ -32,67 +17,36 @@
     </script>
 </head>
 
-<body class="min-h-screen bg-[#0f172a]">
+<body class="bg-gray-50 min-h-screen">
 
     <!-- Header -->
-    <header class="glass sticky top-0 z-50 border-b border-slate-700">
+    <header class="bg-white shadow-sm sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 class="text-2xl font-bold text-white tracking-tight">🚗 FB Funnel</h1>
-            <div class="flex items-center gap-3">
-                <!-- Primary: Live scrape (polling-based, shows config modal) -->
-                <button id="btn-scrape-live" onclick="startLiveScrape()"
-                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-5 rounded-lg flex items-center gap-2 shadow transition-colors">
-                    🕷️ Scrapear Facebook
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">🚗 FB Funnel Dashboard</h1>
+            <div class="flex items-center space-x-3">
+                <button onclick="startScrape()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
+                    <span>🚀</span> Scrape Now
                 </button>
-
-                <!-- Auto-Messenger (local only — needs Playwright + Chrome) -->
-                <button id="btn-send-messages" onclick="startMessaging()"
-                    class="bg-green-600 hover:bg-green-500 text-white text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow transition-colors">
-                    💬 Send Messages
+                <button onclick="startMessaging()"
+                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
+                    <span>💬</span> Send Messages
                 </button>
-
-                <!-- Secondary: HAR dropdown -->
-                <div class="relative" id="har-dropdown-wrapper">
-                    <button onclick="toggleHarDropdown()"
-                        class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-600">
-                        📂 HAR
-                        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                    </button>
-                    <div id="har-dropdown"
-                        class="hidden absolute right-0 top-full mt-1 w-52 glass rounded-xl border border-slate-600 shadow-xl z-50 overflow-hidden">
-                        <button onclick="hideHarDropdown(); showHarModal()"
-                            class="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 transition-colors">
-                            📂 <span><strong>Importar</strong> archivo .har</span>
-                        </button>
-                        <div class="border-t border-slate-700"></div>
-                        <button onclick="hideHarDropdown(); startScrape()"
-                            class="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 transition-colors">
-                            🔄 <span><strong>Actualizar</strong> desde HAR guardado</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Lead count badge -->
                 <span id="total-leads"
-                    class="bg-blue-500/20 text-blue-400 text-sm font-medium px-3 py-1 rounded-full border border-blue-500/30 whitespace-nowrap">
-                    Cargando…
-                </span>
-
-                <!-- Refresh icon -->
-                <button onclick="loadLeads()" title="Recargar leads" class="text-slate-500 hover:text-white transition-colors">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    class="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">Loading...</span>
+                <button onclick="loadLeads()" title="Refresh" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
                     </svg>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Scrape SSE Progress Banner (hidden by default) -->
-    <div id="scrape-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-indigo-900/95 backdrop-blur text-white px-6 py-3 shadow-xl">
+    <!-- Scrape Progress Banner (hidden by default) -->
+    <div id="scrape-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-indigo-900 text-white px-6 py-3 shadow-xl">
         <div class="max-w-7xl mx-auto flex items-center gap-4">
             <div class="text-lg">🚀</div>
             <div class="flex-1">
@@ -101,19 +55,21 @@
                     <span id="scrape-pct" class="text-sm font-bold ml-4">0%</span>
                 </div>
                 <div class="w-full bg-indigo-700 rounded-full h-2">
-                    <div id="scrape-bar" class="bg-green-400 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    <div id="scrape-bar" class="bg-green-400 h-2 rounded-full transition-all duration-500"
+                         style="width: 0%"></div>
                 </div>
                 <div class="flex justify-between text-xs text-indigo-300 mt-1">
                     <span id="scrape-vehicles"></span>
                     <span>Scraping Facebook Marketplace...</span>
                 </div>
             </div>
-            <button onclick="document.getElementById('scrape-banner').classList.add('hidden')" class="text-indigo-300 hover:text-white text-xl ml-2">&times;</button>
+            <button onclick="document.getElementById('scrape-banner').classList.add('hidden')"
+                class="text-indigo-300 hover:text-white text-xl ml-2">&times;</button>
         </div>
     </div>
 
-    <!-- Messaging SSE Progress Banner (hidden by default) -->
-    <div id="msg-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-green-900/95 backdrop-blur text-white px-6 py-3 shadow-xl">
+    <!-- Messaging Progress Banner (hidden by default) -->
+    <div id="msg-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-green-900 text-white px-6 py-3 shadow-xl">
         <div class="max-w-7xl mx-auto flex items-center gap-4">
             <div class="text-lg">💬</div>
             <div class="flex-1">
@@ -126,73 +82,73 @@
                 </div>
                 <div class="flex justify-between text-xs text-green-300 mt-1">
                     <span id="msg-sent"></span>
-                    <span>Enviando mensajes · 5–8 min entre cada uno</span>
+                    <span>Enviando mensajes · 5-8 min entre cada uno</span>
                 </div>
             </div>
-            <button onclick="document.getElementById('msg-banner').classList.add('hidden')" class="text-green-300 hover:text-white text-xl ml-2">&times;</button>
+            <button onclick="document.getElementById('msg-banner').classList.add('hidden')"
+                class="text-green-300 hover:text-white text-xl ml-2">&times;</button>
         </div>
     </div>
 
-    <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         <!-- Filters -->
-        <div class="mb-6 glass p-4 rounded-xl">
+        <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div class="flex flex-wrap gap-3 items-end">
 
                 <!-- Tabs -->
-                <div class="flex space-x-1 mb-4 border-b border-slate-700 pb-1 w-full">
+                <div class="flex space-x-1 mb-4 border-b border-gray-200 pb-1 w-full overflow-x-auto">
                     <button onclick="switchTab('new')" id="tab-new"
-                        class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-blue-500 text-blue-400 transition-colors">Nuevos</button>
+                        class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 transition-colors whitespace-nowrap">Nuevos</button>
                     <button onclick="switchTab('contacted')" id="tab-contacted"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Contactados</button>
+                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Contactados</button>
                     <button onclick="switchTab('ignored')" id="tab-ignored"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Ignorados</button>
+                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Ignorados</button>
                     <button onclick="switchTab('outside')" id="tab-outside"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Fuera de Región</button>
+                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Fuera de Region</button>
                     <button onclick="switchTab('all')" id="tab-all"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Todos</button>
+                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Todos</button>
                 </div>
                 <input type="hidden" id="status-filter" value="new">
 
                 <!-- Brand -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marca</label>
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Marca</label>
                     <select id="brand-filter" onchange="onBrandChange()"
-                        class="bg-slate-800 border-slate-600 text-white rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
                         <option value="">Todas las marcas</option>
                     </select>
                 </div>
 
                 <!-- Model -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Modelo</label>
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modelo</label>
                     <select id="model-filter" onchange="renderLeads()"
-                        class="bg-slate-800 border-slate-600 text-white rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
                         <option value="">Todos los modelos</option>
                     </select>
                 </div>
 
                 <!-- Min Price -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Precio mín (CLP)</label>
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio min (CLP)</label>
                     <input type="number" id="price-min" placeholder="0" step="100000" min="0" oninput="renderLeads()"
-                        class="bg-slate-800 border-slate-600 text-white rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500 placeholder-slate-500">
+                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
                 <!-- Max Price -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Precio máx (CLP)</label>
-                    <input type="number" id="price-max" placeholder="Sin límite" step="100000" min="0"
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio max (CLP)</label>
+                    <input type="number" id="price-max" placeholder="Sin limite" step="100000" min="0"
                         oninput="renderLeads()"
-                        class="bg-slate-800 border-slate-600 text-white rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500 placeholder-slate-500">
+                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
                 <!-- Min Year -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Año mín</label>
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ano min</label>
                     <select id="year-filter" onchange="renderLeads()"
-                        class="bg-slate-800 border-slate-600 text-white rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
                         <option value="0">Cualquiera</option>
                         <option value="2000">2000+</option>
                         <option value="2005">2005+</option>
@@ -206,13 +162,13 @@
                 <!-- Reset -->
                 <div class="flex flex-col gap-1 justify-end">
                     <button onclick="resetFilters()"
-                        class="text-sm text-slate-400 hover:text-red-400 border border-slate-600 hover:border-red-400 rounded-lg px-3 py-2 transition-colors">
-                        ✕ Limpiar
+                        class="text-sm text-gray-500 hover:text-red-600 border border-gray-300 hover:border-red-400 rounded-lg px-3 py-2 transition-colors">
+                        X Limpiar
                     </button>
                 </div>
 
                 <span class="flex-grow"></span>
-                <div id="filter-stats" class="text-sm text-slate-500 self-end pb-2"></div>
+                <div id="filter-stats" class="text-sm text-gray-400 self-end pb-2"></div>
             </div>
         </div>
 
@@ -220,28 +176,24 @@
         <div id="leads-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <!-- Cards injected via JS -->
         </div>
-
     </main>
 
     <script>
         let allLeads = [];
 
-        // ── Parse brand & model from title ──────────────────────────────
         function parseBrandModel(title) {
             const parts = title.trim().split(/\s+/);
             const start = (parts[0] && /^\d{4}$/.test(parts[0])) ? 1 : 0;
-            const brand = parts[start] || '';
-            const model = parts.slice(start + 1).join(' ') || '';
+            const brand = (parts[start] || '').toLowerCase();
+            const model = parts.slice(start + 1).join(' ').toLowerCase() || '';
             return { brand, model };
         }
 
-        // ── Populate brand dropdown from data ───────────────────────────
         function populateBrandFilter() {
             const brands = [...new Set(
                 allLeads.map(l => parseBrandModel(l.title).brand)
                     .filter(Boolean)
             )].sort();
-
             const sel = document.getElementById('brand-filter');
             sel.innerHTML = '<option value="">Todas las marcas</option>';
             brands.forEach(b => {
@@ -252,12 +204,10 @@
             });
         }
 
-        // ── When brand changes, repopulate model dropdown ────────────────
         function onBrandChange() {
             const brand = document.getElementById('brand-filter').value;
             const modelSel = document.getElementById('model-filter');
             modelSel.innerHTML = '<option value="">Todos los modelos</option>';
-
             if (brand) {
                 const models = [...new Set(
                     allLeads
@@ -265,7 +215,6 @@
                         .map(l => parseBrandModel(l.title).model)
                         .filter(Boolean)
                 )].sort();
-
                 models.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m;
@@ -276,14 +225,12 @@
             renderLeads();
         }
 
-        // ── Parse numeric CLP amount from price string ───────────────────
         function parsePrice(priceStr) {
-            if (!priceStr) return null;
+            if (!priceStr || priceStr === 'N/A') return null;
             const digits = String(priceStr).replace(/[^\d]/g, '');
             return digits ? parseInt(digits, 10) : null;
         }
 
-        // ── Helper: Copy to clipboard ────────────────────────────────────
         function copyMessage(btn, url) {
             const textarea = btn.previousElementSibling;
             textarea.select();
@@ -291,71 +238,64 @@
             navigator.clipboard.writeText(textarea.value).then(() => {
                 const orig = btn.innerHTML;
                 btn.innerHTML = '✅';
-                updateLead(url, { status: 'contacted' });
                 setTimeout(() => btn.innerHTML = orig, 1500);
             });
         }
 
-        // ── Render Valuation Results Box ────────────────────────────────
+        function proxyPhoto(photoUrl, listingId) {
+            if (!photoUrl && !listingId) return 'https://placehold.co/400x176/e5e7eb/9ca3af?text=Sin+Foto';
+            const params = new URLSearchParams();
+            if (photoUrl) params.set('url', photoUrl);
+            if (listingId) params.set('id', listingId);
+            return apiUrl('/api/img-proxy') + '?' + params.toString();
+        }
+
         function renderValuationBox(pricing, lead) {
             const fmt = n => 'CLP ' + n.toLocaleString('es-CL');
             const market = pricing.market_price;
             const consignacion = pricing.consignment_liquidation;
             const compra = pricing.immediate_offer;
-
             const { brand, model } = parseBrandModel(lead.title);
 
-            return `
-                <div class="mt-3 pt-3 border-t border-slate-600 bg-blue-500/10 p-2 rounded-lg">
-                    <div class="mb-2">
-                        <span class="text-xs text-purple-400 font-bold uppercase">Valor Mercado Real (IA)</span>
-                        <p class="text-lg font-bold text-white">${fmt(market)}</p>
-                    </div>
-                    <div class="space-y-1">
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="text-slate-400 font-medium">🤝 Consignación Real</span>
-                            <span class="font-semibold text-green-400">${fmt(consignacion)}</span>
-                        </div>
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="text-slate-400 font-medium">⚡ Compra inmediata</span>
-                            <span class="font-semibold text-amber-400">${fmt(compra)}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-3 pt-3 border-t border-slate-600">
-                        <label class="block text-xs font-semibold text-slate-400 mb-1">💬 Mensaje sugerido</label>
-                        <div class="flex gap-2">
-                            <textarea readonly class="w-full text-xs bg-slate-800 border border-slate-600 rounded p-2 text-slate-300 h-40 resize-none leading-relaxed focus:outline-none focus:ring-1 focus:ring-blue-500">Hola ${lead.seller_name ? lead.seller_name.trim().split(' ')[0] : '[Nombre]'}, vi tu ${brand.toUpperCase()} ${model.toUpperCase()} ${lead.year} publicado.
-
-Nuestra tecnología analizó el mercado y estima que podríamos gestionar la venta asegurándote ${fmt(consignacion)} líquidos para tu bolsillo.
-
-Así tú obtienes el monto que buscas sin tener que lidiar con extraños ni trámites.
-
-¿Te hace sentido esa cifra para conversar?
-
-Quedo atento,
-WhatsApp: +56940441470
-Felipe Yañez
-Agente de Ventas | Autodirecto.cl</textarea>
-                            <button onclick="copyMessage(this, '${lead.url}')" class="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded px-3 flex flex-col items-center justify-center gap-1 transition-colors w-16" title="Copiar y Contactar">
-                                <span class="text-xl">📋</span>
-                                <span class="text-[10px] font-bold text-center">Copiar</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-             `;
+            return '<div class="mt-3 pt-3 border-t border-gray-100 bg-indigo-50/50 p-2 rounded-lg">' +
+                '<div class="mb-2">' +
+                    '<span class="text-xs text-purple-600 font-bold uppercase">Valor Mercado Real (IA)</span>' +
+                    '<p class="text-lg font-bold text-gray-900">' + fmt(market) + '</p>' +
+                '</div>' +
+                '<div class="space-y-1">' +
+                    '<div class="flex items-center justify-between text-xs">' +
+                        '<span class="text-gray-500 font-medium">🤝 Consignacion Real</span>' +
+                        '<span class="font-semibold text-green-600">' + fmt(consignacion) + '</span>' +
+                    '</div>' +
+                    '<div class="flex items-center justify-between text-xs">' +
+                        '<span class="text-gray-500 font-medium">⚡ Compra inmediata</span>' +
+                        '<span class="font-semibold text-amber-600">' + fmt(compra) + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="mt-3 pt-3 border-t border-gray-100">' +
+                    '<label class="block text-xs font-semibold text-gray-500 mb-1">💬 Mensaje sugerido</label>' +
+                    '<div class="flex gap-2">' +
+                        '<textarea readonly class="w-full text-xs bg-white border border-gray-200 rounded p-2 text-gray-700 h-40 resize-none leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-500">' +
+'Hola ' + (lead.seller ? lead.seller.split(' ')[0] : 'Amigo') + ', vi tu ' + brand.toUpperCase() + ' ' + model.toUpperCase() + ' ' + lead.year + ' publicado.\n\n' +
+'Nuestra tecnologia analizo el mercado y estima que podriamos gestionar la venta asegurandote ' + fmt(consignacion) + ' liquidos para tu bolsillo.\n\n' +
+'Asi tu obtienes el monto que buscas sin tener que lidiar con extranos ni tramites.\n\n' +
+'Te hace sentido esa cifra para conversar?\n\n' +
+'Quedo atento,\nFelipe Yanez\nAgente de Ventas | Autodirecto.cl</textarea>' +
+                        '<button onclick="copyMessage(this, \'' + lead.url + '\')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded px-3 flex flex-col items-center justify-center gap-1 transition-colors w-16" title="Copiar y Contactar">' +
+                            '<span class="text-xl">📋</span>' +
+                            '<span class="text-[10px] font-bold text-center">Copiar</span>' +
+                        '</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
         }
 
-        // ── Get Real Valuation from API ──────────────────────────────────
         async function getValuation(btn, url, make, model, year, mileage) {
             const originalText = btn.innerHTML;
-
             btn.disabled = true;
             btn.innerHTML = '<span>⏳</span> Tasando...';
-            btn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
-            btn.classList.add('bg-slate-600');
-
+            btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+            btn.classList.add('bg-gray-400');
             try {
                 const response = await fetch(apiUrl('/api/valuation'), {
                     method: 'POST',
@@ -363,11 +303,10 @@ Agente de Ventas | Autodirecto.cl</textarea>
                     body: JSON.stringify({ make, model, year, mileage })
                 });
                 const data = await response.json();
-
                 if (data.success) {
                     updateLead(url, { valuation: data.pricing });
                 } else {
-                    throw new Error(data.error || 'Error en tasación');
+                    throw new Error(data.error || 'Error en tasacion');
                 }
             } catch (e) {
                 console.error(e);
@@ -376,13 +315,12 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 setTimeout(() => {
                     btn.disabled = false;
                     btn.innerHTML = originalText;
-                    btn.classList.remove('bg-red-500', 'bg-slate-600');
-                    btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                    btn.classList.remove('bg-red-500', 'bg-gray-400');
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
                 }, 3000);
             }
         }
 
-        // ── Reset all filters ────────────────────────────────────────────
         function resetFilters() {
             document.getElementById('status-filter').value = 'all';
             document.getElementById('brand-filter').value = '';
@@ -393,26 +331,22 @@ Agente de Ventas | Autodirecto.cl</textarea>
             switchTab('new');
         }
 
-        // ── Switch Tabs ────────────────────────────────────────────────
         function switchTab(status) {
             document.getElementById('status-filter').value = status;
-
             ['new', 'contacted', 'ignored', 'outside', 'all'].forEach(s => {
                 const btn = document.getElementById('tab-' + s);
                 if (!btn) return;
                 if (s === status) {
-                    btn.classList.add('border-blue-500', 'text-blue-400', 'border-b-2');
-                    btn.classList.remove('text-slate-400', 'hover:text-white');
+                    btn.classList.add('border-indigo-500', 'text-indigo-600', 'border-b-2');
+                    btn.classList.remove('text-gray-500', 'hover:text-gray-700');
                 } else {
-                    btn.classList.remove('border-blue-500', 'text-blue-400', 'border-b-2');
-                    btn.classList.add('text-slate-400', 'hover:text-white');
+                    btn.classList.remove('border-indigo-500', 'text-indigo-600', 'border-b-2');
+                    btn.classList.add('text-gray-500', 'hover:text-gray-700');
                 }
             });
-
             renderLeads();
         }
 
-        // ── Main render ──────────────────────────────────────────────────
         function renderLeads() {
             const grid = document.getElementById('leads-grid');
             const statusFilter = document.getElementById('status-filter').value;
@@ -423,22 +357,17 @@ Agente de Ventas | Autodirecto.cl</textarea>
             const yearFilter = parseInt(document.getElementById('year-filter').value) || 0;
 
             const filtered = allLeads.filter(lead => {
-                // Status & Region Logic
                 const status = lead.status || 'new';
-                
                 if (statusFilter === 'outside') {
-                    // "Fuera de Región" tab — only show non-V-Region cars
                     if (lead.is_v_region) return false;
                 } else if (statusFilter !== 'all') {
-                    // Regular tabs (Nuevos, Contactados, Ignorados) only show V Region cars
                     if (!lead.is_v_region) return false;
                     if (status !== statusFilter) return false;
                 }
-
-                if (yearFilter && lead.year && lead.year < yearFilter) return false;
+                if (yearFilter && lead.year && parseInt(lead.year) < yearFilter) return false;
                 const { brand, model } = parseBrandModel(lead.title);
-                if (brandFilter && brand.toLowerCase() !== brandFilter) return false;
-                if (modelFilter && !model.toLowerCase().startsWith(modelFilter)) return false;
+                if (brandFilter && brand !== brandFilter) return false;
+                if (modelFilter && !model.startsWith(modelFilter)) return false;
                 const price = parsePrice(lead.price);
                 if (price !== null) {
                     if (priceMin && price < priceMin) return false;
@@ -448,29 +377,36 @@ Agente de Ventas | Autodirecto.cl</textarea>
             });
 
             document.getElementById('filter-stats').innerText =
-                `Mostrando ${filtered.length} de ${allLeads.length}`;
-            document.getElementById('total-leads').innerText = `${filtered.length} / ${allLeads.length} Leads`;
+                'Mostrando ' + filtered.length + ' de ' + allLeads.length;
+            document.getElementById('total-leads').innerText =
+                filtered.length + ' / ' + allLeads.length + ' Leads';
             grid.innerHTML = '';
 
             if (filtered.length === 0) {
-                grid.innerHTML = '<div class="col-span-full text-center py-16 text-slate-500 text-lg">Sin resultados para estos filtros</div>';
+                grid.innerHTML = '<div class="col-span-full text-center py-16 text-gray-400 text-lg">Sin resultados para estos filtros</div>';
                 return;
             }
 
             filtered.forEach(lead => {
                 const card = document.createElement('div');
-                card.className = `glass rounded-xl overflow-hidden hover:border-slate-500 transition-all duration-200 flex flex-col ${lead.status === 'ignored' ? 'opacity-50' : ''}`;
+                card.className = 'bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200 border border-gray-100 flex flex-col' + (lead.status === 'ignored' ? ' opacity-50' : '');
 
-                const price = lead.price || 'N/A';
+                let priceStr = lead.price || 'N/A';
+                if (priceStr.startsWith && priceStr.startsWith("CLP")) {
+                    const priceNum = parsePrice(priceStr);
+                    if (priceNum) priceStr = "CLP " + priceNum.toLocaleString('es-CL');
+                }
+                const price = priceStr;
+
                 const { brand, model } = parseBrandModel(lead.title);
                 const year = lead.year || 2020;
                 const mileage = lead.mileage || "0";
 
-                let statusColor = 'bg-slate-700 text-slate-300';
+                let statusColor = 'bg-gray-100 text-gray-800';
                 let timerHtml = '';
 
                 if (lead.status === 'contacted') {
-                    statusColor = 'bg-green-900 text-green-300 border border-green-700';
+                    statusColor = 'bg-green-100 text-green-800';
                     if (lead.contacted_at) {
                         const now = Math.floor(Date.now() / 1000);
                         const deadline = lead.contacted_at + (72 * 3600);
@@ -478,104 +414,75 @@ Agente de Ventas | Autodirecto.cl</textarea>
                         if (remaining > 0) {
                             const h = Math.floor(remaining / 3600);
                             const m = Math.floor((remaining % 3600) / 60);
-                            timerHtml = `<span class="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded text-xs font-bold border border-blue-500/30 flex items-center gap-1">
-                                            <span>⏳</span> ${h}h ${m}m
-                                         </span>`;
+                            timerHtml = '<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold border border-indigo-100 flex items-center gap-1"><span>⏳</span> ' + h + 'h ' + m + 'm</span>';
                         } else {
-                            timerHtml = `<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-xs font-bold border border-red-500/30 flex items-center gap-1">
-                                            <span>⚠️</span> Expirado
-                                         </span>`;
+                            timerHtml = '<span class="bg-red-50 text-red-700 px-2 py-0.5 rounded text-xs font-bold border border-red-100 flex items-center gap-1"><span>⚠️</span> Expirado</span>';
                         }
                     }
                 }
-                if (lead.status === 'ignored') statusColor = 'bg-red-900/50 text-red-400 border border-red-800';
+                if (lead.status === 'ignored') statusColor = 'bg-red-50 text-red-800';
 
-                const photoHtml = lead.photo_url
-                    ? `<img src="${apiUrl('/api/img-proxy')}?url=${encodeURIComponent(lead.photo_url)}&id=${lead.id || ''}" alt="${lead.title}" class="w-full h-44 object-cover bg-slate-800" loading="lazy" onerror="this.onerror=null;this.src='https://placehold.co/400x176/1e293b/64748b?text=Sin+Foto';">`
-                    : `<div class="w-full h-44 bg-slate-800 flex items-center justify-center text-slate-600 text-5xl">🚗</div>`;
+                const listingId = lead.id || '';
+                const imgSrc = proxyPhoto(lead.photo_url, listingId);
+                const photoHtml = (lead.photo_url || listingId)
+                    ? '<img src="' + imgSrc + '" alt="' + lead.title + '" class="w-full h-44 object-cover bg-gray-100" onerror="this.onerror=null;this.src=\'https://placehold.co/400x176/e5e7eb/9ca3af?text=Sin+Foto\';">'
+                    : '<div class="w-full h-44 bg-gray-100 flex items-center justify-center text-gray-400 text-5xl">🚗</div>';
 
                 let valuationContent = '';
                 if (lead.valuation) {
                     valuationContent = renderValuationBox(lead.valuation, lead);
                 } else {
-                    valuationContent = `
-                        <button onclick="getValuation(this, '${lead.url}', '${brand}', '${model}', '${year}', '${mileage}')"
-                            class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors mb-2">
-                            <span>📊</span> Tasar con IA
-                        </button>
-                    `;
+                    valuationContent = '<button onclick="getValuation(this, \'' + lead.url + '\', \'' + brand + '\', \'' + model + '\', \'' + year + '\', \'' + mileage + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors mb-2"><span>📊</span> Tasar con IA</button>';
                 }
 
-                card.innerHTML = `
-                    <div class="relative">
-                        ${photoHtml}
-                        ${lead.is_sold ? `<span class="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">VENDIDO</span>` : ''}
-                        <div class="absolute top-2 right-2 flex flex-col items-end gap-1">
-                            <span class="px-2 py-1 text-xs font-bold rounded-md bg-orange-500/20 text-orange-300 shadow-sm border border-orange-500/30">
-                                🔥 ${lead.score || 0}/100
-                            </span>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor} capitalize shadow-sm">
-                                ${lead.status || 'new'}
-                            </span>
-                            ${timerHtml}
-                        </div>
-                    </div>
-                    <div class="p-4 flex-grow">
-                        <h3 class="text-base font-bold text-white mb-1 leading-snug line-clamp-2" title="${lead.title}">${lead.title}</h3>
-                        <div class="mb-3">
-                            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Precio pedido</span>
-                            <p class="text-xl font-semibold text-blue-400">${price}</p>
-                        </div>
-                        ${valuationContent}
-                        <hr class="my-2 border-slate-700">
-                        <div class="space-y-1 text-sm text-slate-400">
-                            <div class="flex items-center">
-                                <span class="w-5 text-center mr-2">📍</span> ${lead.location || 'N/A'}
-                                ${lead.is_v_region && lead.distance_to_vina !== undefined && lead.distance_to_vina !== 9999 ? `<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 whitespace-nowrap">${lead.distance_to_vina}km a Viña</span>` : ''}
-                            </div>
-                            <div class="flex items-center">
-                                <span class="w-5 text-center mr-2">📅</span> ${lead.year || '----'}
-                                ${lead.mileage ? `<span class="ml-2 text-slate-500">• ${lead.mileage}</span>` : ''}
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-5 text-center mr-2">👤</span>
-                                <input
-                                    type="text"
-                                    value="${lead.seller_name || ''}"
-                                    placeholder="Nombre del vendedor..."
-                                    class="flex-1 bg-transparent text-slate-300 placeholder-slate-600 text-sm border-b border-slate-700 focus:border-blue-500 focus:outline-none py-0.5 transition-colors"
-                                    onchange="saveSellerName('${lead.url}', this.value)"
-                                    onclick="event.stopPropagation()"
-                                >
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bg-slate-800/50 px-4 py-3 border-t border-slate-700 flex justify-between items-center gap-2">
-                        <a href="${lead.url}" target="_blank" rel="noopener noreferrer"
-                           class="flex-1 text-center bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
-                            Ver en FB
-                        </a>
-                        <div class="relative inline-block text-left group">
-                            <button class="text-slate-400 hover:text-white p-2 text-lg">⋮</button>
-                            <div class="hidden group-hover:block absolute right-0 bottom-full mb-2 w-36 bg-slate-800 rounded-md shadow-lg ring-1 ring-slate-600 z-10">
-                                <div class="py-1">
-                                    <button onclick="updateLead('${lead.url}', {status: 'contacted'})" class="block w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700">✅ Contactado</button>
-                                    <button onclick="updateLead('${lead.url}', {status: 'ignored'})"   class="block w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700">🚫 Ignorar</button>
-                                    <button onclick="updateLead('${lead.url}', {status: 'new'})"       class="block w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700">🔄 Resetear</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+                const locationExtra = (lead.is_v_region && lead.distance_to_vina !== undefined && lead.distance_to_vina !== 9999)
+                    ? '<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">' + lead.distance_to_vina + 'km a Vina</span>'
+                    : '';
+
+                card.innerHTML =
+                    '<div class="relative">' +
+                        photoHtml +
+                        (lead.is_sold ? '<span class="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">VENDIDO</span>' : '') +
+                        '<div class="absolute top-2 right-2 flex flex-col items-end gap-1">' +
+                            '<span class="px-2 py-1 text-xs font-bold rounded-md bg-orange-100 text-orange-800 shadow-sm border border-orange-200">🔥 ' + (lead.score || 0) + '/100</span>' +
+                            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + statusColor + ' capitalize shadow-sm">' + (lead.status || 'new') + '</span>' +
+                            timerHtml +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="p-4 flex-grow">' +
+                        '<h3 class="text-base font-bold text-gray-900 mb-1 leading-snug line-clamp-2" title="' + lead.title + '">' + lead.title + '</h3>' +
+                        '<div class="mb-3">' +
+                            '<span class="text-xs text-gray-400 uppercase tracking-wide font-medium">Precio pedido</span>' +
+                            '<p class="text-xl font-semibold text-blue-600">' + price + '</p>' +
+                        '</div>' +
+                        valuationContent +
+                        '<hr class="my-2 border-gray-100">' +
+                        '<div class="space-y-1 text-sm text-gray-600">' +
+                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📍</span> ' + (lead.location || 'N/A') + locationExtra + '</div>' +
+                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📅</span> ' + (lead.year || '----') + (lead.mileage ? '<span class="ml-2 text-gray-400">• ' + lead.mileage + '</span>' : '') + '</div>' +
+                            '<div class="flex items-center mt-1"><span class="w-5 text-center mr-2 text-gray-400">👤</span> ' + (lead.seller || 'Desconocido') + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="bg-gray-50 px-4 py-3 border-t border-gray-100 flex justify-between items-center gap-2">' +
+                        '<a href="' + lead.url + '" target="_blank" rel="noopener noreferrer" class="flex-1 text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">Ver en FB</a>' +
+                        '<div class="relative inline-block text-left group">' +
+                            '<button class="text-gray-400 hover:text-gray-600 p-2 text-lg">⋮</button>' +
+                            '<div class="hidden group-hover:block absolute right-0 bottom-full mb-2 w-36 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">' +
+                                '<div class="py-1">' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'contacted\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">✅ Contactado</button>' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'ignored\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">🚫 Ignorar</button>' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'new\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">🔄 Resetear</button>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
                 grid.appendChild(card);
             });
         }
 
-        // ── Load data from API ───────────────────────────────────────────
         async function loadLeads() {
             const grid = document.getElementById('leads-grid');
-            grid.innerHTML = '<div class="col-span-full text-center py-12 text-slate-500">Cargando autos...</div>';
-
+            grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500">Cargando autos...</div>';
             try {
                 const response = await fetch(apiUrl('/api/leads'));
                 allLeads = await response.json();
@@ -583,28 +490,25 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 renderLeads();
             } catch (err) {
                 console.error(err);
-                grid.innerHTML = '<div class="col-span-full text-center py-12 text-red-400">Error cargando datos. Revisa la consola.</div>';
+                grid.innerHTML = '<div class="col-span-full text-center py-12 text-red-500">Error cargando datos. Revisa la consola.</div>';
             }
         }
 
-        // ── Update lead status/valuation ─────────────────────────────────
         async function updateLead(url, changes) {
             try {
-                const payload = { url, ...changes };
+                const payload = { url: url };
+                Object.assign(payload, changes);
                 await fetch(apiUrl('/api/leads/status'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-
                 const lead = allLeads.find(l => l.url === url);
                 if (lead) {
                     if (changes.status) {
                         lead.status = changes.status;
                         if (changes.status === 'contacted') {
                             lead.contacted_at = Math.floor(Date.now() / 1000);
-                            // 🔗 Bridge: Try to match with Autodirecto appointment
-                            tryBridgeMatch(lead);
                         }
                     }
                     if (changes.valuation) {
@@ -617,611 +521,51 @@ Agente de Ventas | Autodirecto.cl</textarea>
             }
         }
 
-        // ── Bridge Match: Connect with Autodirecto ───────────────────────
-        async function tryBridgeMatch(lead) {
-            try {
-                const response = await fetch(apiUrl('/api/bridge/match'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: lead.title,
-                        mileage: lead.mileage,
-                        seller_name: lead.seller_name || '',
-                        url: lead.url,
-                        id: lead.id
-                    })
-                });
-                const data = await response.json();
-
-                if (data.matched && data.confidence !== 'low') {
-                    const appt = data.appointment;
-                    const dateStr = appt.appointment_date || '';
-                    const timeStr = appt.appointment_time || '';
-                    lead.bridge_match = data;
-
-                    // Show match notification
-                    showBridgeNotification(
-                        `✅ Match encontrado (${data.confidence})`,
-                        `${appt.full_name} tiene cita el ${dateStr} a las ${timeStr}`,
-                        'success'
-                    );
-                } else {
-                    console.log('[bridge] No match found for', lead.title);
-                }
-            } catch (err) {
-                console.warn('[bridge] Match error:', err);
-                // Non-blocking — don't alert on bridge failures
-            }
-        }
-
-        // ── Bridge notification toast ────────────────────────────────────
-        function showBridgeNotification(title, message, type) {
-            const toast = document.createElement('div');
-            const bgColor = type === 'success'
-                ? 'bg-green-900/90 border-green-500/50'
-                : 'bg-blue-900/90 border-blue-500/50';
-            toast.className = `fixed bottom-6 right-6 z-[100] ${bgColor} border backdrop-blur-lg rounded-xl p-4 shadow-2xl max-w-sm animate-slide-in`;
-            toast.innerHTML = `
-                <div class="flex items-start gap-3">
-                    <span class="text-2xl">��</span>
-                    <div>
-                        <p class="font-bold text-white text-sm">${title}</p>
-                        <p class="text-slate-300 text-xs mt-1">${message}</p>
-                    </div>
-                    <button onclick="this.parentElement.parentElement.remove()" class="text-slate-400 hover:text-white ml-2">✕</button>
-                </div>
-            `;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 8000);
-        }
-
-        // ── Trigger scrape / update from HAR ────────────────────────────
-        async function startScrape(event) {
-            const btn = event ? event.currentTarget : document.querySelector('button[onclick="startScrape()"]');
-            if (!btn) return;
-            const orig = btn.innerHTML;
-            btn.innerHTML = '<span class="inline-block animate-spin">⏳</span> Parseando HAR...';
-            btn.disabled = true;
-
-            try {
-                const response = await fetch(apiUrl('/api/scrape'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                });
-                const data = await response.json();
-                btn.innerHTML = orig;
-                btn.disabled = false;
-
-                if (data.success) {
-                    // Show results modal
-                    const modal = document.createElement('div');
-                    modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60';
-                    modal.innerHTML = `
-                        <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
-                            <h3 class="text-xl font-bold text-white mb-4">✅ HAR Actualizado</h3>
-                            <div class="space-y-2 text-sm">
-                                <div class="flex justify-between p-3 bg-green-900/30 rounded-lg border border-green-700/40">
-                                    <span class="text-green-400 font-medium">🆕 Autos nuevos</span>
-                                    <span class="text-white font-bold">${data.new}</span>
-                                </div>
-                                <div class="flex justify-between p-3 bg-yellow-900/30 rounded-lg border border-yellow-700/40">
-                                    <span class="text-yellow-400 font-medium">� Precio cambió</span>
-                                    <span class="text-white font-bold">${data.updated}</span>
-                                </div>
-                                <div class="flex justify-between p-3 bg-red-900/30 rounded-lg border border-red-700/40">
-                                    <span class="text-red-400 font-medium">� Ya no aparecen</span>
-                                    <span class="text-white font-bold">${data.gone}</span>
-                                </div>
-                                <div class="flex justify-between p-3 bg-slate-800 rounded-lg border border-slate-600">
-                                    <span class="text-slate-300 font-medium">📊 Total leads</span>
-                                    <span class="text-white font-bold text-lg">${data.total}</span>
-                                </div>
-                                <p class="text-xs text-slate-500 mt-1">📄 ${data.har_file} · ${data.har_date}</p>
-                            </div>
-                            <button onclick="this.closest('.fixed').remove(); loadLeads();"
-                                class="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition-colors">
-                                Cerrar y Recargar
-                            </button>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-
-                } else if (data.error === 'HAR_NOT_FOUND') {
-                    // Show step-by-step instructions modal
-                    const modal = document.createElement('div');
-                    modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60';
-                    modal.innerHTML = `
-                        <div class="glass rounded-2xl p-6 max-w-lg w-full mx-4 animate-slide-in">
-                            <h3 class="text-xl font-bold text-white mb-2">📥 Cómo actualizar los autos</h3>
-                            <p class="text-slate-400 text-sm mb-4">
-                                Facebook bloquea scrapers automáticos — el HAR es la única forma confiable de capturar los datos reales.
-                                Solo toma 3 minutos:
-                            </p>
-                            <ol class="space-y-3 text-sm text-slate-300">
-                                <li class="flex gap-3">
-                                    <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">1</span>
-                                    <span>Abre <a href="https://www.facebook.com/marketplace/category/vehicles" target="_blank" class="text-blue-400 underline">Facebook Marketplace → Vehículos</a> en Chrome</span>
-                                </li>
-                                <li class="flex gap-3">
-                                    <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">2</span>
-                                    <span>Presiona <kbd class="bg-slate-700 px-1 rounded">F12</kbd> → pestaña <strong>Red (Network)</strong> → filtra por <code class="bg-slate-700 px-1 rounded">graphql</code></span>
-                                </li>
-                                <li class="flex gap-3">
-                                    <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">3</span>
-                                    <span>Desplázate hacia abajo en el Marketplace hasta cargar los autos que quieres</span>
-                                </li>
-                                <li class="flex gap-3">
-                                    <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">4</span>
-                                    <span>Clic derecho en cualquier petición → <strong>"Guardar todo como HAR con contenido"</strong></span>
-                                </li>
-                                <li class="flex gap-3">
-                                    <span class="bg-emerald-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">5</span>
-                                    <span>Guarda el archivo como <code class="bg-slate-700 px-1 rounded text-emerald-300">www.facebook.com.har</code> en la carpeta <code class="bg-slate-700 px-1 rounded">Autodirecto/</code> (sobreescribe el anterior)</span>
-                                </li>
-                                <li class="flex gap-3">
-                                    <span class="bg-emerald-600 text-white rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold">6</span>
-                                    <span>Vuelve aquí y haz clic en <strong>🔄 Actualizar desde HAR</strong> de nuevo</span>
-                                </li>
-                            </ol>
-                            <button onclick="this.closest('.fixed').remove()"
-                                class="mt-5 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-lg transition-colors">
-                                Entendido
-                            </button>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-                } else {
-                    alert("Error: " + (data.error || "Unknown error"));
-                }
-            } catch (e) {
-                btn.innerHTML = orig;
-                btn.disabled = false;
-                alert("Error de red: " + e.message);
-            }
-        }
-
-        // ── Live Playwright Scrape ──────────────────────────────────────
-        let _scrapeJobId = null;
-        let _scrapePoller = null;
-
-        async function startLiveScrape() {
-            const btn = document.getElementById('btn-scrape-live');
-            const origHTML = btn.innerHTML;
-
-            // Show config modal
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60';
-            modal.id = 'scrape-live-modal';
-            modal.innerHTML = `
-                <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
-                    <h3 class="text-xl font-bold text-white mb-3">🕷️ Scrapear Facebook Marketplace</h3>
-
-                    <div class="bg-blue-900/30 border border-blue-700/40 rounded-lg p-3 mb-4 text-xs text-blue-300 flex items-start gap-2">
-                        <span class="text-lg leading-none">💻</span>
-                        <span>Este scraper <strong class="text-white">solo funciona localmente</strong> — necesita abrir Chrome con tu sesión de Facebook.<br>
-                        Si estás en el servidor remoto, corre primero <code class="bg-slate-800 px-1 rounded text-emerald-400">python app.py</code> en tu Mac y abre <strong class="text-white">localhost:8080/funnels</strong>.</span>
-                    </div>
-
-                    <div class="space-y-4 mb-5">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Scrolls (más scrolls = más autos)</label>
-                            <input type="range" id="scrape-scrolls" min="10" max="80" value="30" class="w-full mt-1"
-                                oninput="document.getElementById('scrape-scrolls-val').textContent = this.value">
-                            <div class="flex justify-between text-xs text-slate-500 mt-1">
-                                <span>10 (~1 min)</span>
-                                <span id="scrape-scrolls-val" class="text-emerald-400 font-bold">30</span>
-                                <span>80 (~4 min)</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-amber-900/30 border border-amber-700/40 rounded-lg p-3 mb-4 text-xs text-amber-300">
-                        ⚠️ Cierra Google Chrome antes de iniciar — el perfil no puede estar en uso.
-                    </div>
-                    <div id="scrape-live-status" class="min-h-[40px] mb-4"></div>
-                    <div class="flex gap-3">
-                        <button onclick="document.getElementById('scrape-live-modal').remove()"
-                            class="flex-1 px-4 py-2.5 text-sm text-slate-400 hover:text-white border border-slate-600 rounded-lg transition-colors">
-                            Cancelar
-                        </button>
-                        <button id="btn-start-scrape" onclick="doStartLiveScrape()"
-                            class="flex-1 px-4 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors">
-                            🚀 Iniciar Scrape
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        async function doStartLiveScrape() {
-            const btn = document.getElementById('btn-start-scrape');
-            const statusEl = document.getElementById('scrape-live-status');
-            const scrolls = document.getElementById('scrape-scrolls').value;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="inline-block animate-spin">⏳</span> Iniciando...';
-
-            try {
-                const resp = await fetch(apiUrl('/api/scrape-live'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ scrolls: parseInt(scrolls), headless: false })
-                });
-                const data = await resp.json();
-
-                if (!data.success) {
-                    const isLocalError = data.error && data.error.includes('Playwright');
-                    statusEl.innerHTML = isLocalError ? `
-                        <div class="p-4 bg-amber-900/30 border border-amber-700/50 rounded-xl space-y-3">
-                            <p class="text-amber-300 font-semibold text-sm">⚠️ El scraper requiere tu Mac — no el servidor remoto.</p>
-                            <p class="text-slate-400 text-xs leading-relaxed">
-                                Facebook Marketplace necesita un navegador real con tu sesión iniciada.<br>
-                                Corre el CRM <strong class="text-white">localmente</strong> y luego presiona Scrapear.
-                            </p>
-                            <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-emerald-400 select-all">
-                                cd SimplyAPI &amp;&amp; python app.py
-                            </div>
-                            <p class="text-slate-500 text-xs">Luego abre <strong class="text-slate-300">http://localhost:5050/funnels</strong></p>
-                        </div>
-                    ` : '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
-                    btn.disabled = false;
-                    btn.innerHTML = '🚀 Reintentar';
-                    return;
-                }
-
-                _scrapeJobId = data.job_id;
-                statusEl.innerHTML = `
-                    <div class="flex items-center gap-3 p-3 bg-emerald-900/30 border border-emerald-700/40 rounded-lg">
-                        <span class="inline-block animate-spin text-xl">🔄</span>
-                        <div>
-                            <p class="text-emerald-400 font-medium text-sm">Scraping en curso…</p>
-                            <p class="text-slate-400 text-xs">Chrome se abrirá — no lo cierres. ~${Math.round(scrolls * 3 / 60)} min estimado.</p>
-                        </div>
-                    </div>
-                `;
-                btn.style.display = 'none';
-
-                // Update header button too
-                const headerBtn = document.getElementById('btn-scrape-live');
-                headerBtn.innerHTML = '<span class="inline-block animate-spin">🔄</span> Scraping...';
-                headerBtn.disabled = true;
-
-                // Start polling
-                _scrapePoller = setInterval(() => pollScrapeJob(), 3000);
-
-            } catch (e) {
-                statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ Error de red: ' + e.message + '</p>';
-                btn.disabled = false;
-                btn.innerHTML = '🚀 Reintentar';
-            }
-        }
-
-        async function pollScrapeJob() {
-            if (!_scrapeJobId) return;
-            try {
-                const resp = await fetch(apiUrl('/api/scrape-live/' + _scrapeJobId));
-                const data = await resp.json();
-                const statusEl = document.getElementById('scrape-live-status');
-
-                if (data.status === 'running') {
-                    // Still running — update status
-                    if (statusEl) {
-                        statusEl.innerHTML = `
-                            <div class="flex items-center gap-3 p-3 bg-emerald-900/30 border border-emerald-700/40 rounded-lg">
-                                <span class="inline-block animate-spin text-xl">🔄</span>
-                                <div>
-                                    <p class="text-emerald-400 font-medium text-sm">Scraping en curso…</p>
-                                    <p class="text-slate-400 text-xs">Autos encontrados: ${data.listings || 0}</p>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    return;
-                }
-
-                // Done or error — stop polling
-                clearInterval(_scrapePoller);
-                _scrapePoller = null;
-
-                // Reset header button
-                const headerBtn = document.getElementById('btn-scrape-live');
-                headerBtn.innerHTML = '<span>🕷️</span> Scrapear FB';
-                headerBtn.disabled = false;
-
-                if (data.status === 'done') {
-                    // Replace modal content with results
-                    const modal = document.getElementById('scrape-live-modal');
-                    if (modal) {
-                        modal.innerHTML = `
-                            <div class="glass rounded-2xl p-6 max-w-md w-full mx-4 animate-slide-in">
-                                <h3 class="text-xl font-bold text-white mb-4">✅ Scrape Completado</h3>
-                                <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between p-3 bg-green-900/30 rounded-lg border border-green-700/40">
-                                        <span class="text-green-400 font-medium">🚗 Autos capturados</span>
-                                        <span class="text-white font-bold">${data.listings}</span>
-                                    </div>
-                                    <div class="flex justify-between p-3 bg-slate-800 rounded-lg border border-slate-600">
-                                        <span class="text-slate-300 font-medium">📊 Total en dashboard</span>
-                                        <span class="text-white font-bold text-lg">${data.cache_total}</span>
-                                    </div>
-                                </div>
-                                <button onclick="document.getElementById('scrape-live-modal').remove(); loadLeads();"
-                                    class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-lg transition-colors">
-                                    Cerrar y Recargar
-                                </button>
-                            </div>
-                        `;
-                    }
-                    showToast('Scrape exitoso', data.listings + ' autos capturados desde Facebook Marketplace');
-                } else {
-                    // Error
-                    if (statusEl) {
-                        statusEl.innerHTML = '<p class="text-red-400 text-sm">❌ ' + (data.error || 'Error desconocido') + '</p>';
-                    }
-                    const startBtn = document.getElementById('btn-start-scrape');
-                    if (startBtn) {
-                        startBtn.style.display = '';
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = '🚀 Reintentar';
-                    }
-                }
-
-                _scrapeJobId = null;
-            } catch (e) {
-                console.error('Poll error:', e);
-            }
-        }
-
-        // ── Save seller name (HAR-sourced or manually entered) ───────────
-        async function saveSellerName(url, name) {
-            try {
-                await fetch(apiUrl('/api/leads/status'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, seller_name: name })
-                });
-                // Update local cache
-                const lead = allLeads.find(l => l.url === url);
-                if (lead) lead.seller_name = name;
-            } catch (e) {
-                console.error('Error saving seller name:', e);
-            }
-        }
-
-        // ── HAR Dropdown ─────────────────────────────────────────────────
-        function toggleHarDropdown() {
-            const dd = document.getElementById('har-dropdown');
-            dd.classList.toggle('hidden');
-        }
-        function hideHarDropdown() {
-            document.getElementById('har-dropdown').classList.add('hidden');
-        }
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(e) {
-            const wrapper = document.getElementById('har-dropdown-wrapper');
-            if (wrapper && !wrapper.contains(e.target)) hideHarDropdown();
-        });
-
-        // ── HAR Import Modal ─────────────────────────────────────────────
-        function showHarModal() {
-            document.getElementById('har-modal').classList.remove('hidden');
-        }
-        function hideHarModal() {
-            document.getElementById('har-modal').classList.add('hidden');
-            document.getElementById('har-drop-zone').classList.remove('border-purple-400', 'bg-purple-900/20');
-            document.getElementById('har-file-name').textContent = '';
-            document.getElementById('har-result').innerHTML = '';
-            document.getElementById('har-file-input').value = '';
-        }
-
-        // Drag & drop setup
-        document.addEventListener('DOMContentLoaded', function() {
-            const zone = document.getElementById('har-drop-zone');
-            const fileInput = document.getElementById('har-file-input');
-
-            zone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                zone.classList.add('border-purple-400', 'bg-purple-900/20');
-            });
-            zone.addEventListener('dragleave', () => {
-                zone.classList.remove('border-purple-400', 'bg-purple-900/20');
-            });
-            zone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                zone.classList.remove('border-purple-400', 'bg-purple-900/20');
-                const file = e.dataTransfer.files[0];
-                if (file) handleHarFile(file);
-            });
-            zone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files[0]) handleHarFile(e.target.files[0]);
-            });
-        });
-
-        function handleHarFile(file) {
-            if (!file.name.endsWith('.har')) {
-                document.getElementById('har-result').innerHTML =
-                    '<p class="text-red-400 text-sm">Solo se aceptan archivos .har</p>';
-                return;
-            }
-            document.getElementById('har-file-name').textContent = file.name;
-            document.getElementById('har-drop-zone').classList.add('border-purple-400', 'bg-purple-900/20');
-            parseAndSendHar(file);
-        }
-
-        // ── Parse HAR in the browser — no large file upload ──────────────
-        function parseHarListings(har) {
-            const listingMap = {};
-            const entries = (har.log || {}).entries || [];
-
-            for (const entry of entries) {
-                const text = (entry.response?.content?.text) || '';
-                if (!text || !text.includes('marketplace_search')) continue;
-
-                // Facebook returns newline-delimited JSON per response
-                for (const line of text.split('\n')) {
-                    const trimmed = line.trim();
-                    if (!trimmed) continue;
-                    let obj;
-                    try { obj = JSON.parse(trimmed); } catch { continue; }
-
-                    let edges;
-                    try { edges = obj.data.marketplace_search.feed_units.edges; }
-                    catch { continue; }
-                    if (!Array.isArray(edges)) continue;
-
-                    for (const edge of edges) {
-                        const listing = edge?.node?.listing;
-                        if (!listing?.id) continue;
-
-                        const priceInfo = listing.listing_price || {};
-                        const rev = listing.location?.reverse_geocode || {};
-                        const cityPage = rev.city_page || {};
-                        const locText = cityPage.display_name ||
-                            [rev.city, rev.state].filter(Boolean).join(', ');
-
-                        const subtitles = (listing.custom_sub_titles_with_rendering_flags || [])
-                            .map(s => ({ subtitle: s.subtitle || '' }));
-
-                        const photoUri = listing.primary_listing_photo?.image?.uri || '';
-                        const seller = listing.marketplace_listing_seller || {};
-
-                        listingMap[listing.id] = {
-                            id: listing.id,
-                            itemUrl: `https://www.facebook.com/marketplace/item/${listing.id}/`,
-                            listingTitle: listing.marketplace_listing_title || listing.custom_title || '',
-                            listingPrice: {
-                                amount: priceInfo.amount || '0',
-                                formatted_amount: priceInfo.formatted_amount || '',
-                                currency: 'CLP',
-                            },
-                            locationText: { text: locText },
-                            customSubTitlesWithRenderingFlags: subtitles,
-                            primaryListingPhoto: { photo_image_url: photoUri },
-                            isSold: listing.is_sold || false,
-                            sellerName: seller.name || '',
-                            sellerId: seller.id || '',
-                            source: 'har',
-                        };
-                    }
-                }
-            }
-            return Object.values(listingMap);
-        }
-
-        async function parseAndSendHar(file) {
-            const resultEl = document.getElementById('har-result');
-            const btn = document.getElementById('har-upload-btn');
-            resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Leyendo HAR en el navegador...</p>';
-            btn.disabled = true;
-
-            try {
-                // Read file locally — no upload
-                const text = await file.text();
-                resultEl.innerHTML = '<p class="text-slate-400 text-sm">⏳ Extrayendo autos del HAR...</p>';
-
-                let har;
-                try { har = JSON.parse(text); }
-                catch { resultEl.innerHTML = '<p class="text-red-400 text-sm">❌ Archivo HAR inválido (no es JSON válido)</p>'; btn.disabled = false; return; }
-
-                const listings = parseHarListings(har);
-                if (!listings.length) {
-                    resultEl.innerHTML = '<p class="text-red-400 text-sm">❌ No se encontraron autos en este HAR. Asegúrate de navegar el Marketplace antes de guardar.</p>';
-                    btn.disabled = false;
-                    return;
-                }
-
-                resultEl.innerHTML = `<p class="text-slate-400 text-sm">⏳ Enviando ${listings.length} autos al servidor...</p>`;
-
-                // Send only the extracted listings (tiny payload, not the raw HAR)
-                const resp = await fetch(apiUrl('/api/upload-har'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ listings })
-                });
-
-                let data;
-                try { data = await resp.json(); }
-                catch {
-                    const t = await resp.text().catch(() => resp.statusText);
-                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error del servidor: ${t.slice(0, 120)}</p>`;
-                    btn.disabled = false;
-                    return;
-                }
-
-                if (!resp.ok || data.error) {
-                    resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error: ${data.error || 'Unknown error'}</p>`;
-                } else {
-                    resultEl.innerHTML = `
-                        <div class="space-y-1 text-sm">
-                            <p class="text-green-400 font-semibold">✅ HAR importado correctamente</p>
-                            <p class="text-slate-300">📥 Nuevos autos añadidos: <strong>${data.new_listings}</strong></p>
-                            <p class="text-slate-300">📊 Total en base de datos: <strong>${data.total_listings}</strong></p>
-                            <p class="text-slate-300">👤 Con nombre de vendedor: <strong>${data.with_seller_name}</strong></p>
-                        </div>
-                    `;
-                    await loadLeads();
-                }
-            } catch (e) {
-                resultEl.innerHTML = `<p class="text-red-400 text-sm">❌ Error: ${e.message}</p>`;
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        // ── SSE Scrape (Playwright live scrape with progress banner) ──────
-        function startScrapeSse() {
+        function startScrape() {
             const banner   = document.getElementById('scrape-banner');
             const bar      = document.getElementById('scrape-bar');
             const pctEl    = document.getElementById('scrape-pct');
             const logEl    = document.getElementById('scrape-log');
             const vehEl    = document.getElementById('scrape-vehicles');
 
-            // Show banner
             banner.classList.remove('hidden');
             bar.style.width = '0%';
-            bar.classList.remove('bg-blue-400', 'bg-red-400');
-            bar.classList.add('bg-green-400');
             pctEl.textContent = '0%';
             logEl.textContent = 'Iniciando scraper...';
             vehEl.textContent = '';
 
-            const evtSource = new EventSource(apiUrl('/api/scrape-sse'));
+            const evtSource = new EventSource(apiUrl('/api/scrape'));
 
-            evtSource.onmessage = (e) => {
+            evtSource.onmessage = function(e) {
                 let msg;
-                try { msg = JSON.parse(e.data); } catch { return; }
+                try { msg = JSON.parse(e.data); } catch(ex) { return; }
 
                 const pct = msg.pct || 0;
                 bar.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
                 if (msg.log) logEl.textContent = msg.log;
-                if (msg.vehicles) vehEl.textContent = `${msg.vehicles} vehículos encontrados`;
+                if (msg.vehicles) vehEl.textContent = msg.vehicles + ' vehiculos encontrados';
 
                 if (msg.done) {
                     evtSource.close();
                     bar.classList.remove('bg-green-400');
                     bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
-                    // Reload leads after short delay
-                    setTimeout(() => {
+                    setTimeout(function() {
                         loadLeads();
-                        setTimeout(() => banner.classList.add('hidden'), 4000);
+                        setTimeout(function() { banner.classList.add('hidden'); }, 4000);
                     }, 1500);
                 }
             };
 
-            evtSource.onerror = () => {
+            evtSource.onerror = function() {
                 evtSource.close();
                 logEl.textContent = '❌ Connection lost or scraper exited.';
-                bar.classList.remove('bg-green-400');
                 bar.classList.add('bg-red-400');
             };
         }
 
-        // ── Auto-Messenger via SSE ──────────────────────────────────────
         function startMessaging() {
-            const limit = prompt('¿Cuántos mensajes enviar? (máx recomendado: 50)', '10');
+            const limit = prompt('Cuantos mensajes enviar? (max recomendado: 50)', '10');
             if (!limit || isNaN(limit)) return;
 
             const banner = document.getElementById('msg-banner');
@@ -1232,39 +576,36 @@ Agente de Ventas | Autodirecto.cl</textarea>
 
             banner.classList.remove('hidden');
             bar.style.width = '0%';
-            bar.classList.remove('bg-blue-400', 'bg-red-400');
-            bar.classList.add('bg-yellow-400');
             pctEl.textContent = '0%';
             logEl.textContent = 'Iniciando auto-messenger...';
             sentEl.textContent = '';
 
-            const evtSource = new EventSource(apiUrl(`/api/auto_message?limit=${limit}`));
+            const evtSource = new EventSource(apiUrl('/api/auto_message?limit=' + limit));
 
-            evtSource.onmessage = (e) => {
+            evtSource.onmessage = function(e) {
                 let msg;
-                try { msg = JSON.parse(e.data); } catch { return; }
+                try { msg = JSON.parse(e.data); } catch(ex) { return; }
 
                 const pct = msg.pct || 0;
                 bar.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
                 if (msg.log) logEl.textContent = msg.log;
-                if (msg.sent !== undefined) sentEl.textContent = `${msg.sent} mensaje(s) enviado(s)`;
+                if (msg.sent !== undefined) sentEl.textContent = msg.sent + ' mensaje(s) enviado(s)';
 
                 if (msg.done) {
                     evtSource.close();
                     bar.classList.remove('bg-yellow-400');
                     bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
-                    setTimeout(() => {
+                    setTimeout(function() {
                         loadLeads();
-                        setTimeout(() => banner.classList.add('hidden'), 5000);
+                        setTimeout(function() { banner.classList.add('hidden'); }, 5000);
                     }, 2000);
                 }
             };
 
-            evtSource.onerror = () => {
+            evtSource.onerror = function() {
                 evtSource.close();
                 logEl.textContent = '❌ Connection lost or messenger exited.';
-                bar.classList.remove('bg-yellow-400');
                 bar.classList.add('bg-red-400');
             };
         }
@@ -1272,57 +613,5 @@ Agente de Ventas | Autodirecto.cl</textarea>
         // Init
         loadLeads();
     </script>
-
-    <!-- HAR Import Modal -->
-    <div id="har-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-        <div class="glass rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div class="flex justify-between items-start mb-5">
-                <div>
-                    <h2 class="text-xl font-bold text-white">📂 Importar archivo HAR</h2>
-                    <p class="text-slate-400 text-sm mt-1">
-                        Graba el tráfico de red mientras navegas el Marketplace y arrastra el .har aquí.
-                        Los autos repetidos no se duplican.
-                    </p>
-                </div>
-                <button onclick="hideHarModal()" class="text-slate-500 hover:text-white text-xl ml-4">✕</button>
-            </div>
-
-            <!-- Instructions -->
-            <div class="bg-slate-800/60 rounded-xl p-4 mb-5 text-sm text-slate-300 space-y-2">
-                <p class="font-medium text-white">¿Cómo grabar el HAR?</p>
-                <ol class="list-decimal list-inside space-y-1 text-slate-400">
-                    <li>Abre <strong>Chrome DevTools</strong> → pestaña <strong>Network</strong></li>
-                    <li>Navega a <strong>Facebook Marketplace → Vehículos</strong> y desplázate</li>
-                    <li>Haz click derecho en cualquier petición → <strong>Save all as HAR</strong></li>
-                    <li>Arrastra ese archivo aquí abajo</li>
-                </ol>
-            </div>
-
-            <!-- Drop zone -->
-            <div id="har-drop-zone"
-                class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-purple-500 hover:bg-purple-900/10 mb-4">
-                <div class="text-4xl mb-2">📁</div>
-                <p class="text-slate-400 text-sm">Arrastra tu archivo <strong>.har</strong> aquí</p>
-                <p class="text-slate-600 text-xs mt-1">o haz click para seleccionar</p>
-                <p id="har-file-name" class="text-purple-400 text-sm font-medium mt-2"></p>
-                <input type="file" id="har-file-input" accept=".har" class="hidden">
-            </div>
-
-            <!-- Result -->
-            <div id="har-result" class="min-h-[40px]"></div>
-
-            <div class="flex justify-end gap-3 mt-4">
-                <button onclick="hideHarModal()"
-                    class="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors">
-                    Cerrar
-                </button>
-                <button id="har-upload-btn" disabled
-                    class="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg opacity-50 cursor-not-allowed">
-                    Procesando...
-                </button>
-            </div>
-        </div>
-    </div>
 </body>
-
 </html>
