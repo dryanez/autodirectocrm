@@ -5488,6 +5488,33 @@ def index():
 
 
 # ─── API: Stats ───────────────────────────────────────────────────────────────
+@app.route("/api/debug-cookies")
+def debug_cookies():
+    """Diagnose Railway Supabase cookie access."""
+    import requests as _r
+    supa_url = os.environ.get("SUPABASE_URL", "")
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                or os.environ.get("SUPABASE_SERVICE_KEY")
+                or os.environ.get("SUPABASE_KEY", ""))
+    result = {
+        "SUPABASE_URL_set": bool(supa_url),
+        "SUPABASE_KEY_set": bool(supa_key),
+        "SUPABASE_URL_prefix": supa_url[:30] if supa_url else None,
+        "key_prefix": supa_key[:20] if supa_key else None,
+    }
+    if supa_url and supa_key:
+        try:
+            resp = _r.get(
+                f"{supa_url}/rest/v1/app_settings?key=eq.fb_playwright_cookies&select=key,updated_at",
+                headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+                timeout=10
+            )
+            result["status_code"] = resp.status_code
+            result["rows"] = resp.json()
+        except Exception as e:
+            result["error"] = str(e)
+    return jsonify(result)
+
 @app.route("/api/stats")
 def stats():
     with get_conn() as conn:
