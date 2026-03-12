@@ -174,11 +174,16 @@ def _supa_get(table, filters=None, select="*", order=None, limit=None):
             params[k] = v
     if order:
         params["order"] = order
-    if limit:
-        params["limit"] = limit
+    # Supabase default page size is 1000 rows. Use Range header to fetch up to
+    # `limit` rows (or 5000 if no limit specified) so we never silently truncate.
+    max_rows = int(limit) if limit else 5000
+    params["limit"] = max_rows
+    hdrs = _headers(prefer_return=False)
+    hdrs["Range-Unit"] = "items"
+    hdrs["Range"] = f"0-{max_rows - 1}"
     try:
-        r = _req.get(_rest(table), params=params, headers=_headers(prefer_return=False), timeout=10)
-        if r.status_code == 200:
+        r = _req.get(_rest(table), params=params, headers=hdrs, timeout=30)
+        if r.status_code in (200, 206):
             return r.json()
         print(f"[db] GET {table} {r.status_code}: {r.text[:200]}")
         return []

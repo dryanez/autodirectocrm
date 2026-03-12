@@ -144,7 +144,7 @@ if FUNNELS_DIR.exists():
     if not funnels_module._cached_listings:
         try:
             with get_db() as conn:
-                rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+                rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 5000").fetchall()
             funnels_module._cached_listings = [row_to_dict(r) for r in rows]
             print(f"  ✅ Loaded {len(funnels_module._cached_listings)} funnel listings from Supabase")
         except Exception as e:
@@ -163,7 +163,7 @@ if FUNNELS_DIR.exists():
         if not leads:
             try:
                 with get_db() as conn:
-                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 1000").fetchall()
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 5000").fetchall()
                 leads = [row_to_dict(r) for r in rows]
                 # Cache for subsequent requests
                 funnels_module._cached_listings = leads
@@ -192,7 +192,7 @@ if FUNNELS_DIR.exists():
         if not funnels_module._cached_listings:
             try:
                 with get_db() as conn:
-                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 1000").fetchall()
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 5000").fetchall()
                 funnels_module._cached_listings = [row_to_dict(r) for r in rows]
             except Exception:
                 pass
