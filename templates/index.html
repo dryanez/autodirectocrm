@@ -4669,6 +4669,8 @@
                     }
                     return list.sort((a, b) => b.id - a.id);
                 },
+
+                async loadInventario() {
                     this.invLoading = true;
                     try {
                         const r = await this.authFetch('/api/consignaciones');
