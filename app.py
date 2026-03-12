@@ -220,140 +220,149 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/fb-cookies/auto', methods=['POST'])
     def funnels_auto_extract_fb_cookies():
-        """Auto-extract FB cookies from Chrome's local cookie DB (macOS only) and save to Supabase."""
-        import sqlite3, shutil, tempfile
-        chrome_cookies_db = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
-        if not chrome_cookies_db.exists():
-            return jsonify({"error": "Chrome cookie database not found — this only works on the local Mac."}), 400
+        """Extract FB cookies by launching Playwright with Chrome's user profile
+        (macOS only).  Much more reliable than decrypting the SQLite cookie DB
+        because newer Chrome versions changed the encryption format."""
+        import shutil, tempfile
+
+        chrome_user_data = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
+        if not chrome_user_data.exists():
+            return jsonify({"error": "Chrome user-data dir not found — this only works on the local Mac."}), 400
+
+        # Chrome must be closed — Playwright needs the profile lock
+        singleton_lock = chrome_user_data / "SingletonLock"
+        if singleton_lock.exists():
+            return jsonify({"error": "⚠️ Cierra Google Chrome primero y vuelve a intentar."}), 400
 
         try:
-            # Chrome locks the DB — copy to tmp
-            tmp_copy = Path(tempfile.mktemp(suffix=".db"))
-            shutil.copy2(str(chrome_cookies_db), str(tmp_copy))
+            import asyncio
+            from playwright.async_api import async_playwright
 
-            conn = sqlite3.connect(str(tmp_copy))
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT name, encrypted_value, host_key, path, is_secure, is_httponly, samesite "
-                "FROM cookies WHERE host_key LIKE '%facebook.com'"
-            ).fetchall()
-            conn.close()
-            tmp_copy.unlink(missing_ok=True)
+            async def _grab_cookies():
+                tmp_profile = Path(tempfile.mkdtemp(prefix="fb_chrome_"))
+                # Copy the Chrome profile so we don't corrupt the original
+                default_src = chrome_user_data / "Default"
+                default_dst = tmp_profile / "Default"
+                shutil.copytree(str(default_src), str(default_dst),
+                                ignore=shutil.ignore_patterns("Cache", "Code Cache",
+                                                              "Service Worker", "GPUCache"),
+                                dirs_exist_ok=True)
 
-            if not rows:
-                return jsonify({"error": "No Facebook cookies found in Chrome. Make sure you're logged in to Facebook in Chrome."}), 400
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch_persistent_context(
+                        user_data_dir=str(tmp_profile),
+                        headless=True,
+                        channel="chrome",
+                        args=["--disable-blink-features=AutomationControlled"],
+                    )
+                    page = await browser.new_page()
+                    await page.goto("https://www.facebook.com", wait_until="domcontentloaded", timeout=30_000)
+                    await asyncio.sleep(3)
 
-            # On macOS, Chrome encrypts cookie values with Keychain.
-            # Decrypt using the Chrome Safe Storage key from Keychain.
-            import subprocess as _sp
-            try:
-                key_proc = _sp.run(
-                    ["security", "find-generic-password", "-s", "Chrome Safe Storage", "-w"],
-                    capture_output=True, text=True, timeout=10
-                )
-                safe_storage_key = key_proc.stdout.strip()
-            except Exception:
-                safe_storage_key = ""
+                    all_cookies = await browser.cookies(["https://www.facebook.com"])
+                    await browser.close()
 
-            cookies = []
-            if safe_storage_key:
-                import hashlib
-                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-                from cryptography.hazmat.backends import default_backend
+                # Clean up
+                shutil.rmtree(str(tmp_profile), ignore_errors=True)
 
-                # Chrome derives a 16-byte key using PBKDF2
-                derived_key = hashlib.pbkdf2_hmac(
-                    "sha1", safe_storage_key.encode("utf-8"), b"saltysalt", 1003, dklen=16
-                )
-
-                for r in rows:
-                    name = r["name"]
-                    encrypted = r["encrypted_value"]
-                    value = ""
-
-                    if encrypted and encrypted[:3] == b"v10":
-                        # v10 = AES-128-CBC with 16-byte IV of spaces
-                        iv = b" " * 16
-                        ciphertext = encrypted[3:]
-                        try:
-                            cipher = Cipher(algorithms.AES(derived_key), modes.CBC(iv), backend=default_backend())
-                            dec = cipher.decryptor()
-                            plaintext = dec.update(ciphertext) + dec.finalize()
-                            # Remove PKCS7 padding
-                            pad_len = plaintext[-1] if plaintext else 0
-                            if isinstance(pad_len, int) and 0 < pad_len <= 16:
-                                plaintext = plaintext[:-pad_len]
-                            # Use strict decoding — skip cookies with binary garbage
-                            try:
-                                value = plaintext.decode("utf-8")
-                            except UnicodeDecodeError:
-                                try:
-                                    value = plaintext.decode("latin-1")
-                                    # If it has non-ASCII chars, skip — Playwright won't accept it
-                                    value.encode("ascii")
-                                except (UnicodeDecodeError, UnicodeEncodeError):
-                                    continue
-                        except Exception:
-                            continue
-                    elif encrypted:
-                        # Unencrypted (rare)
-                        try:
-                            value = encrypted.decode("utf-8", errors="replace")
-                        except Exception:
-                            continue
-                    else:
+                # Filter to only FB cookies and normalise for Playwright's add_cookies()
+                VALID_SS = {"Strict", "Lax", "None"}
+                fb_cookies = []
+                for c in all_cookies:
+                    if ".facebook.com" not in c.get("domain", ""):
                         continue
-
-                    if not value:
-                        continue
-
-                    ss_map = {-1: "Lax", 0: "None", 1: "Lax", 2: "Strict"}
-                    cookies.append({
-                        "name": name,
-                        "value": value,
-                        "domain": r["host_key"],
-                        "path": r["path"] or "/",
-                        "secure": bool(r["is_secure"]),
-                        "httpOnly": bool(r["is_httponly"]),
-                        "sameSite": ss_map.get(r["samesite"], "Lax"),
+                    fb_cookies.append({
+                        "name":     c["name"],
+                        "value":    c["value"],
+                        "domain":   c["domain"],
+                        "path":     c.get("path", "/"),
+                        "secure":   bool(c.get("secure", False)),
+                        "httpOnly": bool(c.get("httpOnly", False)),
+                        "sameSite": c.get("sameSite", "Lax") if c.get("sameSite") in VALID_SS else "Lax",
                     })
-            else:
-                return jsonify({"error": "Could not retrieve Chrome Safe Storage key from Keychain. Grant terminal access to Keychain."}), 400
+                return fb_cookies
+
+            cookies = asyncio.run(_grab_cookies())
 
             if not cookies:
-                return jsonify({"error": "Found Facebook rows but could not decrypt any cookies."}), 400
+                return jsonify({"error": "No Facebook cookies found. Make sure you're logged in to Facebook in Chrome."}), 400
 
-            # Verify we have the critical ones
+            # Verify critical cookies
             cookie_names = {c["name"] for c in cookies}
             critical = {"c_user", "xs"}
             missing = critical - cookie_names
             if missing:
-                return jsonify({"error": f"Missing critical FB cookies: {missing}. Make sure you're logged in to Facebook in Chrome."}), 400
+                return jsonify({"error": f"Missing critical FB cookies: {missing}. Log in to Facebook in Chrome first."}), 400
 
             # Save to Supabase
             import requests as _req
-            supa_url = os.environ.get("SUPABASE_URL", "")
+            supa_url = os.environ.get("SUPABASE_URL", "").strip()
             supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
                         or os.environ.get("SUPABASE_SERVICE_KEY")
-                        or os.environ.get("SUPABASE_KEY", ""))
+                        or os.environ.get("SUPABASE_KEY", "")).strip()
             if not supa_url or not supa_key:
                 return jsonify({"error": "Supabase env vars not set (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}), 500
             headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
                        "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
             payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
                        "updated_at": datetime.utcnow().isoformat()}
-            resp = _req.post(f"{supa_url}/rest/v1/app_settings", json=payload, headers=headers, timeout=10)
+            _req.post(f"{supa_url}/rest/v1/app_settings", json=payload, headers=headers, timeout=10)
 
             return jsonify({
                 "ok": True,
                 "count": len(cookies),
                 "critical": list(critical & cookie_names),
-                "message": f"✅ {len(cookies)} cookies de Facebook extraídas de Chrome y guardadas en Supabase."
+                "message": f"✅ {len(cookies)} cookies de Facebook extraídas via Playwright y guardadas en Supabase."
             })
 
         except Exception as e:
             import traceback
             traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+
+    @funnels_bp.route('/api/fb-cookies/manual', methods=['POST'])
+    def funnels_manual_fb_cookies():
+        """Save manually-pasted c_user + xs cookies to Supabase."""
+        import requests as _req
+        from datetime import datetime
+
+        data = request.json or {}
+        c_user = data.get("c_user", "").strip()
+        xs = data.get("xs", "").strip()
+
+        if not c_user or not xs:
+            return jsonify({"error": "c_user y xs son obligatorios."}), 400
+
+        cookies = [
+            {"name": "c_user", "value": c_user, "domain": ".facebook.com",
+             "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
+            {"name": "xs", "value": xs, "domain": ".facebook.com",
+             "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
+            {"name": "datr", "value": "placeholder", "domain": ".facebook.com",
+             "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
+        ]
+
+        try:
+            supa_url = os.environ.get("SUPABASE_URL", "").strip()
+            supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                        or os.environ.get("SUPABASE_SERVICE_KEY")
+                        or os.environ.get("SUPABASE_KEY", "")).strip()
+            if not supa_url or not supa_key:
+                return jsonify({"error": "Supabase env vars not set."}), 500
+
+            headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
+                       "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
+            payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
+                       "updated_at": datetime.utcnow().isoformat()}
+            resp = _req.post(f"{supa_url}/rest/v1/app_settings", json=payload, headers=headers, timeout=10)
+
+            if resp.status_code in (200, 201, 204):
+                return jsonify({"ok": True, "count": len(cookies),
+                                "message": "✅ Cookies guardadas en Supabase."})
+            else:
+                return jsonify({"error": f"Supabase error: {resp.status_code} {resp.text}"}), 500
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
 
 

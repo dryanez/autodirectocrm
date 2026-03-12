@@ -851,29 +851,60 @@ Agente de Ventas | Autodirecto.cl</textarea>
             };
         }
 
-        // ── Save FB session: auto-extract from Chrome cookie DB → Supabase ──
+        // ── Save FB session: paste c_user + xs from Chrome DevTools ──
         async function saveFbSession() {
-            const btn = event?.target;
-            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Extrayendo...'; }
+            // Show modal
+            let modal = document.getElementById('fb-cookie-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'fb-cookie-modal';
+                modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999';
+                modal.innerHTML = `
+                    <div style="background:#1e1e2e;border:1px solid #444;border-radius:12px;padding:24px;max-width:480px;width:90%;color:#e0e0e0;font-family:system-ui">
+                        <h3 style="margin:0 0 8px;color:#fff">💾 Guardar Sesión Facebook</h3>
+                        <p style="font-size:13px;color:#aaa;margin:0 0 16px">
+                            En Chrome: <b>facebook.com</b> → <b>F12</b> → pestaña <b>Application</b> → <b>Cookies</b> → <b>https://www.facebook.com</b><br>
+                            Copia los valores de <code style="background:#333;padding:2px 6px;border-radius:4px">c_user</code> y <code style="background:#333;padding:2px 6px;border-radius:4px">xs</code>
+                        </p>
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">c_user</label>
+                        <input id="fb-c-user" placeholder="ej: 61586474109065" style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:12px;box-sizing:border-box">
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">xs</label>
+                        <input id="fb-xs" placeholder="ej: 32%3ASnIiy6DfIVqs3w%3A2%3A..." style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:16px;box-sizing:border-box">
+                        <div style="display:flex;gap:8px;justify-content:flex-end">
+                            <button onclick="document.getElementById('fb-cookie-modal').style.display='none'" style="padding:8px 16px;background:#333;border:1px solid #555;border-radius:8px;color:#ccc;cursor:pointer">Cancelar</button>
+                            <button id="fb-save-btn" onclick="submitFbCookies()" style="padding:8px 16px;background:#4f46e5;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600">Guardar</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+            }
+            modal.style.display = 'flex';
+        }
+
+        async function submitFbCookies() {
+            const cUser = document.getElementById('fb-c-user').value.trim();
+            const xs = document.getElementById('fb-xs').value.trim();
+            if (!cUser || !xs) { alert('Ambos campos son obligatorios'); return; }
+
+            const btn = document.getElementById('fb-save-btn');
+            btn.disabled = true; btn.textContent = '⏳ Guardando...';
 
             try {
-                const r = await fetch(apiUrl('/api/fb-cookies/auto'), {
+                const r = await fetch(apiUrl('/api/fb-cookies/manual'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: '{}',
+                    body: JSON.stringify({ c_user: cUser, xs: xs }),
                 });
                 const d = await r.json();
-
                 if (d.ok) {
-                    alert(`✅ ¡Sesión guardada!\n\n${d.count} cookies de Facebook extraídas de Chrome y almacenadas en el servidor.\n\nCookies críticas: ${d.critical.join(', ')}\n\nAhora puedes usar "🚀 Scrape Now" desde cualquier lugar (incluyendo Railway).`);
+                    alert('✅ ¡Sesión guardada! ' + d.count + ' cookies en Supabase.\nAhora puedes usar Scrape Now desde Vercel.');
+                    document.getElementById('fb-cookie-modal').style.display = 'none';
                 } else {
                     alert('❌ Error: ' + (d.error || 'desconocido'));
                 }
             } catch (e) {
-                console.error(e);
-                alert('❌ Error de conexión: ' + e.message + '\n\nEsto solo funciona cuando corres el CRM localmente en tu Mac (localhost:8080).');
+                alert('❌ Error: ' + e.message);
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Sesión FB'; }
+                btn.disabled = false; btn.textContent = 'Guardar';
             }
         }
 
