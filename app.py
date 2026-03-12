@@ -2619,7 +2619,7 @@ def get_consignaciones():
         if status:
             q += " AND status=?"
             params.append(status)
-        q += " ORDER BY appointment_date ASC, appointment_time ASC"
+        q += " ORDER BY id DESC"
         rows = conn.execute(q, params).fetchall()
     result = [row_to_dict(r) for r in rows]
     # Resolve assigned user names in a second pass

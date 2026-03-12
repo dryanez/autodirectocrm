@@ -4667,10 +4667,8 @@
                             return hay.includes(q);
                         });
                     }
-                    return list;
+                    return list.sort((a, b) => b.id - a.id);
                 },
-
-                async loadInventario() {
                     this.invLoading = true;
                     try {
                         const r = await this.authFetch('/api/consignaciones');
@@ -5862,7 +5860,8 @@
                         ? `/api/consignaciones?status=${this.consigFilter}`
                         : '/api/consignaciones';
                     const res = await fetch(url);
-                    this.consignaciones = await res.json();
+                    const data = await res.json();
+                    this.consignaciones = (data || []).sort((a, b) => b.id - a.id);
                 },
 
                 async openConsignacion(id) {
