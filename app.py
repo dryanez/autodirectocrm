@@ -94,7 +94,7 @@ except ImportError:
 def add_camera_cors(response):
     origin = request.headers.get("Origin", "")
     if origin in ("https://cameracar.vercel.app", "https://autodirectocrm.vercel.app",
-                  "http://localhost:3000"):
+                  "http://localhost:3000") or origin.endswith(".vercel.app"):
         response.headers["Access-Control-Allow-Origin"]  = origin
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
@@ -419,7 +419,7 @@ if FUNNELS_DIR.exists():
                 # ── VERCEL: proxy the entire scrape stream to Railway ──
                 yield f"data: {json.dumps({'log': '☁️ Vercel → redirigiendo scrape a Railway...', 'pct': 1})}\n\n"
                 try:
-                    with _requests.get(f"{RAILWAY_URL}/funnels/api/scrape", stream=True, timeout=300) as r:
+                    with _requests.get(f"{RAILWAY_URL}/funnels/api/scrape", stream=True, timeout=900) as r:
                         for line in r.iter_lines():
                             if line:
                                 yield line.decode("utf-8") + "\n\n"
@@ -449,7 +449,7 @@ if FUNNELS_DIR.exists():
                                  stdout=_sp.PIPE, stderr=_sp.STDOUT,
                                  text=True, env=env, bufsize=1)
 
-                total_scrolls, scroll_count, vehicle_count = 40, 0, 0
+                total_scrolls, scroll_count, vehicle_count, qualifying_count = 2000, 0, 0, 0
                 for line in proc.stdout:
                     line = line.rstrip()
                     if not line:
@@ -458,14 +458,27 @@ if FUNNELS_DIR.exists():
                         try:
                             part = line.split("Scroll ")[1].split(" — ")[0]
                             cur, tot = part.split("/")
-                            scroll_count = int(cur)
-                            total_scrolls = int(tot)
-                            if "vehicles" in line:
-                                vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                            scroll_count = int(cur.strip())
+                            total_scrolls = int(tot.strip())
                         except Exception:
                             pass
+                    if "qualifying" in line and "total" in line:
+                        try:
+                            parts = line.split("|")
+                            for p in parts:
+                                p = p.strip()
+                                if "qualifying" in p:
+                                    q_part = p.split("qualifying")[0].strip().split("/")[0].strip()
+                                    q_part = q_part.split("—")[-1].strip() if "—" in q_part else q_part
+                                    qualifying_count = int(q_part)
+                                if "total" in p and "GraphQL" not in p:
+                                    vehicle_count = int(p.strip().split()[0])
+                        except Exception:
+                            pass
+                    if "🟢" in line:
+                        vehicle_count = max(vehicle_count, qualifying_count)
                     pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
-                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count, 'qualifying': qualifying_count})}\n\n"
 
                 proc.wait()
                 success = proc.returncode == 0
@@ -498,7 +511,7 @@ if FUNNELS_DIR.exists():
                                  stdout=_sp.PIPE, stderr=_sp.STDOUT,
                                  text=True, env=env, bufsize=1)
 
-                total_scrolls, scroll_count, vehicle_count = 40, 0, 0
+                total_scrolls, scroll_count, vehicle_count, qualifying_count = 300, 0, 0, 0
                 for line in proc.stdout:
                     line = line.rstrip()
                     if not line:
@@ -507,14 +520,31 @@ if FUNNELS_DIR.exists():
                         try:
                             part = line.split("Scroll ")[1].split(" — ")[0]
                             cur, tot = part.split("/")
-                            scroll_count = int(cur)
-                            total_scrolls = int(tot)
-                            if "vehicles" in line:
-                                vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                            scroll_count = int(cur.strip())
+                            total_scrolls = int(tot.strip())
+                        except Exception:
+                            pass
+                    # Parse qualifying + total from scroll lines
+                    if "qualifying" in line and "total" in line:
+                        try:
+                            parts = line.split("|")
+                            for p in parts:
+                                p = p.strip()
+                                if "qualifying" in p:
+                                    q_part = p.split("qualifying")[0].strip().split("/")[0].strip()
+                                    q_part = q_part.split("—")[-1].strip() if "—" in q_part else q_part
+                                    qualifying_count = int(q_part)
+                                if "total" in p and "GraphQL" not in p:
+                                    vehicle_count = int(p.strip().split()[0])
+                        except Exception:
+                            pass
+                    if "🟢" in line:
+                        try:
+                            vehicle_count = max(vehicle_count, qualifying_count)
                         except Exception:
                             pass
                     pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
-                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count, 'qualifying': qualifying_count})}\n\n"
 
                 proc.wait()
                 success = proc.returncode == 0

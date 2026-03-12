@@ -385,6 +385,12 @@
         const BASE = location.pathname.replace(/\/+$/, '');
         function apiUrl(path) { return BASE + path; }
 
+        // For long-running SSE (scrape, messenger), connect directly to Railway
+        // to avoid Vercel's serverless function timeout (60s).
+        const RAILWAY_URL = 'https://autodirecto-production.up.railway.app/funnels';
+        const isVercel = location.hostname.includes('vercel.app');
+        function sseUrl(path) { return (isVercel ? RAILWAY_URL : BASE) + path; }
+
         let allLeads = [];
 
         // ── Parse brand & model from title ──────────────────────────────
@@ -773,7 +779,7 @@ Agente de Ventas | Autodirecto.cl</textarea>
             logEl.textContent = 'Iniciando scraper...';
             vehEl.textContent = '';
 
-            const evtSource = new EventSource(apiUrl('/api/scrape'));
+            const evtSource = new EventSource(sseUrl('/api/scrape'));
 
             evtSource.onmessage = (e) => {
                 let msg;
@@ -783,7 +789,11 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 bar.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
                 if (msg.log) logEl.textContent = msg.log;
-                if (msg.vehicles) vehEl.textContent = `${msg.vehicles} vehículos encontrados`;
+                if (msg.vehicles || msg.qualifying) {
+                    const q = msg.qualifying || 0;
+                    const v = msg.vehicles || 0;
+                    vehEl.textContent = q > 0 ? `${q} qualifying / ${v} total` : `${v} vehículos encontrados`;
+                }
 
                 if (msg.done) {
                     evtSource.close();
@@ -821,7 +831,7 @@ Agente de Ventas | Autodirecto.cl</textarea>
             logEl.textContent = 'Iniciando auto-messenger...';
             sentEl.textContent = '';
 
-            const evtSource = new EventSource(apiUrl(`/api/auto_message?limit=${limit}`));
+            const evtSource = new EventSource(sseUrl(`/api/auto_message?limit=${limit}`));
 
             evtSource.onmessage = (e) => {
                 let msg;
