@@ -218,6 +218,133 @@ if FUNNELS_DIR.exists():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @funnels_bp.route('/api/fb-cookies/auto', methods=['POST'])
+    def funnels_auto_extract_fb_cookies():
+        """Auto-extract FB cookies from Chrome's local cookie DB (macOS only) and save to Supabase."""
+        import sqlite3, shutil, tempfile
+        chrome_cookies_db = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
+        if not chrome_cookies_db.exists():
+            return jsonify({"error": "Chrome cookie database not found — this only works on the local Mac."}), 400
+
+        try:
+            # Chrome locks the DB — copy to tmp
+            tmp_copy = Path(tempfile.mktemp(suffix=".db"))
+            shutil.copy2(str(chrome_cookies_db), str(tmp_copy))
+
+            conn = sqlite3.connect(str(tmp_copy))
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT name, encrypted_value, host_key, path, is_secure, is_httponly, samesite "
+                "FROM cookies WHERE host_key LIKE '%facebook.com'"
+            ).fetchall()
+            conn.close()
+            tmp_copy.unlink(missing_ok=True)
+
+            if not rows:
+                return jsonify({"error": "No Facebook cookies found in Chrome. Make sure you're logged in to Facebook in Chrome."}), 400
+
+            # On macOS, Chrome encrypts cookie values with Keychain.
+            # Decrypt using the Chrome Safe Storage key from Keychain.
+            import subprocess as _sp
+            try:
+                key_proc = _sp.run(
+                    ["security", "find-generic-password", "-s", "Chrome Safe Storage", "-w"],
+                    capture_output=True, text=True, timeout=10
+                )
+                safe_storage_key = key_proc.stdout.strip()
+            except Exception:
+                safe_storage_key = ""
+
+            cookies = []
+            if safe_storage_key:
+                import hashlib
+                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+                from cryptography.hazmat.backends import default_backend
+
+                # Chrome derives a 16-byte key using PBKDF2
+                derived_key = hashlib.pbkdf2_hmac(
+                    "sha1", safe_storage_key.encode("utf-8"), b"saltysalt", 1003, dklen=16
+                )
+
+                for r in rows:
+                    name = r["name"]
+                    encrypted = r["encrypted_value"]
+                    value = ""
+
+                    if encrypted and encrypted[:3] == b"v10":
+                        # v10 = AES-128-CBC with 16-byte IV of spaces
+                        iv = b" " * 16
+                        ciphertext = encrypted[3:]
+                        try:
+                            cipher = Cipher(algorithms.AES(derived_key), modes.CBC(iv), backend=default_backend())
+                            dec = cipher.decryptor()
+                            plaintext = dec.update(ciphertext) + dec.finalize()
+                            # Remove PKCS7 padding
+                            pad_len = plaintext[-1] if plaintext else 0
+                            if isinstance(pad_len, int) and 0 < pad_len <= 16:
+                                value = plaintext[:-pad_len].decode("utf-8", errors="replace")
+                            else:
+                                value = plaintext.decode("utf-8", errors="replace")
+                        except Exception:
+                            continue
+                    elif encrypted:
+                        # Unencrypted (rare)
+                        try:
+                            value = encrypted.decode("utf-8", errors="replace")
+                        except Exception:
+                            continue
+                    else:
+                        continue
+
+                    if not value:
+                        continue
+
+                    ss_map = {-1: "Lax", 0: "None", 1: "Lax", 2: "Strict"}
+                    cookies.append({
+                        "name": name,
+                        "value": value,
+                        "domain": r["host_key"],
+                        "path": r["path"] or "/",
+                        "secure": bool(r["is_secure"]),
+                        "httpOnly": bool(r["is_httponly"]),
+                        "sameSite": ss_map.get(r["samesite"], "Lax"),
+                    })
+            else:
+                return jsonify({"error": "Could not retrieve Chrome Safe Storage key from Keychain. Grant terminal access to Keychain."}), 400
+
+            if not cookies:
+                return jsonify({"error": "Found Facebook rows but could not decrypt any cookies."}), 400
+
+            # Verify we have the critical ones
+            cookie_names = {c["name"] for c in cookies}
+            critical = {"c_user", "xs"}
+            missing = critical - cookie_names
+            if missing:
+                return jsonify({"error": f"Missing critical FB cookies: {missing}. Make sure you're logged in to Facebook in Chrome."}), 400
+
+            # Save to Supabase
+            import requests as _req
+            supa_url = os.environ.get("SUPABASE_URL", "")
+            supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+            headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
+                       "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
+            payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
+                       "updated_at": datetime.utcnow().isoformat()}
+            resp = _req.post(f"{supa_url}/rest/v1/app_settings", json=payload, headers=headers, timeout=10)
+
+            return jsonify({
+                "ok": True,
+                "count": len(cookies),
+                "critical": list(critical & cookie_names),
+                "message": f"✅ {len(cookies)} cookies de Facebook extraídas de Chrome y guardadas en Supabase."
+            })
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+
     @funnels_bp.route('/api/scrape', methods=['POST', 'GET'])
     def funnels_api_scrape():
         """Stream Playwright scraper — runs headless on Railway, or local Chrome on Mac."""

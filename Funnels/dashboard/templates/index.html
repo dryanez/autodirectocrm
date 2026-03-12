@@ -851,64 +851,30 @@ Agente de Ventas | Autodirecto.cl</textarea>
             };
         }
 
-        // ── Save FB session cookies → backend → Supabase (enables Railway scraping) ──
+        // ── Save FB session: auto-extract from Chrome cookie DB → Supabase ──
         async function saveFbSession() {
-            // Must be run from a tab that has facebook.com open, OR we grab document.cookie
-            // Best approach: open FB in a new tab and use a bookmarklet — but we can try
-            // to collect from current browsing context via the backend cookie-grab helper.
+            const btn = event?.target;
+            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Extrayendo...'; }
 
-            const confirmed = confirm(
-                '💾 Guardar Sesión de Facebook\n\n' +
-                'Esto guardará tus cookies de Facebook en el servidor para que el scraper ' +
-                'pueda correr en Railway sin necesitar tu Chrome local.\n\n' +
-                'Pasos:\n' +
-                '1. Asegúrate de estar logueado en Facebook en este navegador\n' +
-                '2. Haz click en OK\n' +
-                '3. Se abrirá Facebook — espera que cargue y vuelve aquí\n\n' +
-                '¿Continuar?'
-            );
-            if (!confirmed) return;
+            try {
+                const r = await fetch(apiUrl('/api/fb-cookies/auto'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const d = await r.json();
 
-            // Open FB in a popup to ensure we can get cookies via document.cookie
-            const fbWin = window.open('https://www.facebook.com', '_blank', 'width=1000,height=700');
-            
-            setTimeout(async () => {
-                try {
-                    // Use the Cookie Store API if available (Chrome 87+)
-                    let cookies = [];
-                    if (window.cookieStore) {
-                        const all = await window.cookieStore.getAll();
-                        cookies = all
-                            .filter(c => c.domain && c.domain.includes('facebook'))
-                            .map(c => ({
-                                name: c.name, value: c.value,
-                                domain: c.domain, path: c.path || '/',
-                                secure: c.secure || false,
-                                sameSite: c.sameSite || 'Lax',
-                            }));
-                    }
-
-                    if (cookies.length === 0) {
-                        alert('⚠️ No se pudieron obtener las cookies de Facebook automáticamente.\n\nUsa el método manual:\n1. Ve a facebook.com\n2. Abre DevTools (F12) → Application → Cookies → facebook.com\n3. Copia los valores de "c_user" y "xs" y pégalos en el campo que aparecerá.');
-                        return;
-                    }
-
-                    const r = await fetch(apiUrl('/api/fb-cookies'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ cookies }),
-                    });
-                    const d = await r.json();
-                    if (d.ok) {
-                        alert(`✅ Sesión guardada — ${d.count} cookies de Facebook almacenadas en el servidor.\n\nAhora puedes usar "🚀 Scrape Now" desde cualquier lugar.`);
-                    } else {
-                        alert('❌ Error guardando sesión: ' + (d.error || 'desconocido'));
-                    }
-                } catch (e) {
-                    console.error(e);
-                    alert('❌ Error: ' + e.message);
+                if (d.ok) {
+                    alert(`✅ ¡Sesión guardada!\n\n${d.count} cookies de Facebook extraídas de Chrome y almacenadas en el servidor.\n\nCookies críticas: ${d.critical.join(', ')}\n\nAhora puedes usar "🚀 Scrape Now" desde cualquier lugar (incluyendo Railway).`);
+                } else {
+                    alert('❌ Error: ' + (d.error || 'desconocido'));
                 }
-            }, 4000); // wait 4s for FB tab to load
+            } catch (e) {
+                console.error(e);
+                alert('❌ Error de conexión: ' + e.message + '\n\nEsto solo funciona cuando corres el CRM localmente en tu Mac (localhost:8080).');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Sesión FB'; }
+            }
         }
 
         // Init
