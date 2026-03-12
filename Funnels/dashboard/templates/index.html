@@ -864,12 +864,16 @@ Agente de Ventas | Autodirecto.cl</textarea>
                         <h3 style="margin:0 0 8px;color:#fff">💾 Guardar Sesión Facebook</h3>
                         <p style="font-size:13px;color:#aaa;margin:0 0 16px">
                             En Chrome: <b>facebook.com</b> → <b>F12</b> → pestaña <b>Application</b> → <b>Cookies</b> → <b>https://www.facebook.com</b><br>
-                            Copia los valores de <code style="background:#333;padding:2px 6px;border-radius:4px">c_user</code> y <code style="background:#333;padding:2px 6px;border-radius:4px">xs</code>
+                            Copia los valores de <code style="background:#333;padding:2px 6px;border-radius:4px">c_user</code>, <code style="background:#333;padding:2px 6px;border-radius:4px">xs</code> y <code style="background:#333;padding:2px 6px;border-radius:4px">datr</code>
                         </p>
-                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">c_user</label>
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">c_user <span style="color:#f87171">*</span></label>
                         <input id="fb-c-user" placeholder="ej: 61586474109065" style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:12px;box-sizing:border-box">
-                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">xs</label>
-                        <input id="fb-xs" placeholder="ej: 32%3ASnIiy6DfIVqs3w%3A2%3A..." style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:16px;box-sizing:border-box">
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">xs <span style="color:#f87171">*</span></label>
+                        <input id="fb-xs" placeholder="ej: 32%3ASnIiy6DfIVqs3w%3A2%3A..." style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:12px;box-sizing:border-box">
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">datr <span style="color:#f87171">*</span></label>
+                        <input id="fb-datr" placeholder="ej: abc123XYZ..." style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:12px;box-sizing:border-box">
+                        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">fr <span style="color:#888;font-weight:400">(opcional)</span></label>
+                        <input id="fb-fr" placeholder="ej: 0aB1cD2eF3..." style="width:100%;padding:8px 12px;background:#2a2a3e;border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;margin-bottom:16px;box-sizing:border-box">
                         <div style="display:flex;gap:8px;justify-content:flex-end">
                             <button onclick="document.getElementById('fb-cookie-modal').style.display='none'" style="padding:8px 16px;background:#333;border:1px solid #555;border-radius:8px;color:#ccc;cursor:pointer">Cancelar</button>
                             <button id="fb-save-btn" onclick="submitFbCookies()" style="padding:8px 16px;background:#4f46e5;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600">Guardar</button>
@@ -883,16 +887,20 @@ Agente de Ventas | Autodirecto.cl</textarea>
         async function submitFbCookies() {
             const cUser = document.getElementById('fb-c-user').value.trim();
             const xs = document.getElementById('fb-xs').value.trim();
-            if (!cUser || !xs) { alert('Ambos campos son obligatorios'); return; }
+            const datr = document.getElementById('fb-datr').value.trim();
+            const fr = document.getElementById('fb-fr').value.trim();
+            if (!cUser || !xs || !datr) { alert('c_user, xs y datr son obligatorios'); return; }
 
             const btn = document.getElementById('fb-save-btn');
             btn.disabled = true; btn.textContent = '⏳ Guardando...';
 
             try {
+                const body = { c_user: cUser, xs: xs, datr: datr };
+                if (fr) body.fr = fr;
                 const r = await fetch(apiUrl('/api/fb-cookies/manual'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ c_user: cUser, xs: xs }),
+                    body: JSON.stringify(body),
                 });
                 const d = await r.json();
                 if (d.ok) {

@@ -323,25 +323,30 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/fb-cookies/manual', methods=['POST'])
     def funnels_manual_fb_cookies():
-        """Save manually-pasted c_user + xs cookies to Supabase."""
+        """Save manually-pasted FB cookies to Supabase."""
         import requests as _req
         from datetime import datetime
 
         data = request.json or {}
         c_user = data.get("c_user", "").strip()
         xs = data.get("xs", "").strip()
+        datr = data.get("datr", "").strip()
+        fr_val = data.get("fr", "").strip()
 
-        if not c_user or not xs:
-            return jsonify({"error": "c_user y xs son obligatorios."}), 400
+        if not c_user or not xs or not datr:
+            return jsonify({"error": "c_user, xs y datr son obligatorios."}), 400
 
         cookies = [
             {"name": "c_user", "value": c_user, "domain": ".facebook.com",
              "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
             {"name": "xs", "value": xs, "domain": ".facebook.com",
              "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
-            {"name": "datr", "value": "placeholder", "domain": ".facebook.com",
+            {"name": "datr", "value": datr, "domain": ".facebook.com",
              "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"},
         ]
+        if fr_val:
+            cookies.append({"name": "fr", "value": fr_val, "domain": ".facebook.com",
+                            "path": "/", "secure": True, "httpOnly": True, "sameSite": "None"})
 
         try:
             supa_url = os.environ.get("SUPABASE_URL", "").strip()

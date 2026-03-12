@@ -52,53 +52,78 @@ def _parse_price_clp(formatted: str) -> int:
 
 def parse_feed_units(data: dict):
     global qualifying_count
-    try:
-        edges = data["data"]["marketplace_search"]["feed_units"]["edges"]
-    except (KeyError, TypeError):
-        return
-    for edge in edges:
+    # FB often wraps multi-query responses; try both root and nested paths
+    for blob in _extract_graphql_blobs(data):
         try:
-            listing = edge["node"]["listing"]
-            lid = str(listing.get("id", ""))
-            title = listing.get("marketplace_listing_title") or listing.get("custom_title", "")
-            price_fmt = (listing.get("listing_price") or {}).get("formatted_amount", "")
-            price_raw = int((listing.get("listing_price") or {}).get("amount", "0") or "0")
-            city = ((listing.get("location") or {}).get("reverse_geocode", {}).get("city", ""))
-            km_list = listing.get("custom_sub_titles_with_rendering_flags") or []
-            km = km_list[0].get("subtitle", "") if km_list else ""
-            seller = (listing.get("marketplace_listing_seller") or {}).get("name", "")
-            listing_url = f"https://www.facebook.com/marketplace/item/{lid}/"
-
-            if lid and title and lid not in vehicles:
-                price_num = price_raw if price_raw > 0 else _parse_price_clp(price_fmt)
-                is_v = _is_v_region(city)
-                qualifies = is_v and price_num >= MIN_PRICE
-                vehicles[lid] = {
-                    "id": lid, "title": title, "price": price_fmt,
-                    "price_clp": price_num, "city": city, "km": km,
-                    "seller": seller, "url": listing_url,
-                    "v_region": is_v, "qualifies": qualifies,
-                }
-                if qualifies:
-                    qualifying_count += 1
-                    tag = f"🟢 Q{qualifying_count:>3}/{TARGET_LEADS}"
-                else:
-                    tag = "⚪ skip"
-                print(f"  {tag} [{len(vehicles):>4}] {title[:45]:<45} | {price_fmt:<18} | {city}", flush=True)
-        except Exception:
+            edges = blob["data"]["marketplace_search"]["feed_units"]["edges"]
+        except (KeyError, TypeError):
             continue
+        for edge in edges:
+            try:
+                listing = edge["node"]["listing"]
+                lid = str(listing.get("id", ""))
+                title = listing.get("marketplace_listing_title") or listing.get("custom_title", "")
+                price_fmt = (listing.get("listing_price") or {}).get("formatted_amount", "")
+                price_raw = int((listing.get("listing_price") or {}).get("amount", "0") or "0")
+                city = ((listing.get("location") or {}).get("reverse_geocode", {}).get("city", ""))
+                km_list = listing.get("custom_sub_titles_with_rendering_flags") or []
+                km = km_list[0].get("subtitle", "") if km_list else ""
+                seller = (listing.get("marketplace_listing_seller") or {}).get("name", "")
+                listing_url = f"https://www.facebook.com/marketplace/item/{lid}/"
+
+                if lid and title and lid not in vehicles:
+                    price_num = price_raw if price_raw > 0 else _parse_price_clp(price_fmt)
+                    is_v = _is_v_region(city)
+                    qualifies = is_v and price_num >= MIN_PRICE
+                    vehicles[lid] = {
+                        "id": lid, "title": title, "price": price_fmt,
+                        "price_clp": price_num, "city": city, "km": km,
+                        "seller": seller, "url": listing_url,
+                        "v_region": is_v, "qualifies": qualifies,
+                    }
+                    if qualifies:
+                        qualifying_count += 1
+                        tag = f"🟢 Q{qualifying_count:>3}/{TARGET_LEADS}"
+                    else:
+                        tag = "⚪ skip"
+                    print(f"  {tag} [{len(vehicles):>4}] {title[:45]:<45} | {price_fmt:<18} | {city}", flush=True)
+            except Exception:
+                continue
+
+
+def _extract_graphql_blobs(data):
+    """Yield all possible GraphQL result blobs from FB's response format.
+    FB responses can be: a single JSON object, a JSON object with nested 'data',
+    or multiple newline-delimited JSON objects concatenated."""
+    if isinstance(data, dict):
+        yield data
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                yield item
+
 
 async def handle_response(response):
     global graphql_count
-    if "/api/graphql" not in response.url:
+    url = response.url
+    if "/api/graphql" not in url:
         return
     graphql_count += 1
     try:
         text = await response.text()
-        data = json.loads(text)
-        parse_feed_units(data)
-    except Exception:
-        pass
+        # FB sometimes returns multiple JSON objects separated by newlines
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                parse_feed_units(data)
+            except json.JSONDecodeError:
+                continue
+    except Exception as e:
+        print(f"  ⚠️ GraphQL parse error: {e}", flush=True)
+
 
 async def main(cookies_path: str):
     cookies = json.loads(Path(cookies_path).read_text())
@@ -112,28 +137,39 @@ async def main(cookies_path: str):
         )
         context = await browser.new_context(
             user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
+                "Chrome/125.0.0.0 Safari/537.36"
             ),
             viewport={"width": 1280, "height": 900},
+            locale="es-CL",
+            timezone_id="America/Santiago",
         )
 
         # ── Load saved FB cookies ──
-        # Only pass the 7 fields Playwright accepts; skip cookies with non-ASCII
-        # values (decryption artifacts that would cause Protocol errors).
+        # Only load c_user and xs (the auth cookies). Skip placeholder/fake cookies.
+        # Let Facebook set datr and other tracking cookies naturally.
         VALID_SAME_SITE = {"Strict", "Lax", "None"}
+        AUTH_COOKIES = {"c_user", "xs"}   # only these are required for auth
         pw_cookies = []
         skipped = 0
         for c in cookies:
+            name = c.get("name", "")
             val = c.get("value", "")
+
+            # Skip placeholder values
+            if val in ("placeholder", ""):
+                print(f"  ⏭️  Skipping cookie '{name}' (placeholder/empty)", flush=True)
+                continue
+
             try:
                 val.encode("ascii")          # Playwright requires ASCII-safe values
             except UnicodeEncodeError:
                 skipped += 1
                 continue
+
             pw_cookies.append({
-                "name":     c["name"],
+                "name":     name,
                 "value":    val,
                 "domain":   c.get("domain", ".facebook.com"),
                 "path":     c.get("path", "/"),
@@ -142,32 +178,97 @@ async def main(cookies_path: str):
                 "sameSite": c.get("sameSite") if c.get("sameSite") in VALID_SAME_SITE else "Lax",
             })
         if skipped:
-            print(f"⚠️  Skipped {skipped} cookies with non-ASCII values (re-save session from Mac)", flush=True)
-        if not pw_cookies:
-            print("❌ Todas las cookies son inválidas. Guarda de nuevo tu sesión desde el botón '💾 Guardar Sesión FB' en tu Mac.", flush=True)
+            print(f"⚠️  Skipped {skipped} cookies with non-ASCII values", flush=True)
+
+        # Check we have the essential auth cookies
+        loaded_names = {c["name"] for c in pw_cookies}
+        missing_auth = AUTH_COOKIES - loaded_names
+        if missing_auth:
+            print(f"❌ Faltan cookies de autenticación: {missing_auth}. Pega c_user y xs desde Chrome DevTools.", flush=True)
             await browser.close()
             sys.exit(1)
+
         await context.add_cookies(pw_cookies)
-        print(f"🍪 Loaded {len(pw_cookies)} FB cookies", flush=True)
+        print(f"🍪 Loaded {len(pw_cookies)} FB cookies: {[c['name'] for c in pw_cookies]}", flush=True)
 
         page = await context.new_page()
         page.on("response", handle_response)
 
+        # ── Step 1: Navigate to facebook.com to validate session ──
         print("🌐 Opening Facebook...", flush=True)
         await page.goto("https://www.facebook.com", wait_until="domcontentloaded", timeout=30_000)
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
 
-        if "login" in page.url or "checkpoint" in page.url:
-            print("❌ Sesión de Facebook inválida o expirada. Guarda de nuevo tu sesión desde el botón '💾 Guardar Sesión FB' en tu Mac.", flush=True)
+        current_url = page.url
+        page_title = await page.title()
+        print(f"📍 URL after load: {current_url}", flush=True)
+        print(f"📄 Page title: {page_title}", flush=True)
+
+        # Check for login/checkpoint redirects
+        if "login" in current_url or "checkpoint" in current_url:
+            print("❌ Sesión de Facebook inválida o expirada.", flush=True)
+            print(f"   URL: {current_url}", flush=True)
             await browser.close()
             sys.exit(1)
 
+        # Try to dismiss cookie consent banner if present
+        try:
+            consent_btn = page.locator('[data-cookiebanner="accept_button"], [data-testid="cookie-policy-manage-dialog-accept-button"]')
+            if await consent_btn.count() > 0:
+                print("🍪 Dismissing cookie consent banner...", flush=True)
+                await consent_btn.first.click()
+                await asyncio.sleep(2)
+        except Exception:
+            pass
+
         print("✅ Sesión de Facebook activa!", flush=True)
+
+        # ── Step 2: Navigate to Marketplace ──
         print(f"🌐 Navegando al marketplace...", flush=True)
         await page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(5)
 
-        print(f"🔄 Scraping: meta {TARGET_LEADS} leads V-Región (máx {MAX_SCROLLS} scrolls)...\n", flush=True)
+        mktpl_url = page.url
+        mktpl_title = await page.title()
+        print(f"📍 Marketplace URL: {mktpl_url}", flush=True)
+        print(f"📄 Marketplace title: {mktpl_title}", flush=True)
+
+        # Check if we got redirected away from marketplace
+        if "login" in mktpl_url or "checkpoint" in mktpl_url:
+            print("❌ Redirigido fuera del Marketplace (sesión inválida).", flush=True)
+            await browser.close()
+            sys.exit(1)
+
+        # Log if marketplace didn't load properly
+        if "marketplace" not in mktpl_url.lower():
+            print(f"⚠️ URL no parece ser Marketplace: {mktpl_url}", flush=True)
+
+        # Check page content for common issues
+        try:
+            body_text = await page.inner_text("body", timeout=5000)
+            snippet = body_text[:500].replace("\n", " ").strip()
+            print(f"📝 Page content preview: {snippet[:200]}...", flush=True)
+            if "you must log in" in body_text.lower() or "inicia sesión" in body_text.lower():
+                print("❌ Facebook pide iniciar sesión — cookies inválidas.", flush=True)
+                await browser.close()
+                sys.exit(1)
+        except Exception:
+            pass
+
+        # ── Step 3: Try clicking "See all" or dismissing popups ──
+        try:
+            # Dismiss any modal/overlay that might block scrolling
+            close_btns = page.locator('[aria-label="Close"], [aria-label="Cerrar"]')
+            if await close_btns.count() > 0:
+                print("🔲 Cerrando modal/popup...", flush=True)
+                await close_btns.first.click()
+                await asyncio.sleep(1)
+        except Exception:
+            pass
+
+        print(f"\n🔄 Scraping: meta {TARGET_LEADS} leads V-Región (máx {MAX_SCROLLS} scrolls)...\n", flush=True)
+        print(f"   (GraphQL responses interceptados hasta ahora: {graphql_count})\n", flush=True)
+
         for i in range(1, MAX_SCROLLS + 1):
             await page.evaluate(f"window.scrollBy(0, {SCROLL_PX})")
             print(f"  Scroll {i:>4}/{MAX_SCROLLS} — {qualifying_count}/{TARGET_LEADS} qualifying | {len(vehicles)} total | {graphql_count} GraphQL", flush=True)
@@ -176,14 +277,27 @@ async def main(cookies_path: str):
                 print(f"\n🎯 ¡Meta alcanzada: {qualifying_count} leads V-Región!", flush=True)
                 break
 
+            # Early warning if after 10 scrolls still no GraphQL
+            if i == 10 and graphql_count == 0:
+                print("\n⚠️ 10 scrolls y 0 GraphQL interceptados. Facebook puede estar bloqueando.", flush=True)
+                curr = page.url
+                print(f"📍 Current URL: {curr}", flush=True)
+                try:
+                    txt = await page.inner_text("body", timeout=3000)
+                    print(f"📝 Body: {txt[:300]}", flush=True)
+                except Exception:
+                    pass
+
         await asyncio.sleep(3)
 
         # ── Save to Supabase via API ──
         print(f"\n💾 Guardando {len(vehicles)} vehículos en Supabase...", flush=True)
         import os as _os
         import requests as _req
-        supa_url = _os.environ.get("SUPABASE_URL", "")
-        supa_key = _os.environ.get("SUPABASE_SERVICE_KEY") or _os.environ.get("SUPABASE_KEY", "")
+        supa_url = _os.environ.get("SUPABASE_URL", "").strip()
+        supa_key = (_os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                    or _os.environ.get("SUPABASE_SERVICE_KEY")
+                    or _os.environ.get("SUPABASE_KEY", "")).strip()
         if supa_url and supa_key:
             headers = {
                 "apikey": supa_key, "Authorization": f"Bearer {supa_key}",
