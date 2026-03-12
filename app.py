@@ -5542,6 +5542,36 @@ def stats():
     })
 
 
+@app.route("/api/debug-env")
+def debug_env():
+    """Temporary debug: show env var presence + test Supabase cookie fetch."""
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "")
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                or os.environ.get("SUPABASE_SERVICE_KEY")
+                or os.environ.get("SUPABASE_KEY", ""))
+    result = {
+        "SUPABASE_URL_set": bool(supa_url),
+        "SUPABASE_URL_value": repr(supa_url[:60]) if supa_url else None,
+        "SUPABASE_KEY_set": bool(supa_key),
+        "SUPABASE_KEY_preview": supa_key[:20] + "..." if supa_key else None,
+        "VERCEL": os.environ.get("VERCEL", ""),
+        "RAILWAY_ENVIRONMENT": os.environ.get("RAILWAY_ENVIRONMENT", ""),
+    }
+    if supa_url and supa_key:
+        try:
+            r = _req.get(
+                f"{supa_url.strip()}/rest/v1/app_settings?key=eq.fb_playwright_cookies&select=key,updated_at",
+                headers={"apikey": supa_key.strip(), "Authorization": f"Bearer {supa_key.strip()}"},
+                timeout=10
+            )
+            result["supabase_status"] = r.status_code
+            result["supabase_body"] = r.text[:300]
+        except Exception as e:
+            result["supabase_error"] = str(e)
+    return jsonify(result)
+
+
 # ─── API: Cars (inventory) ────────────────────────────────────────────────────
 @app.route("/api/cars", methods=["GET"])
 def get_cars():
