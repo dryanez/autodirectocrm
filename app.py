@@ -5626,13 +5626,134 @@ def update_car(car_id):
 
 @app.route("/api/cars/<int:car_id>", methods=["DELETE"])
 def delete_car(car_id):
+    import requests as req_lib
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
+    supa_headers = {
+        "apikey": supabase_key,
+        "Authorization": "Bearer " + supabase_key,
+        "Content-Type": "application/json",
+    }
+
     with get_conn() as conn:
         row = conn.execute("SELECT patente FROM cars WHERE id=?", (car_id,)).fetchone()
         if not row:
             return jsonify({"error": "Not found"}), 404
+        plate = row[0] or ""
+
+        # 1. Find linked consignacion (to un-publish it)
+        consig = conn.execute(
+            "SELECT id, listing_id FROM consignaciones WHERE plate=? OR car_id=?",
+            (plate.upper(), car_id)
+        ).fetchone()
+
+        listing_id = None
+        if consig:
+            listing_id = consig[1]  # listing_id stored on consignacion
+
+        # 2. Delete listing from Supabase (autodirecto.cl)
+        if listing_id and supabase_url and supabase_key:
+            try:
+                req_lib.delete(
+                    f"{supabase_url}/rest/v1/listings?id=eq.{listing_id}",
+                    headers=supa_headers, timeout=10
+                )
+            except Exception as e:
+                print(f"[delete_car] listing delete error: {e}", flush=True)
+
+        # Also try deleting by consignacion_id in case listing_id wasn't saved
+        if consig and supabase_url and supabase_key:
+            try:
+                req_lib.delete(
+                    f"{supabase_url}/rest/v1/listings?consignacion_id=eq.{consig[0]}",
+                    headers=supa_headers, timeout=10
+                )
+            except Exception as e:
+                print(f"[delete_car] listing delete by cid error: {e}", flush=True)
+
+        # 3. Reset consignacion status back to parte2_completa (un-published)
+        if consig:
+            try:
+                conn.execute(
+                    "UPDATE consignaciones SET status='parte2_completa', listing_id=NULL, car_id=NULL, updated_at=? WHERE id=?",
+                    (datetime.now().isoformat(), consig[0])
+                )
+            except Exception as e:
+                print(f"[delete_car] consig reset error: {e}", flush=True)
+
+        # 4. Delete the car from local inventory
         conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
         conn.commit()
-    return jsonify({"ok": True})
+
+    return jsonify({"ok": True, "listing_deleted": listing_id is not None})
+
+
+@app.route("/api/cars/bulk-delete", methods=["POST"])
+def bulk_delete_cars():
+    """Delete multiple cars + their Supabase listings in one call."""
+    import requests as req_lib
+    data = request.json or {}
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify({"error": "No ids provided"}), 400
+
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
+    supa_headers = {
+        "apikey": supabase_key,
+        "Authorization": "Bearer " + supabase_key,
+        "Content-Type": "application/json",
+    }
+
+    deleted = []
+    try:
+        with get_conn() as conn:
+            for car_id in ids:
+                row = conn.execute("SELECT patente FROM cars WHERE id=?", (car_id,)).fetchone()
+                if not row:
+                    continue
+                plate = row[0] or ""
+
+                consig = conn.execute(
+                    "SELECT id, listing_id FROM consignaciones WHERE plate=? OR car_id=?",
+                    (plate.upper(), car_id)
+                ).fetchone()
+
+                # Delete Supabase listing
+                if consig and supabase_url and supabase_key:
+                    listing_id = consig[1]
+                    if listing_id:
+                        try:
+                            req_lib.delete(
+                                f"{supabase_url}/rest/v1/listings?id=eq.{listing_id}",
+                                headers=supa_headers, timeout=10
+                            )
+                        except Exception:
+                            pass
+                    try:
+                        req_lib.delete(
+                            f"{supabase_url}/rest/v1/listings?consignacion_id=eq.{consig[0]}",
+                            headers=supa_headers, timeout=10
+                        )
+                    except Exception:
+                        pass
+                    # Reset consignacion
+                    try:
+                        conn.execute(
+                            "UPDATE consignaciones SET status='parte2_completa', listing_id=NULL, car_id=NULL, updated_at=? WHERE id=?",
+                            (datetime.now().isoformat(), consig[0])
+                        )
+                    except Exception:
+                        pass
+
+                conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
+                deleted.append(car_id)
+
+            conn.commit()
+        return jsonify({"ok": True, "deleted": deleted})
+    except Exception as e:
+        print(f"[bulk_delete_cars] Error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
 
 
 # ─── API: Commission Calculator ───────────────────────────────────────────────

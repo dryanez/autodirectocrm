@@ -392,6 +392,16 @@
                 <h2 class="text-lg font-semibold text-white">Inventario</h2>
                 <span class="bg-cyan-500/20 text-cyan-300 text-xs px-2 py-0.5 rounded-full font-bold"
                     x-text="inventarioCars.length + ' vehículos'"></span>
+                <!-- Multi-select toolbar -->
+                <template x-if="invSelecting && invSelected.length > 0">
+                    <div class="flex items-center gap-2 ml-2">
+                        <span class="text-sm text-red-400 font-semibold" x-text="invSelected.length + ' seleccionado' + (invSelected.length !== 1 ? 's' : '')"></span>
+                        <button @click="deleteSelectedCars()"
+                            class="flex items-center gap-1.5 bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                            <i class="ph ph-trash"></i> Eliminar
+                        </button>
+                    </div>
+                </template>
             </div>
             <!-- Search -->
             <div class="flex-1 max-w-md relative ml-4">
@@ -401,6 +411,12 @@
             </div>
             <!-- Filters -->
             <div class="flex items-center gap-2 ml-auto">
+                <button @click="invSelecting=!invSelecting; invSelected=[]"
+                    :class="invSelecting ? 'bg-red-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5">
+                    <i class="ph ph-check-square"></i>
+                    <span x-text="invSelecting ? 'Cancelar' : 'Seleccionar'"></span>
+                </button>
                 <button @click="invFilter='all'" :class="invFilter==='all' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
                     class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">Todos</button>
                 <button @click="invFilter='en_venta'" :class="invFilter==='en_venta' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
@@ -429,8 +445,14 @@
             <!-- Grid -->
             <div x-show="!invLoading" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
                 <template x-for="car in invFiltered" :key="car.id">
-                    <button @click="openInvDetail(car.id)"
-                        class="bg-slate-900 border border-slate-700 hover:border-cyan-600/50 rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:shadow-cyan-900/20 group focus:outline-none">
+                    <button @click="invSelecting ? (invSelected.includes(car.id) ? invSelected = invSelected.filter(id => id !== car.id) : invSelected.push(car.id)) : openInvDetail(car.id)"
+                        :class="invSelecting && invSelected.includes(car.id) ? 'border-2 border-red-400 bg-red-500/10 ring-2 ring-red-400/30' : ''"
+                        class="bg-slate-900 border border-slate-700 hover:border-cyan-600/50 rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:shadow-cyan-900/20 group focus:outline-none relative">
+                        <!-- Select checkbox overlay -->
+                        <div x-show="invSelecting" class="absolute top-2 left-2 z-10 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
+                            :class="invSelected.includes(car.id) ? 'bg-red-500 border-red-500' : 'border-slate-400 bg-slate-900/70'">
+                            <i x-show="invSelected.includes(car.id)" class="ph ph-check text-white text-xs" style="display:none;"></i>
+                        </div>
                         <!-- Photo -->
                         <div class="relative w-full aspect-[4/3] bg-slate-800 overflow-hidden">
                             <img x-show="car.cover_photo" :src="car.cover_photo"
@@ -524,6 +546,12 @@
                     class="text-xs px-2 py-1 rounded-full bg-orange-500/20 text-orange-400 font-medium flex items-center gap-1">
                     🚗 En ChileAutos
                 </span>
+                <!-- Delete button -->
+                <button @click="deleteInvCar(invDetail.id)"
+                    class="text-red-400 hover:text-white hover:bg-red-600/40 text-xs px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 ml-auto"
+                    title="Eliminar vehículo del inventario">
+                    <i class="ph ph-trash text-sm"></i>
+                </button>
                 <!-- Save flash -->
                 <span x-show="invSaveFlash" x-transition
                     class="text-emerald-400 text-xs font-bold flex items-center gap-1 animate-pulse">
@@ -4830,6 +4858,8 @@
                 invLoading: false,
                 invSaveFlash: false,
                 invAiLoading: false,
+                invSelecting: false,
+                invSelected: [],
                 cameraProModal: false,
                 cameraProUrl: null,
                 cameraProLoading: false,
@@ -4891,6 +4921,48 @@
                         }));
                     } catch (e) { console.error('loadInventario', e); this.inventarioCars = []; }
                     this.invLoading = false;
+                },
+
+                async deleteInvCar(id) {
+                    const car = this.inventarioCars.find(c => c.id === id) || this.invDetail;
+                    const label = [car?.car_year, car?.car_make, car?.car_model].filter(Boolean).join(' ') || `#${id}`;
+                    const hasListing = car?.listing_id;
+                    const msg = hasListing
+                        ? `¿Eliminar ${label} del inventario?\n\n⚠️ También se eliminará de autodirecto.cl (catálogo web).`
+                        : `¿Eliminar ${label} del inventario?`;
+                    if (!confirm(msg)) return;
+                    try {
+                        const r = await this.authFetch(`/api/cars/${id}`, { method: 'DELETE' });
+                        const d = await r.json();
+                        if (!r.ok) { alert('Error: ' + (d.error || r.status)); return; }
+                        this.inventarioCars = this.inventarioCars.filter(c => c.id !== id);
+                        if (this.invDetail?.id === id) this.invDetail = null;
+                        // Reload consignaciones list to reflect un-published status
+                        if (hasListing) this.loadConsignaciones();
+                    } catch (e) { alert('Error al eliminar: ' + e.message); }
+                },
+
+                async deleteSelectedCars() {
+                    const count = this.invSelected.length;
+                    const hasWeb = this.invSelected.some(id => this.inventarioCars.find(c => c.id === id)?.listing_id);
+                    const msg = hasWeb
+                        ? `¿Eliminar ${count} vehículo(s) del inventario?\n\n⚠️ Los que estén publicados también se eliminarán de autodirecto.cl.`
+                        : `¿Eliminar ${count} vehículo(s) del inventario?`;
+                    if (!confirm(msg)) return;
+                    try {
+                        const r = await this.authFetch('/api/cars/bulk-delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ids: this.invSelected })
+                        });
+                        const d = await r.json();
+                        if (!r.ok) { alert('Error: ' + (d.error || r.status)); return; }
+                        const deleted = d.deleted || [];
+                        this.inventarioCars = this.inventarioCars.filter(c => !deleted.includes(c.id));
+                        this.invSelected = [];
+                        this.invSelecting = false;
+                        if (hasWeb) this.loadConsignaciones();
+                    } catch (e) { alert('Error al eliminar: ' + e.message); }
                 },
 
                 async openInvDetail(id) {
