@@ -2276,8 +2276,10 @@ def create_consignacion():
         new_id = inserted.get("id") if inserted else conn._last_insert_id
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (new_id,)).fetchone() if new_id else inserted
 
-    # ── Match against existing funnels leads (FB Marketplace) by make+model+year ──
-    # Then call MrCar AI to get real pricing, and create/update a CRM lead as "Agendado".
+    # ── Create/update CRM lead ──
+    # Only attempt FB Funnels matching if the customer said they came from Facebook.
+    # Otherwise, just create a fresh CRM lead directly — no risky auto-matching.
+    referral_source = g("referralSource", "referral_source") or ""
     try:
         car_make_val = (car.get("make") or g("carMake", "car_make") or "").strip().upper()
         car_model_val = (car.get("model") or g("carModel", "car_model") or "").strip().upper()
@@ -2286,14 +2288,12 @@ def create_consignacion():
 
         matched_lead = None
         listing_price = None   # What the FB seller asks
-        print("[consignacion] matching: make={} model={} year={}".format(car_make_val, car_model_val, car_year_val), flush=True)
+        print("[consignacion] referral_source={}, make={} model={} year={}".format(
+            referral_source, car_make_val, car_model_val, car_year_val), flush=True)
 
         with get_crm_conn() as crm:
-            # Try to find a funnels lead that matches this car.
-            # Funnels car_model = "Brand Model" (e.g. "Mazda CX-5") and car_year = year.
-            # Wizard sends make="TOYOTA", model="YARIS" separately.
-            # Strategy: use the same point-based scoring logic as the calendar view.
-            if car_make_val or car_model_val:
+            # ── Only match against FB Funnels if customer came from Facebook ──
+            if referral_source == "facebook" and (car_make_val or car_model_val):
                 make = car_make_val.lower().strip()
                 model = car_model_val.lower().strip()
                 year = car_year_val
@@ -2312,31 +2312,36 @@ def create_consignacion():
                     c_combined = (c_make + " " + c_model).lower()
                     c_year = c["car_year"]
 
+                    # Make match (40 pts)
                     if make and (make in c_make or make in c_model or make in c_combined):
                         score += 40
+                    # Model match (40 pts)
                     if model and c_model and (model in c_model or c_model in model):
                         score += 40
-                    if year and c_year and int(year) == int(c_year):
-                        score += 30  # exact year bonus
-                    elif year and c_year and abs(int(year) - int(c_year)) <= 1:
-                        score += 15
+                    # Year match (30 pts exact, 15 pts ±1)
+                    if year and c_year:
+                        try:
+                            if int(year) == int(c_year):
+                                score += 30
+                            elif abs(int(year) - int(c_year)) <= 1:
+                                score += 15
+                        except (ValueError, TypeError):
+                            pass
 
-                    if score >= 60:
-                        matches.append({
-                            "lead": c,
-                            "score": score
-                        })
+                    # Require high confidence: make+model+year must all match (score >= 100)
+                    if score >= 100:
+                        matches.append({"lead": c, "score": score})
 
                 if matches:
                     matches.sort(key=lambda x: -x["score"])
                     matched_lead = matches[0]["lead"]
                     listing_price = matched_lead.get("listing_price") or matched_lead.get("estimated_value")
-                    print("[consignacion] MATCHED funnels lead id={} with score={}, listing_price={}".format(
+                    print("[consignacion] MATCHED funnels lead id={} score={} listing_price={}".format(
                         matched_lead.get("id"), matches[0]["score"], listing_price), flush=True)
+                else:
+                    print("[consignacion] FB referral but no high-confidence funnels match found", flush=True)
 
-            print(f"[consignacion] Matching checkpoints - Plate: {plate}, SupaID: {supa_id}, RUT: {g('rut')}, Phone: {g('phone')}", flush=True)
-
-            # 1. Match by Supabase ID (strongest link from wizard)
+            # ── De-duplicate: check if a CRM lead already exists for same plate/RUT/phone ──
             if not matched_lead and supa_id:
                 existing_by_supa = crm.execute(
                     "SELECT * FROM crm_leads WHERE supabase_id=? LIMIT 1", (supa_id,)
@@ -2345,7 +2350,6 @@ def create_consignacion():
                     matched_lead = existing_by_supa
                     print(f"[consignacion] Matched by Supabase ID: {supa_id}", flush=True)
 
-            # 2. Match by plate (standard match) - Simplified SQL for db.py
             if not matched_lead and plate:
                 existing_by_plate = crm.execute(
                     "SELECT * FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
@@ -2354,7 +2358,6 @@ def create_consignacion():
                     matched_lead = existing_by_plate
                     print(f"[consignacion] Matched by Plate: {plate}", flush=True)
 
-            # 3. Match by RUT
             if not matched_lead and g("rut"):
                 existing_by_rut = crm.execute(
                     "SELECT * FROM crm_leads WHERE rut=? LIMIT 1", (g("rut"),)
@@ -2363,7 +2366,6 @@ def create_consignacion():
                     matched_lead = existing_by_rut
                     print(f"[consignacion] Matched by RUT: {g('rut')}", flush=True)
 
-            # 4. Match by Phone
             if not matched_lead and g("phone"):
                 existing_by_phone = crm.execute(
                     "SELECT * FROM crm_leads WHERE phone=? LIMIT 1", (g("phone"),)
@@ -2371,6 +2373,13 @@ def create_consignacion():
                 if existing_by_phone:
                     matched_lead = existing_by_phone
                     print(f"[consignacion] Matched by Phone: {g('phone')}", flush=True)
+
+            # Determine source label for CRM
+            source_label = {
+                "facebook": "facebook",
+                "instagram": "instagram",
+                "website": "web_wizard",
+            }.get(referral_source, "web_wizard")
 
             if matched_lead:
                 listing_price = matched_lead.get("listing_price") or matched_lead.get("estimated_value")
@@ -2382,17 +2391,17 @@ def create_consignacion():
                         rut=?, phone=?, country_code=?, email=?,
                         region=?, commune=?, address=?, plate=?,
                         appointment_date=?, appointment_time=?,
-                        supabase_id=?, updated_at=?
+                        supabase_id=?, source=?, updated_at=?
                     WHERE id=?
                 """, (
                     "agendado", first_name, last_name, full_name,
                     g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
                     g("region"), g("commune"), g("address"), plate,
                     appointment_date, appointment_time,
-                    supa_id, now, lead_id
+                    supa_id, source_label, now, lead_id
                 ))
                 crm.commit()
-                print("[consignacion] matched funnels lead #{} (listing_price={})".format(lead_id, listing_price))
+                print("[consignacion] updated crm_lead #{} → agendado (source={})".format(lead_id, source_label))
             else:
                 # No match — create a fresh CRM lead
                 crm.execute("""
@@ -2401,7 +2410,7 @@ def create_consignacion():
                         region, commune, address, plate, car_make, car_model, car_year,
                         mileage, version, appointment_date, appointment_time,
                         stage, source, supabase_id, created_at, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     first_name, last_name, full_name,
                     g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
@@ -2409,9 +2418,10 @@ def create_consignacion():
                     plate, car_make_val, car_model_val, car_year_val,
                     mileage_val, g("version"),
                     appointment_date, appointment_time,
-                    "agendado", "web_wizard", supa_id, now, now
+                    "agendado", source_label, supa_id, now, now
                 ))
                 crm.commit()
+                print("[consignacion] created new crm_lead (source={})".format(source_label))
 
         if new_id:
             print(f"[consignacion] Successfully created consignacion #{new_id} for {full_name}")
