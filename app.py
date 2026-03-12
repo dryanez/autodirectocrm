@@ -682,6 +682,87 @@ def _legacy_init_schema():
 # Schema managed via setup_crm.sql in Supabase
 
 
+# ─── Notifications Helper ─────────────────────────────────────────────────────
+def _create_notification(ntype, title, message="", icon="🔔", link_view=None, link_id=None):
+    """Insert a notification row. Non-fatal — errors are just logged."""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO notifications (type, title, message, icon, link_view, link_id) "
+                "VALUES (?,?,?,?,?,?)",
+                (ntype, title, message, icon, link_view, link_id)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"[notifications] Error creating notification: {e}", flush=True)
+
+
+# ─── API: Notifications ──────────────────────────────────────────────────────
+@app.route("/api/notifications", methods=["GET"])
+def get_notifications():
+    """Return notifications, newest first. ?unread=1 for unread only."""
+    unread_only = request.args.get("unread", "")
+    limit = int(request.args.get("limit", "50"))
+    with get_db() as conn:
+        if unread_only == "1":
+            rows = conn.execute(
+                "SELECT * FROM notifications WHERE is_read=false ORDER BY id DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM notifications ORDER BY id DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/notifications/unread-count", methods=["GET"])
+def notifications_unread_count():
+    """Return the count of unread notifications."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT count(*) as cnt FROM notifications WHERE is_read=false"
+        ).fetchone()
+    count = row["cnt"] if row else 0
+    return jsonify({"count": count})
+
+
+@app.route("/api/notifications/<int:nid>/read", methods=["POST"])
+def mark_notification_read(nid):
+    """Mark a single notification as read."""
+    with get_db() as conn:
+        conn.execute("UPDATE notifications SET is_read=true WHERE id=?", (nid,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/notifications/read-all", methods=["POST"])
+def mark_all_notifications_read():
+    """Mark all notifications as read."""
+    with get_db() as conn:
+        conn.execute("UPDATE notifications SET is_read=true WHERE is_read=false")
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/notifications/clear", methods=["POST"])
+def clear_notifications():
+    """Delete all read notifications older than 7 days, or all if ?all=1."""
+    if request.args.get("all") == "1":
+        with get_db() as conn:
+            conn.execute("DELETE FROM notifications")
+            conn.commit()
+    else:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM notifications WHERE is_read=true AND created_at < ?",
+                ((datetime.now() - timedelta(days=7)).isoformat(),)
+            )
+            conn.commit()
+    return jsonify({"ok": True})
+
+
 # ─── API: Users ───────────────────────────────────────────────────────────────
 @app.route("/api/users", methods=["GET"])
 def get_users():
@@ -967,6 +1048,23 @@ def create_inspeccion():
                     params
                 )
                 conn.commit()
+
+        # ── Notification: Inspection completed ──
+        if consignacion_id:
+            try:
+                with get_db() as _nc:
+                    _cr = _nc.execute("SELECT plate, car_make, car_model, car_year, owner_full_name FROM consignaciones WHERE id=?", (consignacion_id,)).fetchone()
+                if _cr:
+                    _cr = row_to_dict(_cr)
+                    _lbl = f"{_cr.get('car_make','')} {_cr.get('car_model','')} {_cr.get('car_year','')}".strip()
+                    _create_notification(
+                        "inspection",
+                        "Inspección Completada",
+                        f"{_cr.get('owner_full_name','')} — {_lbl} ({_cr.get('plate','')})",
+                        "🔍", "consignaciones", consignacion_id
+                    )
+            except Exception:
+                pass
 
         return jsonify({"ok": True, "appraisal_id": appraisal_id})
 
@@ -2213,6 +2311,15 @@ def create_consignacion():
         print("[consignacion→crm_lead] error:", e, flush=True)
         traceback.print_exc()
 
+    # ── Notification: New consignación from website ──
+    car_label = f"{car.get('make') or g('carMake','car_make') or ''} {car.get('model') or g('carModel','car_model') or ''} {car.get('year') or g('carYear','car_year') or ''}".strip()
+    _create_notification(
+        "consignacion",
+        "Nueva Consignación",
+        f"{full_name} agendó {car_label} ({plate})" if car_label else f"{full_name} agendó una inspección ({plate})",
+        "📋", "consignaciones", new_id
+    )
+
     return jsonify({"ok": True, "id": new_id, "consignacion": row_to_dict(row or inserted)}), 201
 
 
@@ -2347,6 +2454,15 @@ def create_quick_consignacion():
         print(f"[quick_consig] CRM lead creation error: {e}", flush=True)
 
     label = f"{car_make} {car_model} {car_year or ''}".strip()
+
+    # ── Notification: Quick consignación from camera app ──
+    _create_notification(
+        "consignacion",
+        "Nueva Consignación (Cámara)",
+        f"{owner_name or 'Sin nombre'} — {label or plate}",
+        "📸", "consignaciones", new_id
+    )
+
     return jsonify({
         "ok": True, "created": True,
         "consignacion_id": new_id,
@@ -3253,6 +3369,14 @@ def publicar_en_catalogo(cid):
 
         # Sync CRM lead stage
         _sync_crm_lead_stage(c.get("plate"), "en_venta")
+
+        # ── Notification: Vehicle published ──
+        _create_notification(
+            "published",
+            "Vehículo Publicado 🏷️",
+            f"{brand} {model} {year} ({plate}) — ${price:,}".replace(",", ".") if price else f"{brand} {model} {year} ({plate})",
+            "🚗", "inventario", cid
+        )
 
         return jsonify({"ok": True, "listing_id": listing_id, "image_count": len(image_urls)})
 
@@ -4389,6 +4513,14 @@ def sign_contract_client(cid):
         )
         conn.commit()
 
+    # ── Notification: Contract signed ──
+    _create_notification(
+        "contract_signed",
+        "Contrato Firmado ✍️",
+        f"{consig.get('owner_full_name','')} firmó el contrato — {consig.get('plate','')}",
+        "✅", "consignaciones", cid
+    )
+
     return jsonify({"ok": True, "filename": signed_filename, "signed_at": now})
 
 
@@ -4521,6 +4653,16 @@ def create_comprador():
         )
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # ── Notification: New buyer ──
+    car_desc = data.get("car_description") or data.get("car_plate") or ""
+    _create_notification(
+        "comprador",
+        "Nuevo Comprador 🛒",
+        f"{full_name} interesado en {car_desc}".strip(),
+        "🛒", "compradores", new_id
+    )
+
     return jsonify({"ok": True, "id": new_id})
 
 
@@ -6340,6 +6482,14 @@ def chileautos_lead_webhook():
     except Exception as e:
         print(f"[chileautos_lead] Error creating comprador: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
+
+    # ── Notification: ChileAutos lead ──
+    _create_notification(
+        "chileautos",
+        "Lead ChileAutos 🌐",
+        f"{full_name} interesado en {car_description}",
+        "🌐", "compradores", new_id
+    )
 
     return jsonify({"ok": True, "comprador_id": new_id}), 202
 
