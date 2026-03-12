@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FB Marketplace Funnel - Leads</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- CRM Tailwind config and Inter font already loaded in main template -->
     <style>
-        body { font-family: 'Inter', sans-serif; }
         select { min-width: 130px; }
     </style>
     <script>
@@ -92,6 +90,25 @@
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
+        <!-- Summary Boxes (CRM style) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div class="stat-card flex flex-col items-center">
+                <div class="text-xs text-secondary font-semibold uppercase mb-1">Total Autos</div>
+                <div id="summary-total-autos" class="text-2xl font-bold">0</div>
+            </div>
+            <div class="stat-card flex flex-col items-center">
+                <div class="text-xs text-secondary font-semibold uppercase mb-1">Comisiones (Mes)</div>
+                <div id="summary-comisiones-mes" class="text-2xl font-bold text-emerald-400">$0</div>
+            </div>
+            <div class="stat-card flex flex-col items-center">
+                <div class="text-xs text-secondary font-semibold uppercase mb-1">Ventas Totales</div>
+                <div id="summary-ventas-totales" class="text-2xl font-bold">$0</div>
+            </div>
+            <div class="stat-card flex flex-col items-center">
+                <div class="text-xs text-secondary font-semibold uppercase mb-1">Comisiones a Recibir</div>
+                <div id="summary-comisiones-recibir" class="text-2xl font-bold text-blue-400">$0</div>
+            </div>
+        </div>
         <!-- Filters -->
         <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div class="flex flex-wrap gap-3 items-end">
@@ -389,24 +406,26 @@
 
             filtered.forEach(lead => {
                 const card = document.createElement('div');
-                card.className = 'bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200 border border-gray-100 flex flex-col' + (lead.status === 'ignored' ? ' opacity-50' : '');
+                card.className = 'glass-card overflow-hidden flex flex-col transition-shadow duration-200' + (lead.status === 'ignored' ? ' opacity-50' : '');
 
                 let priceStr = lead.price || 'N/A';
+                let priceNum = parsePrice(priceStr);
                 if (priceStr.startsWith && priceStr.startsWith("CLP")) {
-                    const priceNum = parsePrice(priceStr);
                     if (priceNum) priceStr = "CLP " + priceNum.toLocaleString('es-CL');
                 }
                 const price = priceStr;
+                // Commission calculation: 3.9% + IVA (19%) = 4.641%
+                let commission = priceNum ? Math.round(priceNum * 0.039 * 1.19) : 0;
 
                 const { brand, model } = parseBrandModel(lead.title);
                 const year = lead.year || 2020;
                 const mileage = lead.mileage || "0";
 
-                let statusColor = 'bg-gray-100 text-gray-800';
+                let statusColor = 'badge badge-available';
                 let timerHtml = '';
 
                 if (lead.status === 'contacted') {
-                    statusColor = 'bg-green-100 text-green-800';
+                    statusColor = 'badge badge-available';
                     if (lead.contacted_at) {
                         const now = Math.floor(Date.now() / 1000);
                         const deadline = lead.contacted_at + (72 * 3600);
@@ -420,7 +439,7 @@
                         }
                     }
                 }
-                if (lead.status === 'ignored') statusColor = 'bg-red-50 text-red-800';
+                if (lead.status === 'ignored') statusColor = 'badge badge-sold';
 
                 const listingId = lead.id || '';
                 const imgSrc = proxyPhoto(lead.photo_url, listingId);
@@ -442,42 +461,54 @@
                 card.innerHTML =
                     '<div class="relative">' +
                         photoHtml +
-                        (lead.is_sold ? '<span class="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">VENDIDO</span>' : '') +
+                        (lead.is_sold ? '<span class="absolute top-2 left-2 badge badge-sold text-xs font-bold">VENDIDO</span>' : '') +
                         '<div class="absolute top-2 right-2 flex flex-col items-end gap-1">' +
-                            '<span class="px-2 py-1 text-xs font-bold rounded-md bg-orange-100 text-orange-800 shadow-sm border border-orange-200">🔥 ' + (lead.score || 0) + '/100</span>' +
-                            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + statusColor + ' capitalize shadow-sm">' + (lead.status || 'new') + '</span>' +
+                            '<span class="badge badge-draft_dte">🔥 ' + (lead.score || 0) + '/100</span>' +
+                            '<span class="' + statusColor + ' capitalize shadow-sm">' + (lead.status || 'new') + '</span>' +
                             timerHtml +
                         '</div>' +
                     '</div>' +
                     '<div class="p-4 flex-grow">' +
-                        '<h3 class="text-base font-bold text-gray-900 mb-1 leading-snug line-clamp-2" title="' + lead.title + '">' + lead.title + '</h3>' +
+                        '<h3 class="text-base font-bold mb-1 leading-snug line-clamp-2" title="' + lead.title + '">' + lead.title + '</h3>' +
                         '<div class="mb-3">' +
-                            '<span class="text-xs text-gray-400 uppercase tracking-wide font-medium">Precio pedido</span>' +
-                            '<p class="text-xl font-semibold text-blue-600">' + price + '</p>' +
+                            '<span class="text-xs text-secondary uppercase tracking-wide font-medium">Precio pedido</span>' +
+                            '<p class="text-xl font-semibold text-primary">' + price + '</p>' +
+                            '<span class="block text-xs text-emerald-400 mt-1">Comisión: <b>3.9% + IVA</b> <span class="font-semibold">CLP ' + commission.toLocaleString('es-CL') + '</span></span>' +
                         '</div>' +
                         valuationContent +
-                        '<hr class="my-2 border-gray-100">' +
-                        '<div class="space-y-1 text-sm text-gray-600">' +
+                        '<hr class="my-2 border-default">' +
+                        '<div class="space-y-1 text-sm text-secondary">' +
                             '<div class="flex items-center"><span class="w-5 text-center mr-2">📍</span> ' + (lead.location || 'N/A') + locationExtra + '</div>' +
-                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📅</span> ' + (lead.year || '----') + (lead.mileage ? '<span class="ml-2 text-gray-400">• ' + lead.mileage + '</span>' : '') + '</div>' +
-                            '<div class="flex items-center mt-1"><span class="w-5 text-center mr-2 text-gray-400">👤</span> ' + (lead.seller || 'Desconocido') + '</div>' +
+                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📅</span> ' + (lead.year || '----') + (lead.mileage ? '<span class="ml-2 text-secondary">• ' + lead.mileage + '</span>' : '') + '</div>' +
+                            '<div class="flex items-center mt-1"><span class="w-5 text-center mr-2 text-secondary">👤</span> ' + (lead.seller || 'Desconocido') + '</div>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="bg-gray-50 px-4 py-3 border-t border-gray-100 flex justify-between items-center gap-2">' +
-                        '<a href="' + lead.url + '" target="_blank" rel="noopener noreferrer" class="flex-1 text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">Ver en FB</a>' +
+                    '<div class="bg-surface px-4 py-3 border-t border-default flex justify-between items-center gap-2">' +
+                        '<a href="' + lead.url + '" target="_blank" rel="noopener noreferrer" class="flex-1 text-center bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">Ver en FB</a>' +
                         '<div class="relative inline-block text-left group">' +
-                            '<button class="text-gray-400 hover:text-gray-600 p-2 text-lg">⋮</button>' +
-                            '<div class="hidden group-hover:block absolute right-0 bottom-full mb-2 w-36 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">' +
+                            '<button class="text-secondary hover:text-primary p-2 text-lg">⋮</button>' +
+                            '<div class="hidden group-hover:block absolute right-0 bottom-full mb-2 w-36 glass-card shadow-lg ring-1 ring-black ring-opacity-5 z-10">' +
                                 '<div class="py-1">' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'contacted\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">✅ Contactado</button>' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'ignored\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">🚫 Ignorar</button>' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \'new\'})" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">🔄 Resetear</button>' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"contacted\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">✅ Contactado</button>' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"ignored\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">🚫 Ignorar</button>' +
+                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"new\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">🔄 Resetear</button>' +
                                 '</div>' +
                             '</div>' +
                         '</div>' +
                     '</div>';
                 grid.appendChild(card);
             });
+            // Update summary boxes
+            let totalAutos = allLeads.length;
+            let comisionesRecibir = 0;
+            filtered.forEach(lead => {
+                let priceNum = parsePrice(lead.price);
+                let commission = priceNum ? Math.round(priceNum * 0.039 * 1.19) : 0;
+                if (!lead.is_sold && priceNum) comisionesRecibir += commission;
+            });
+            document.getElementById('summary-total-autos').innerText = totalAutos;
+            document.getElementById('summary-comisiones-recibir').innerText = 'CLP ' + comisionesRecibir.toLocaleString('es-CL');
+            // ...existing code...
         }
 
         async function loadLeads() {
