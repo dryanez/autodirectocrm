@@ -14,11 +14,11 @@ import re
 import requests as _req
 from datetime import datetime
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_KEY = (
     os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     or os.environ.get("SUPABASE_ANON_KEY", "")
-)
+).strip()
 
 
 def _headers(prefer_return=True):
@@ -334,13 +334,7 @@ def _parse_where_clause(where_str, params):
         m = re.match(r"([a-zA-Z_.]+)\s+IN\s*\(([^)]+)\)", cond, re.I)
         if m:
             col = m.group(1).strip()
-            inner = m.group(2)
-            # Check if the IN clause uses ? placeholders
-            placeholder_count = inner.count('?')
-            if placeholder_count > 0:
-                vals = [str(next_param()) for _ in range(placeholder_count)]
-            else:
-                vals = [v.strip().strip("'\"") for v in inner.split(",")]
+            vals = [v.strip().strip("'\"") for v in m.group(2).split(",")]
             filters[col] = f"in.({','.join(vals)})"
             continue
 
@@ -348,12 +342,7 @@ def _parse_where_clause(where_str, params):
         m = re.match(r"([a-zA-Z_.]+)\s+NOT\s+IN\s*\(([^)]+)\)", cond, re.I)
         if m:
             col = m.group(1).strip()
-            inner = m.group(2)
-            placeholder_count = inner.count('?')
-            if placeholder_count > 0:
-                vals = [str(next_param()) for _ in range(placeholder_count)]
-            else:
-                vals = [v.strip().strip("'\"") for v in inner.split(",")]
+            vals = [v.strip().strip("'\"") for v in m.group(2).split(",")]
             filters[col] = f"not.in.({','.join(vals)})"
             continue
 

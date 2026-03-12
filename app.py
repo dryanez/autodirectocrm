@@ -159,11 +159,11 @@ if FUNNELS_DIR.exists():
     @funnels_bp.route('/api/leads', methods=['GET'])
     def funnels_api_leads():
         leads = list(funnels_module.get_leads())
-        # If in-memory cache is empty (cold start on Vercel), load from Supabase
+        # If in-memory cache is empty (cold start on Railway), load from Supabase
         if not leads:
             try:
                 with get_db() as conn:
-                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 1000").fetchall()
                 leads = [row_to_dict(r) for r in rows]
                 # Cache for subsequent requests
                 funnels_module._cached_listings = leads
@@ -192,7 +192,7 @@ if FUNNELS_DIR.exists():
         if not funnels_module._cached_listings:
             try:
                 with get_db() as conn:
-                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY year DESC LIMIT 1000").fetchall()
+                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 1000").fetchall()
                 funnels_module._cached_listings = [row_to_dict(r) for r in rows]
             except Exception:
                 pass

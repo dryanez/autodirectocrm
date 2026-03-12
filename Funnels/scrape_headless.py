@@ -8,7 +8,9 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from playwright.async_api import async_playwright
@@ -71,6 +73,18 @@ def parse_feed_units(data: dict):
                 seller = (listing.get("marketplace_listing_seller") or {}).get("name", "")
                 listing_url = f"https://www.facebook.com/marketplace/item/{lid}/"
 
+                # Extract photo URL from GraphQL data
+                photo_obj = listing.get("primary_listing_photo") or listing.get("primaryListingPhoto") or {}
+                photo_url = (photo_obj.get("image") or {}).get("uri", "") or photo_obj.get("photo_image_url", "")
+                if not photo_url:
+                    photos = listing.get("listing_photos") or listing.get("listingPhotos") or []
+                    if photos:
+                        photo_url = (photos[0].get("image") or {}).get("uri", "")
+
+                # Parse year from title (e.g. "2018 Ford Explorer" → 2018)
+                year_match = re.search(r'\b(19|20)\d{2}\b', title)
+                year = int(year_match.group()) if year_match else None
+
                 if lid and title and lid not in vehicles:
                     price_num = price_raw if price_raw > 0 else _parse_price_clp(price_fmt)
                     is_v = _is_v_region(city)
@@ -80,6 +94,7 @@ def parse_feed_units(data: dict):
                         "price_clp": price_num, "city": city, "km": km,
                         "seller": seller, "url": listing_url,
                         "v_region": is_v, "qualifies": qualifies,
+                        "photo_url": photo_url or "", "year": year,
                     }
                     if qualifies:
                         qualifying_count += 1
@@ -357,18 +372,40 @@ def _save_to_supabase(vehicles, qualifying_count, graphql_count):
         saved = 0
         for v in vehicles.values():
             row = {
-                "listing_id": v["id"], "title": v["title"],
-                "price": v["price"], "price_clp": v["price_clp"],
-                "location": v["city"], "mileage": v["km"],
-                "seller": v["seller"], "url": v["url"],
-                "is_v_region": v["v_region"], "status": "new",
+                "id": v["id"],
+                "title": v["title"],
+                "price": v["price"],
+                "price_num": v["price_clp"],
+                "location": v["city"],
+                "year": v.get("year"),
+                "mileage": v["km"],
+                "photo_url": v.get("photo_url", ""),
+                "url": v["url"],
+                "is_sold": False,
+                "scraped_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+                "seller": v.get("seller", ""),
+                "is_v_region": v.get("v_region", False),
             }
             try:
                 r = _req.post(f"{supa_url}/rest/v1/funnel_listings",
                               json=row, headers=headers, timeout=10)
                 if r.status_code in (200, 201):
                     saved += 1
-            except Exception:
+                elif r.status_code == 400 and "column" in (r.text or "").lower():
+                    # Column doesn't exist yet — retry without optional columns
+                    row.pop("seller", None)
+                    row.pop("is_v_region", None)
+                    r2 = _req.post(f"{supa_url}/rest/v1/funnel_listings",
+                                   json=row, headers=headers, timeout=10)
+                    if r2.status_code in (200, 201):
+                        saved += 1
+                    else:
+                        print(f"  ⚠️ Supabase error for {v['id']}: {r2.status_code} {r2.text[:120]}", flush=True)
+                else:
+                    print(f"  ⚠️ Supabase error for {v['id']}: {r.status_code} {r.text[:120]}", flush=True)
+            except Exception as e:
+                print(f"  ⚠️ Supabase request failed for {v['id']}: {e}", flush=True)
                 continue
         print(f"✅ Guardados {saved}/{len(vehicles)} en Supabase", flush=True)
     else:
