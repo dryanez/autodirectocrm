@@ -18,11 +18,11 @@ TARGET_URL = (
     "https://www.facebook.com/marketplace/106647439372422/search/"
     "?minPrice=4000000&query=Vehicles&exact=false&radius=20"
 )
-MAX_SCROLLS  = 300
+MAX_SCROLLS  = 150
 TARGET_LEADS = 200
 MIN_PRICE    = 4_000_000
 SCROLL_PX    = 1200
-SCROLL_DELAY = 3.0
+SCROLL_DELAY = 2.5
 
 # ─── V Region communes ──────────────────────────────────────────────────────────
 V_REGION_COMMUNES = {
@@ -132,8 +132,23 @@ async def main(cookies_path: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox",
-                  "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",          # use /tmp instead of /dev/shm
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--disable-translate",
+                "--no-first-run",
+                "--disable-blink-features=AutomationControlled",
+                "--single-process",                  # less memory on small containers
+                "--disable-features=site-per-process",
+                "--js-flags=--max-old-space-size=256",
+            ],
         )
         context = await browser.new_context(
             user_agent=(
@@ -141,7 +156,7 @@ async def main(cookies_path: str):
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/125.0.0.0 Safari/537.36"
             ),
-            viewport={"width": 1280, "height": 900},
+            viewport={"width": 1280, "height": 800},
             locale="es-CL",
             timezone_id="America/Santiago",
         )
@@ -269,70 +284,102 @@ async def main(cookies_path: str):
         print(f"\n🔄 Scraping: meta {TARGET_LEADS} leads V-Región (máx {MAX_SCROLLS} scrolls)...\n", flush=True)
         print(f"   (GraphQL responses interceptados hasta ahora: {graphql_count})\n", flush=True)
 
-        for i in range(1, MAX_SCROLLS + 1):
-            await page.evaluate(f"window.scrollBy(0, {SCROLL_PX})")
-            print(f"  Scroll {i:>4}/{MAX_SCROLLS} — {qualifying_count}/{TARGET_LEADS} qualifying | {len(vehicles)} total | {graphql_count} GraphQL", flush=True)
-            await asyncio.sleep(SCROLL_DELAY)
-            if qualifying_count >= TARGET_LEADS:
-                print(f"\n🎯 ¡Meta alcanzada: {qualifying_count} leads V-Región!", flush=True)
-                break
+        crashed = False
+        try:
+            for i in range(1, MAX_SCROLLS + 1):
+                await page.evaluate(f"window.scrollBy(0, {SCROLL_PX})")
+                print(f"  Scroll {i:>4}/{MAX_SCROLLS} — {qualifying_count}/{TARGET_LEADS} qualifying | {len(vehicles)} total | {graphql_count} GraphQL", flush=True)
+                await asyncio.sleep(SCROLL_DELAY)
+                if qualifying_count >= TARGET_LEADS:
+                    print(f"\n🎯 ¡Meta alcanzada: {qualifying_count} leads V-Región!", flush=True)
+                    break
 
-            # Early warning if after 10 scrolls still no GraphQL
-            if i == 10 and graphql_count == 0:
-                print("\n⚠️ 10 scrolls y 0 GraphQL interceptados. Facebook puede estar bloqueando.", flush=True)
-                curr = page.url
-                print(f"📍 Current URL: {curr}", flush=True)
-                try:
-                    txt = await page.inner_text("body", timeout=3000)
-                    print(f"📝 Body: {txt[:300]}", flush=True)
-                except Exception:
-                    pass
+                # Early warning if after 10 scrolls still no GraphQL
+                if i == 10 and graphql_count == 0:
+                    print("\n⚠️ 10 scrolls y 0 GraphQL interceptados. Facebook puede estar bloqueando.", flush=True)
+                    curr = page.url
+                    print(f"📍 Current URL: {curr}", flush=True)
+                    try:
+                        txt = await page.inner_text("body", timeout=3000)
+                        print(f"📝 Body: {txt[:300]}", flush=True)
+                    except Exception:
+                        pass
+        except Exception as scroll_err:
+            print(f"\n⚠️ Browser crash during scrolling: {scroll_err}", flush=True)
+            print(f"   Salvando {len(vehicles)} vehículos encontrados antes del crash...", flush=True)
+            crashed = True
 
-        await asyncio.sleep(3)
+        if not crashed:
+            try:
+                await asyncio.sleep(2)
+            except Exception:
+                pass
 
-        # ── Save to Supabase via API ──
-        print(f"\n💾 Guardando {len(vehicles)} vehículos en Supabase...", flush=True)
-        import os as _os
-        import requests as _req
-        supa_url = _os.environ.get("SUPABASE_URL", "").strip()
-        supa_key = (_os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-                    or _os.environ.get("SUPABASE_SERVICE_KEY")
-                    or _os.environ.get("SUPABASE_KEY", "")).strip()
-        if supa_url and supa_key:
-            headers = {
-                "apikey": supa_key, "Authorization": f"Bearer {supa_key}",
-                "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates",
-            }
-            saved = 0
-            for v in vehicles.values():
-                row = {
-                    "listing_id": v["id"], "title": v["title"],
-                    "price": v["price"], "price_clp": v["price_clp"],
-                    "location": v["city"], "mileage": v["km"],
-                    "seller": v["seller"], "url": v["url"],
-                    "is_v_region": v["v_region"], "status": "new",
-                }
-                r = _req.post(f"{supa_url}/rest/v1/funnel_listings",
-                              json=row, headers=headers, timeout=10)
-                if r.status_code in (200, 201):
-                    saved += 1
-            print(f"✅ Guardados {saved}/{len(vehicles)} en Supabase", flush=True)
+        # ── Save to Supabase — always attempt, even after crash ──
+        _save_to_supabase(vehicles, qualifying_count, graphql_count)
+
+        if crashed and len(vehicles) > 0:
+            print(f"\n⚠️ Scrape parcial: {len(vehicles)} vehículos guardados antes del crash.", flush=True)
+        elif not crashed:
+            print(f"\n✅ Scrape completo!", flush=True)
         else:
-            print("⚠️ SUPABASE_URL/KEY no configurados — guardando CSV local.", flush=True)
-            import csv
-            out = Path(__file__).parent / "facebook_graphql_vehicles.csv"
-            with open(out, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["id","title","price","price_clp","city","km","seller","url","v_region","qualifies"])
-                writer.writeheader()
-                writer.writerows(vehicles.values())
-            print(f"📄 CSV guardado: {out}", flush=True)
+            print(f"\n❌ Scrape falló sin encontrar vehículos.", flush=True)
 
-        print(f"\n✅ Scrape completo!", flush=True)
         print(f"   Total vehículos: {len(vehicles)}", flush=True)
         print(f"   Leads V-Región:  {qualifying_count}", flush=True)
         print(f"   GraphQL calls:   {graphql_count}", flush=True)
 
-        await browser.close()
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+def _save_to_supabase(vehicles, qualifying_count, graphql_count):
+    """Save found vehicles to Supabase. Called even after browser crash."""
+    import os as _os
+    import requests as _req
+
+    if not vehicles:
+        print("💾 No hay vehículos para guardar.", flush=True)
+        return
+
+    print(f"\n💾 Guardando {len(vehicles)} vehículos en Supabase...", flush=True)
+    supa_url = _os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (_os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                or _os.environ.get("SUPABASE_SERVICE_KEY")
+                or _os.environ.get("SUPABASE_KEY", "")).strip()
+    if supa_url and supa_key:
+        headers = {
+            "apikey": supa_key, "Authorization": f"Bearer {supa_key}",
+            "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates",
+        }
+        saved = 0
+        for v in vehicles.values():
+            row = {
+                "listing_id": v["id"], "title": v["title"],
+                "price": v["price"], "price_clp": v["price_clp"],
+                "location": v["city"], "mileage": v["km"],
+                "seller": v["seller"], "url": v["url"],
+                "is_v_region": v["v_region"], "status": "new",
+            }
+            try:
+                r = _req.post(f"{supa_url}/rest/v1/funnel_listings",
+                              json=row, headers=headers, timeout=10)
+                if r.status_code in (200, 201):
+                    saved += 1
+            except Exception:
+                continue
+        print(f"✅ Guardados {saved}/{len(vehicles)} en Supabase", flush=True)
+    else:
+        print("⚠️ SUPABASE_URL/KEY no configurados — guardando CSV local.", flush=True)
+        import csv
+        out = Path(__file__).parent / "facebook_graphql_vehicles.csv"
+        with open(out, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["id","title","price","price_clp","city","km","seller","url","v_region","qualifies"])
+            writer.writeheader()
+            writer.writerows(vehicles.values())
+        print(f"📄 CSV guardado: {out}", flush=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
