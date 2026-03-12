@@ -1,11 +1,20 @@
 # Railway / Nixpacks build config
-# Let Playwright install its own Chromium + deps via apt (Ubuntu base image)
+# Let Playwright install its own Chromium + deps
+
+[phases.setup]
+nixPkgs = ["python311"]
 
 [phases.install]
+dependsOn = ["setup"]
 cmds = [
-  "pip install -r requirements.txt",
-  "playwright install chromium --with-deps || true",
+  "python -m venv /opt/venv",
+  "/opt/venv/bin/pip install --upgrade pip",
+  "/opt/venv/bin/pip install -r requirements.txt",
+  "/opt/venv/bin/playwright install chromium --with-deps || true",
 ]
 
+[phases.build]
+dependsOn = ["install"]
+
 [start]
-cmd = "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180"
+cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180"
