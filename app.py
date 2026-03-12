@@ -367,6 +367,9 @@ if FUNNELS_DIR.exists():
         # ── Detect environment ──
         chrome_user_data = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
         is_local_mac = chrome_user_data.exists()
+        RAILWAY_URL = os.environ.get("RAILWAY_URL", "https://autodirecto-production.up.railway.app")
+        # If we're on Vercel (no Chrome, no Playwright) → proxy to Railway
+        is_vercel = os.environ.get("VERCEL", "") == "1"
 
         def _load_fb_cookies_from_supabase():
             """Fetch saved FB cookies from Supabase app_settings table."""
@@ -389,6 +392,18 @@ if FUNNELS_DIR.exists():
 
         def generate():
             yield f"data: {json.dumps({'log': '🚀 Iniciando scraper de Facebook Marketplace...', 'pct': 0})}\n\n"
+
+            if is_vercel:
+                # ── VERCEL: proxy the entire scrape stream to Railway ──
+                yield f"data: {json.dumps({'log': '☁️ Vercel → redirigiendo scrape a Railway...', 'pct': 1})}\n\n"
+                try:
+                    with _requests.get(f"{RAILWAY_URL}/funnels/api/scrape", stream=True, timeout=300) as r:
+                        for line in r.iter_lines():
+                            if line:
+                                yield line.decode("utf-8") + "\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'log': f'❌ Error conectando con Railway: {e}', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
 
             if is_local_mac:
                 # ── LOCAL MAC: use existing Chrome profile ──
