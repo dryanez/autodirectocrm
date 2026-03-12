@@ -1,28 +1,5 @@
 # Railway / Nixpacks build config
-# Installs system deps required by Playwright's bundled Chromium
-
-[phases.setup]
-nixPkgs = [
-  "chromium",
-  "nss",
-  "nspr",
-  "atk",
-  "cups",
-  "dbus",
-  "expat",
-  "libdrm",
-  "libxkbcommon",
-  "mesa",
-  "libGL",
-  "libxcomposite",
-  "libxdamage",
-  "libxfixes",
-  "libxrandr",
-  "gbm",
-  "pango",
-  "cairo",
-  "alsa-lib",
-]
+# Let Playwright install its own Chromium + deps via apt (Ubuntu base image)
 
 [phases.install]
 cmds = [
