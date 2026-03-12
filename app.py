@@ -325,7 +325,11 @@ if FUNNELS_DIR.exists():
             # Save to Supabase
             import requests as _req
             supa_url = os.environ.get("SUPABASE_URL", "")
-            supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+            supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                        or os.environ.get("SUPABASE_SERVICE_KEY")
+                        or os.environ.get("SUPABASE_KEY", ""))
+            if not supa_url or not supa_key:
+                return jsonify({"error": "Supabase env vars not set (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}), 500
             headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
                        "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
             payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
@@ -368,7 +372,9 @@ if FUNNELS_DIR.exists():
             """Fetch saved FB cookies from Supabase app_settings table."""
             try:
                 supa_url = os.environ.get("SUPABASE_URL", "")
-                supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+                supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                            or os.environ.get("SUPABASE_SERVICE_KEY")
+                            or os.environ.get("SUPABASE_KEY", ""))
                 headers  = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
                 r = _requests.get(
                     f"{supa_url}/rest/v1/app_settings?key=eq.fb_playwright_cookies&select=value",
@@ -433,7 +439,8 @@ if FUNNELS_DIR.exists():
 
                 fb_cookies = _load_fb_cookies_from_supabase()
                 if not fb_cookies:
-                    yield f"data: {json.dumps({'log': '⚠️ No hay sesión de Facebook guardada. Ve a Funnels → botón \"💾 Guardar Sesión FB\" desde tu Mac, luego vuelve a intentar.', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    _msg = '\u26a0\ufe0f No hay sesi\u00f3n de Facebook guardada. Ve a Funnels \u2192 bot\u00f3n "\U0001f4be Guardar Sesi\u00f3n FB" desde tu Mac, luego vuelve a intentar.'
+                    yield f"data: {json.dumps({'log': _msg, 'pct': 100, 'done': True, 'success': False})}\n\n"
                     return
 
                 # Run the headless scraper inline using asyncio + playwright
