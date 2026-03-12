@@ -1,171 +1,355 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FB Marketplace Funnel - Leads</title>
-    <!-- CRM Tailwind config and Inter font already loaded in main template -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        select { min-width: 130px; }
+        :root {
+            --bg-base:    #0d1117;
+            --bg-card:    #161b22;
+            --bg-card2:   #1c2333;
+            --border:     rgba(255,255,255,0.08);
+            --text-pri:   #e6edf3;
+            --text-sec:   #8b949e;
+            --accent:     #3b82f6;
+            --accent-g:   #10b981;
+            --accent-r:   #ef4444;
+            --accent-y:   #f59e0b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-pri);
+            min-height: 100vh;
+        }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+        /* ── Header ── */
+        .crm-header {
+            background: rgba(22,27,34,0.95);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 50;
+        }
+
+        /* ── Stat cards ── */
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .stat-label { font-size: 11px; color: var(--text-sec); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: var(--text-pri); }
+
+        /* ── Filter bar ── */
+        .filter-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .tab-btn {
+            padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+            color: var(--text-sec); border: 1px solid transparent;
+            cursor: pointer; transition: all .15s; white-space: nowrap;
+            background: transparent;
+        }
+        .tab-btn.active, .tab-btn:hover {
+            background: rgba(59,130,246,0.15);
+            color: #60a5fa;
+            border-color: rgba(59,130,246,0.3);
+        }
+        .crm-select, .crm-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-pri);
+            font-size: 13px;
+            padding: 7px 10px;
+            min-width: 130px;
+        }
+        .crm-select:focus, .crm-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+        option { background: #1c2333; }
+
+        /* ── Lead cards ── */
+        .lead-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color .2s, transform .2s, box-shadow .2s;
+        }
+        .lead-card:hover {
+            border-color: rgba(59,130,246,0.4);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+            transform: translateY(-2px);
+        }
+        .lead-card.ignored { opacity: 0.45; }
+        .card-footer {
+            background: rgba(255,255,255,0.03);
+            border-top: 1px solid var(--border);
+            padding: 10px 14px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* ── Buttons ── */
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s, opacity .15s;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: var(--accent-g); }
+        .btn-success:hover { background: #059669; }
+        .btn-ghost {
+            background: rgba(255,255,255,0.06);
+            color: var(--text-pri);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+
+        /* ── Status badges ── */
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
+            border: 1px solid;
+        }
+        .badge-new    { background: rgba(59,130,246,0.15); color: #60a5fa; border-color: rgba(59,130,246,0.3); }
+        .badge-ok     { background: rgba(16,185,129,0.15); color: #34d399; border-color: rgba(16,185,129,0.3); }
+        .badge-ignored{ background: rgba(239,68,68,0.12);  color: #f87171; border-color: rgba(239,68,68,0.25); }
+        .badge-score  { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+        .badge-timer  { background: rgba(99,102,241,0.15); color: #a5b4fc; border-color: rgba(99,102,241,0.3); }
+        .badge-expired{ background: rgba(239,68,68,0.15);  color: #f87171; border-color: rgba(239,68,68,0.3); }
+
+        /* ── Valuation box ── */
+        .valuation-box {
+            background: rgba(16,185,129,0.08);
+            border: 1px solid rgba(16,185,129,0.2);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        .valuation-box .msg-area {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-sec);
+            font-size: 12px;
+            padding: 8px 10px;
+            resize: none;
+            width: 100%;
+            height: 9rem;
+            line-height: 1.5;
+        }
+        .valuation-box .msg-area:focus { outline: none; border-color: var(--accent); }
+
+        /* ── Progress banners ── */
+        .progress-banner {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+            padding: 12px 24px;
+            display: none;
+        }
+        .progress-banner.show { display: block; }
+
+        /* ── Dropdown menu ── */
+        .dropdown-menu {
+            display: none;
+            position: absolute; right: 0; bottom: 100%; margin-bottom: 6px;
+            background: var(--bg-card2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            min-width: 150px;
+            z-index: 20;
+        }
+        .dropdown-wrap:hover .dropdown-menu { display: block; }
+        .dropdown-item {
+            display: block; width: 100%;
+            text-align: left;
+            padding: 8px 14px;
+            font-size: 13px;
+            color: var(--text-sec);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: background .12s, color .12s;
+        }
+        .dropdown-item:hover { background: rgba(255,255,255,0.06); color: var(--text-pri); }
+
+        /* ── Empty state ── */
+        .empty-state { color: var(--text-sec); }
     </style>
-    <script>
-        // Detect base path so API calls work both standalone (/api/leads) and embedded (/funnels/api/leads)
-        const BASE = location.pathname.replace(/\/+$/, '');
-        function apiUrl(path) { return BASE + path; }
-    </script>
 </head>
 
-<body class="bg-gray-50 min-h-screen">
+<body>
 
     <!-- Header -->
-    <header class="bg-white shadow-sm sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">🚗 FB Funnel Dashboard</h1>
-            <div class="flex items-center space-x-3">
-                <button onclick="startScrape()"
-                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
+    <header class="crm-header">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+            <h1 class="text-[16px] font-bold text-white tracking-tight flex items-center gap-2">
+                🚗 <span>FB Funnel Dashboard</span>
+            </h1>
+            <div class="flex items-center gap-2">
+                <button onclick="startScrape()" class="btn-primary">
                     <span>🚀</span> Scrape Now
                 </button>
-                <button onclick="startMessaging()"
-                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
+                <button onclick="startMessaging()" class="btn-primary btn-success">
                     <span>💬</span> Send Messages
                 </button>
                 <span id="total-leads"
-                    class="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">Loading...</span>
-                <button onclick="loadLeads()" title="Refresh" class="text-gray-500 hover:text-gray-700">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    class="badge badge-new text-xs px-3 py-1">...</span>
+                <button onclick="loadLeads()" title="Refresh" class="btn-ghost px-2 py-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                        </path>
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                     </svg>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Scrape Progress Banner (hidden by default) -->
-    <div id="scrape-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-indigo-900 text-white px-6 py-3 shadow-xl">
+    <!-- Scrape Progress Banner -->
+    <div id="scrape-banner" class="hidden fixed top-0 left-0 right-0 z-[999] text-white px-6 py-3 shadow-xl" style="background:rgba(30,27,75,0.97);border-bottom:1px solid rgba(99,102,241,0.4);">
         <div class="max-w-7xl mx-auto flex items-center gap-4">
             <div class="text-lg">🚀</div>
             <div class="flex-1">
                 <div class="flex justify-between items-center mb-1">
-                    <span id="scrape-log" class="text-sm font-medium truncate max-w-xl">Iniciando...</span>
-                    <span id="scrape-pct" class="text-sm font-bold ml-4">0%</span>
+                    <span id="scrape-log" class="text-sm font-medium truncate max-w-xl text-slate-200">Iniciando...</span>
+                    <span id="scrape-pct" class="text-sm font-bold ml-4 text-indigo-300">0%</span>
                 </div>
-                <div class="w-full bg-indigo-700 rounded-full h-2">
-                    <div id="scrape-bar" class="bg-green-400 h-2 rounded-full transition-all duration-500"
-                         style="width: 0%"></div>
+                <div class="w-full rounded-full h-1.5" style="background:rgba(99,102,241,0.25);">
+                    <div id="scrape-bar" class="h-1.5 rounded-full transition-all duration-500" style="width:0%;background:#34d399;"></div>
                 </div>
-                <div class="flex justify-between text-xs text-indigo-300 mt-1">
+                <div class="flex justify-between text-xs text-slate-400 mt-1">
                     <span id="scrape-vehicles"></span>
                     <span>Scraping Facebook Marketplace...</span>
                 </div>
             </div>
-            <button onclick="document.getElementById('scrape-banner').classList.add('hidden')"
-                class="text-indigo-300 hover:text-white text-xl ml-2">&times;</button>
+            <button onclick="document.getElementById('scrape-banner').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl ml-2">&times;</button>
         </div>
     </div>
 
-    <!-- Messaging Progress Banner (hidden by default) -->
-    <div id="msg-banner" class="hidden fixed top-0 left-0 right-0 z-[999] bg-green-900 text-white px-6 py-3 shadow-xl">
+    <!-- Messaging Progress Banner -->
+    <div id="msg-banner" class="hidden fixed top-0 left-0 right-0 z-[999] text-white px-6 py-3 shadow-xl" style="background:rgba(6,46,30,0.97);border-bottom:1px solid rgba(16,185,129,0.4);">
         <div class="max-w-7xl mx-auto flex items-center gap-4">
             <div class="text-lg">💬</div>
             <div class="flex-1">
                 <div class="flex justify-between items-center mb-1">
-                    <span id="msg-log" class="text-sm font-medium truncate max-w-xl">Iniciando mensajes...</span>
-                    <span id="msg-pct" class="text-sm font-bold ml-4">0%</span>
+                    <span id="msg-log" class="text-sm font-medium truncate max-w-xl text-slate-200">Iniciando mensajes...</span>
+                    <span id="msg-pct" class="text-sm font-bold ml-4 text-emerald-300">0%</span>
                 </div>
-                <div class="w-full bg-green-700 rounded-full h-2">
-                    <div id="msg-bar" class="bg-yellow-400 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                <div class="w-full rounded-full h-1.5" style="background:rgba(16,185,129,0.2);">
+                    <div id="msg-bar" class="h-1.5 rounded-full transition-all duration-500" style="width:0%;background:#fbbf24;"></div>
                 </div>
-                <div class="flex justify-between text-xs text-green-300 mt-1">
+                <div class="flex justify-between text-xs text-slate-400 mt-1">
                     <span id="msg-sent"></span>
-                    <span>Enviando mensajes · 5-8 min entre cada uno</span>
+                    <span>Enviando mensajes · 5–8 min entre cada uno</span>
                 </div>
             </div>
-            <button onclick="document.getElementById('msg-banner').classList.add('hidden')"
-                class="text-green-300 hover:text-white text-xl ml-2">&times;</button>
+            <button onclick="document.getElementById('msg-banner').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl ml-2">&times;</button>
         </div>
     </div>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-        <!-- Summary Boxes (CRM style) -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <div class="stat-card flex flex-col items-center">
-                <div class="text-xs text-secondary font-semibold uppercase mb-1">Total Autos</div>
-                <div id="summary-total-autos" class="text-2xl font-bold">0</div>
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="stat-card">
+                <div class="stat-label">Total Autos</div>
+                <div id="summary-total-autos" class="stat-value">0</div>
             </div>
-            <div class="stat-card flex flex-col items-center">
-                <div class="text-xs text-secondary font-semibold uppercase mb-1">Comisiones (Mes)</div>
-                <div id="summary-comisiones-mes" class="text-2xl font-bold text-emerald-400">$0</div>
+            <div class="stat-card">
+                <div class="stat-label">Comisiones (Mes)</div>
+                <div id="summary-comisiones-mes" class="stat-value" style="color:#34d399;">$0</div>
             </div>
-            <div class="stat-card flex flex-col items-center">
-                <div class="text-xs text-secondary font-semibold uppercase mb-1">Ventas Totales</div>
-                <div id="summary-ventas-totales" class="text-2xl font-bold">$0</div>
+            <div class="stat-card">
+                <div class="stat-label">Ventas Totales</div>
+                <div id="summary-ventas-totales" class="stat-value">$0</div>
             </div>
-            <div class="stat-card flex flex-col items-center">
-                <div class="text-xs text-secondary font-semibold uppercase mb-1">Comisiones a Recibir</div>
-                <div id="summary-comisiones-recibir" class="text-2xl font-bold text-blue-400">$0</div>
+            <div class="stat-card">
+                <div class="stat-label">Comisiones a Recibir</div>
+                <div id="summary-comisiones-recibir" class="stat-value" style="color:#60a5fa;">$0</div>
             </div>
         </div>
+
         <!-- Filters -->
-        <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <div class="filter-bar mb-6">
             <div class="flex flex-wrap gap-3 items-end">
 
                 <!-- Tabs -->
-                <div class="flex space-x-1 mb-4 border-b border-gray-200 pb-1 w-full overflow-x-auto">
-                    <button onclick="switchTab('new')" id="tab-new"
-                        class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 transition-colors whitespace-nowrap">Nuevos</button>
-                    <button onclick="switchTab('contacted')" id="tab-contacted"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Contactados</button>
-                    <button onclick="switchTab('ignored')" id="tab-ignored"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Ignorados</button>
-                    <button onclick="switchTab('outside')" id="tab-outside"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Fuera de Region</button>
-                    <button onclick="switchTab('all')" id="tab-all"
-                        class="tab-btn px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap">Todos</button>
+                <div class="flex gap-1 mb-3 w-full overflow-x-auto pb-1" style="border-bottom:1px solid var(--border);">
+                    <button onclick="switchTab('new')" id="tab-new" class="tab-btn active">Nuevos</button>
+                    <button onclick="switchTab('contacted')" id="tab-contacted" class="tab-btn">Contactados</button>
+                    <button onclick="switchTab('ignored')" id="tab-ignored" class="tab-btn">Ignorados</button>
+                    <button onclick="switchTab('outside')" id="tab-outside" class="tab-btn">Fuera de Región</button>
+                    <button onclick="switchTab('all')" id="tab-all" class="tab-btn">Todos</button>
                 </div>
                 <input type="hidden" id="status-filter" value="new">
 
                 <!-- Brand -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Marca</label>
-                    <select id="brand-filter" onchange="onBrandChange()"
-                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                    <label class="stat-label">Marca</label>
+                    <select id="brand-filter" onchange="onBrandChange()" class="crm-select">
                         <option value="">Todas las marcas</option>
                     </select>
                 </div>
 
                 <!-- Model -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modelo</label>
-                    <select id="model-filter" onchange="renderLeads()"
-                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                    <label class="stat-label">Modelo</label>
+                    <select id="model-filter" onchange="renderLeads()" class="crm-select">
                         <option value="">Todos los modelos</option>
                     </select>
                 </div>
 
                 <!-- Min Price -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio min (CLP)</label>
+                    <label class="stat-label">Precio mín (CLP)</label>
                     <input type="number" id="price-min" placeholder="0" step="100000" min="0" oninput="renderLeads()"
-                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500">
+                        class="crm-input w-36">
                 </div>
 
                 <!-- Max Price -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio max (CLP)</label>
-                    <input type="number" id="price-max" placeholder="Sin limite" step="100000" min="0"
-                        oninput="renderLeads()"
-                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border w-36 focus:ring-blue-500 focus:border-blue-500">
+                    <label class="stat-label">Precio máx (CLP)</label>
+                    <input type="number" id="price-max" placeholder="Sin límite" step="100000" min="0" oninput="renderLeads()"
+                        class="crm-input w-36">
                 </div>
 
                 <!-- Min Year -->
                 <div class="flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ano min</label>
-                    <select id="year-filter" onchange="renderLeads()"
-                        class="border-gray-300 rounded-lg shadow-sm text-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                    <label class="stat-label">Año mín</label>
+                    <select id="year-filter" onchange="renderLeads()" class="crm-select">
                         <option value="0">Cualquiera</option>
                         <option value="2000">2000+</option>
                         <option value="2005">2005+</option>
@@ -178,26 +362,29 @@
 
                 <!-- Reset -->
                 <div class="flex flex-col gap-1 justify-end">
-                    <button onclick="resetFilters()"
-                        class="text-sm text-gray-500 hover:text-red-600 border border-gray-300 hover:border-red-400 rounded-lg px-3 py-2 transition-colors">
-                        X Limpiar
-                    </button>
+                    <button onclick="resetFilters()" class="btn-ghost text-sm">✕ Limpiar</button>
                 </div>
 
                 <span class="flex-grow"></span>
-                <div id="filter-stats" class="text-sm text-gray-400 self-end pb-2"></div>
+                <div id="filter-stats" class="text-xs pb-1" style="color:var(--text-sec);align-self:flex-end;"></div>
             </div>
         </div>
 
         <!-- Grid -->
-        <div id="leads-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div id="leads-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             <!-- Cards injected via JS -->
         </div>
+
     </main>
 
     <script>
+        // ── Base path helper (works under /funnels or standalone) ────────
+        const BASE = location.pathname.replace(/\/+$/, '');
+        function apiUrl(path) { return BASE + path; }
+
         let allLeads = [];
 
+        // ── Parse brand & model from title ──────────────────────────────
         function parseBrandModel(title) {
             const parts = title.trim().split(/\s+/);
             const start = (parts[0] && /^\d{4}$/.test(parts[0])) ? 1 : 0;
@@ -206,11 +393,13 @@
             return { brand, model };
         }
 
+        // ── Populate brand dropdown from data ───────────────────────────
         function populateBrandFilter() {
             const brands = [...new Set(
                 allLeads.map(l => parseBrandModel(l.title).brand)
                     .filter(Boolean)
             )].sort();
+
             const sel = document.getElementById('brand-filter');
             sel.innerHTML = '<option value="">Todas las marcas</option>';
             brands.forEach(b => {
@@ -221,10 +410,12 @@
             });
         }
 
+        // ── When brand changes, repopulate model dropdown ────────────────
         function onBrandChange() {
             const brand = document.getElementById('brand-filter').value;
             const modelSel = document.getElementById('model-filter');
             modelSel.innerHTML = '<option value="">Todos los modelos</option>';
+
             if (brand) {
                 const models = [...new Set(
                     allLeads
@@ -232,6 +423,7 @@
                         .map(l => parseBrandModel(l.title).model)
                         .filter(Boolean)
                 )].sort();
+
                 models.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m;
@@ -248,6 +440,7 @@
             return digits ? parseInt(digits, 10) : null;
         }
 
+        // ── Helper: Copy to clipboard ────────────────────────────────────
         function copyMessage(btn, url) {
             const textarea = btn.previousElementSibling;
             textarea.select();
@@ -259,14 +452,7 @@
             });
         }
 
-        function proxyPhoto(photoUrl, listingId) {
-            if (!photoUrl && !listingId) return 'https://placehold.co/400x176/e5e7eb/9ca3af?text=Sin+Foto';
-            const params = new URLSearchParams();
-            if (photoUrl) params.set('url', photoUrl);
-            if (listingId) params.set('id', listingId);
-            return apiUrl('/api/img-proxy') + '?' + params.toString();
-        }
-
+        // ── Render Valuation Results Box ────────────────────────────────
         function renderValuationBox(pricing, lead) {
             const fmt = n => 'CLP ' + n.toLocaleString('es-CL');
             const market = pricing.market_price;
@@ -274,45 +460,58 @@
             const compra = pricing.immediate_offer;
             const { brand, model } = parseBrandModel(lead.title);
 
-            return '<div class="mt-3 pt-3 border-t border-gray-100 bg-indigo-50/50 p-2 rounded-lg">' +
-                '<div class="mb-2">' +
-                    '<span class="text-xs text-purple-600 font-bold uppercase">Valor Mercado Real (IA)</span>' +
-                    '<p class="text-lg font-bold text-gray-900">' + fmt(market) + '</p>' +
-                '</div>' +
-                '<div class="space-y-1">' +
-                    '<div class="flex items-center justify-between text-xs">' +
-                        '<span class="text-gray-500 font-medium">🤝 Consignacion Real</span>' +
-                        '<span class="font-semibold text-green-600">' + fmt(consignacion) + '</span>' +
-                    '</div>' +
-                    '<div class="flex items-center justify-between text-xs">' +
-                        '<span class="text-gray-500 font-medium">⚡ Compra inmediata</span>' +
-                        '<span class="font-semibold text-amber-600">' + fmt(compra) + '</span>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="mt-3 pt-3 border-t border-gray-100">' +
-                    '<label class="block text-xs font-semibold text-gray-500 mb-1">💬 Mensaje sugerido</label>' +
-                    '<div class="flex gap-2">' +
-                        '<textarea readonly class="w-full text-xs bg-white border border-gray-200 rounded p-2 text-gray-700 h-40 resize-none leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-500">' +
-'Hola ' + (lead.seller ? lead.seller.split(' ')[0] : 'Amigo') + ', vi tu ' + brand.toUpperCase() + ' ' + model.toUpperCase() + ' ' + lead.year + ' publicado.\n\n' +
-'Nuestra tecnologia analizo el mercado y estima que podriamos gestionar la venta asegurandote ' + fmt(consignacion) + ' liquidos para tu bolsillo.\n\n' +
-'Asi tu obtienes el monto que buscas sin tener que lidiar con extranos ni tramites.\n\n' +
-'Te hace sentido esa cifra para conversar?\n\n' +
-'Quedo atento,\nFelipe Yanez\nAgente de Ventas | Autodirecto.cl</textarea>' +
-                        '<button onclick="copyMessage(this, \'' + lead.url + '\')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded px-3 flex flex-col items-center justify-center gap-1 transition-colors w-16" title="Copiar y Contactar">' +
-                            '<span class="text-xl">📋</span>' +
-                            '<span class="text-[10px] font-bold text-center">Copiar</span>' +
-                        '</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
+            return `
+                <div class="valuation-box">
+                    <div class="mb-2">
+                        <span style="font-size:10px;color:#a78bfa;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Valor Mercado Real (IA)</span>
+                        <p style="font-size:18px;font-weight:700;color:#e6edf3;">${fmt(market)}</p>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;font-size:12px;">
+                            <span style="color:#8b949e;">🤝 Consignación Real</span>
+                            <span style="font-weight:700;color:#34d399;">${fmt(consignacion)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px;">
+                            <span style="color:#8b949e;">⚡ Compra inmediata</span>
+                            <span style="font-weight:700;color:#fbbf24;">${fmt(compra)}</span>
+                        </div>
+                    </div>
+                    <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
+                        <label style="display:block;font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;margin-bottom:6px;">💬 Mensaje sugerido</label>
+                        <div style="display:flex;gap:8px;">
+                            <textarea readonly class="msg-area">Hola ${lead.seller ? lead.seller.split(' ')[0] : 'Amigo'}, vi tu ${brand.toUpperCase()} ${model.toUpperCase()} ${lead.year} publicado.
+
+Nuestra tecnología analizó el mercado y estima que podríamos gestionar la venta asegurándote ${fmt(consignacion)} líquidos para tu bolsillo.
+
+Así tú obtienes el monto que buscas sin tener que lidiar con extraños ni trámites.
+
+¿Te hace sentido esa cifra para conversar?
+
+Quedo atento,
+Felipe Yanez
+Agente de Ventas | Autodirecto.cl</textarea>
+                            <button onclick="copyMessage(this, '${lead.url}')"
+                                style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;border-radius:8px;padding:0 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;min-width:44px;"
+                                title="Copiar">
+                                <span style="font-size:18px;">📋</span>
+                                <span style="font-size:10px;font-weight:700;">Copiar</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+             `;
         }
 
+        // ── Get Real Valuation from API ──────────────────────────────────
         async function getValuation(btn, url, make, model, year, mileage) {
             const originalText = btn.innerHTML;
+
+            // UI Loading state
             btn.disabled = true;
             btn.innerHTML = '<span>⏳</span> Tasando...';
             btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
             btn.classList.add('bg-gray-400');
+
             try {
                 const response = await fetch(apiUrl('/api/valuation'), {
                     method: 'POST',
@@ -320,10 +519,12 @@
                     body: JSON.stringify({ make, model, year, mileage })
                 });
                 const data = await response.json();
+
                 if (data.success) {
+                    // Save result to backend and refresh UI
                     updateLead(url, { valuation: data.pricing });
                 } else {
-                    throw new Error(data.error || 'Error en tasacion');
+                    throw new Error(data.error || 'Error en tasación');
                 }
             } catch (e) {
                 console.error(e);
@@ -338,6 +539,7 @@
             }
         }
 
+        // ── Reset all filters ────────────────────────────────────────────
         function resetFilters() {
             document.getElementById('status-filter').value = 'all';
             document.getElementById('brand-filter').value = '';
@@ -348,22 +550,18 @@
             switchTab('new');
         }
 
+        // ── Switch Tabs ────────────────────────────────────────────────
         function switchTab(status) {
             document.getElementById('status-filter').value = status;
             ['new', 'contacted', 'ignored', 'outside', 'all'].forEach(s => {
                 const btn = document.getElementById('tab-' + s);
-                if (!btn) return;
-                if (s === status) {
-                    btn.classList.add('border-indigo-500', 'text-indigo-600', 'border-b-2');
-                    btn.classList.remove('text-gray-500', 'hover:text-gray-700');
-                } else {
-                    btn.classList.remove('border-indigo-500', 'text-indigo-600', 'border-b-2');
-                    btn.classList.add('text-gray-500', 'hover:text-gray-700');
-                }
+                if (s === status) btn.classList.add('active');
+                else btn.classList.remove('active');
             });
             renderLeads();
         }
 
+        // ── Main render ──────────────────────────────────────────────────
         function renderLeads() {
             const grid = document.getElementById('leads-grid');
             const statusFilter = document.getElementById('status-filter').value;
@@ -374,17 +572,24 @@
             const yearFilter = parseInt(document.getElementById('year-filter').value) || 0;
 
             const filtered = allLeads.filter(lead => {
+                // Status & Region Logic
                 const status = lead.status || 'new';
+                
                 if (statusFilter === 'outside') {
                     if (lead.is_v_region) return false;
                 } else if (statusFilter !== 'all') {
+                    // Regular tabs (Nuevos, Contactados, Ignorados) only show V Region cars
                     if (!lead.is_v_region) return false;
                     if (status !== statusFilter) return false;
                 }
+                
+                // Year
                 if (yearFilter && lead.year && parseInt(lead.year) < yearFilter) return false;
+                // Brand / Model
                 const { brand, model } = parseBrandModel(lead.title);
                 if (brandFilter && brand !== brandFilter) return false;
                 if (modelFilter && !model.startsWith(modelFilter)) return false;
+                // Price
                 const price = parsePrice(lead.price);
                 if (price !== null) {
                     if (priceMin && price < priceMin) return false;
@@ -394,38 +599,35 @@
             });
 
             document.getElementById('filter-stats').innerText =
-                'Mostrando ' + filtered.length + ' de ' + allLeads.length;
-            document.getElementById('total-leads').innerText =
-                filtered.length + ' / ' + allLeads.length + ' Leads';
+                `Mostrando ${filtered.length} de ${allLeads.length}`;
+            document.getElementById('total-leads').innerText = `${filtered.length} / ${allLeads.length} Leads`;
             grid.innerHTML = '';
 
             if (filtered.length === 0) {
-                grid.innerHTML = '<div class="col-span-full text-center py-16 text-gray-400 text-lg">Sin resultados para estos filtros</div>';
+                grid.innerHTML = '<div class="col-span-full text-center py-16 empty-state text-lg">Sin resultados para estos filtros</div>';
                 return;
             }
 
             filtered.forEach(lead => {
                 const card = document.createElement('div');
-                card.className = 'glass-card overflow-hidden flex flex-col transition-shadow duration-200' + (lead.status === 'ignored' ? ' opacity-50' : '');
+                card.className = 'lead-card' + (lead.status === 'ignored' ? ' ignored' : '');
 
                 let priceStr = lead.price || 'N/A';
-                let priceNum = parsePrice(priceStr);
-                if (priceStr.startsWith && priceStr.startsWith("CLP")) {
+                if (priceStr.startsWith("CLP")) {
+                    const priceNum = parsePrice(priceStr);
                     if (priceNum) priceStr = "CLP " + priceNum.toLocaleString('es-CL');
                 }
                 const price = priceStr;
-                // Commission calculation: 3.9% + IVA (19%) = 4.641%
-                let commission = priceNum ? Math.round(priceNum * 0.039 * 1.19) : 0;
 
                 const { brand, model } = parseBrandModel(lead.title);
                 const year = lead.year || 2020;
                 const mileage = lead.mileage || "0";
 
-                let statusColor = 'badge badge-available';
+                let statusBadge = `<span class="badge badge-new">${lead.status || 'new'}</span>`;
                 let timerHtml = '';
 
                 if (lead.status === 'contacted') {
-                    statusColor = 'badge badge-available';
+                    statusBadge = `<span class="badge badge-ok">contactado</span>`;
                     if (lead.contacted_at) {
                         const now = Math.floor(Date.now() / 1000);
                         const deadline = lead.contacted_at + (72 * 3600);
@@ -433,87 +635,87 @@
                         if (remaining > 0) {
                             const h = Math.floor(remaining / 3600);
                             const m = Math.floor((remaining % 3600) / 60);
-                            timerHtml = '<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold border border-indigo-100 flex items-center gap-1"><span>⏳</span> ' + h + 'h ' + m + 'm</span>';
+                            timerHtml = `<span class="badge badge-timer">⏳ ${h}h ${m}m</span>`;
                         } else {
-                            timerHtml = '<span class="bg-red-50 text-red-700 px-2 py-0.5 rounded text-xs font-bold border border-red-100 flex items-center gap-1"><span>⚠️</span> Expirado</span>';
+                            timerHtml = `<span class="badge badge-expired">⚠️ Expirado</span>`;
                         }
                     }
                 }
-                if (lead.status === 'ignored') statusColor = 'badge badge-sold';
+                if (lead.status === 'ignored') statusBadge = `<span class="badge badge-ignored">ignorado</span>`;
 
-                const listingId = lead.id || '';
-                const imgSrc = proxyPhoto(lead.photo_url, listingId);
-                const photoHtml = (lead.photo_url || listingId)
-                    ? '<img src="' + imgSrc + '" alt="' + lead.title + '" class="w-full h-44 object-cover bg-gray-100" onerror="this.onerror=null;this.src=\'https://placehold.co/400x176/e5e7eb/9ca3af?text=Sin+Foto\';">'
-                    : '<div class="w-full h-44 bg-gray-100 flex items-center justify-center text-gray-400 text-5xl">🚗</div>';
+                const photoHtml = lead.photo_url
+                    ? `<img src="${lead.photo_url}" alt="${lead.title}" style="width:100%;height:176px;object-fit:cover;background:#1c2333;" onerror="this.onerror=null;this.src='https://placehold.co/400x176/1c2333/8b949e?text=Sin+Foto';">`
+                    : `<div style="width:100%;height:176px;background:#1c2333;display:flex;align-items:center;justify-content:center;font-size:48px;">🚗</div>`;
 
                 let valuationContent = '';
                 if (lead.valuation) {
                     valuationContent = renderValuationBox(lead.valuation, lead);
                 } else {
-                    valuationContent = '<button onclick="getValuation(this, \'' + lead.url + '\', \'' + brand + '\', \'' + model + '\', \'' + year + '\', \'' + mileage + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors mb-2"><span>📊</span> Tasar con IA</button>';
+                    valuationContent = `
+                        <button onclick="getValuation(this, '${lead.url}', '${brand}', '${model}', '${year}', '${mileage}')"
+                            class="btn-primary" style="width:100%;justify-content:center;margin-bottom:8px;">
+                            <span>📊</span> Tasar con IA
+                        </button>
+                    `;
                 }
 
-                const locationExtra = (lead.is_v_region && lead.distance_to_vina !== undefined && lead.distance_to_vina !== 9999)
-                    ? '<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">' + lead.distance_to_vina + 'km a Vina</span>'
-                    : '';
-
-                card.innerHTML =
-                    '<div class="relative">' +
-                        photoHtml +
-                        (lead.is_sold ? '<span class="absolute top-2 left-2 badge badge-sold text-xs font-bold">VENDIDO</span>' : '') +
-                        '<div class="absolute top-2 right-2 flex flex-col items-end gap-1">' +
-                            '<span class="badge badge-draft_dte">🔥 ' + (lead.score || 0) + '/100</span>' +
-                            '<span class="' + statusColor + ' capitalize shadow-sm">' + (lead.status || 'new') + '</span>' +
-                            timerHtml +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="p-4 flex-grow">' +
-                        '<h3 class="text-base font-bold mb-1 leading-snug line-clamp-2" title="' + lead.title + '">' + lead.title + '</h3>' +
-                        '<div class="mb-3">' +
-                            '<span class="text-xs text-secondary uppercase tracking-wide font-medium">Precio pedido</span>' +
-                            '<p class="text-xl font-semibold text-primary">' + price + '</p>' +
-                            '<span class="block text-xs text-emerald-400 mt-1">Comisión: <b>3.9% + IVA</b> <span class="font-semibold">CLP ' + commission.toLocaleString('es-CL') + '</span></span>' +
-                        '</div>' +
-                        valuationContent +
-                        '<hr class="my-2 border-default">' +
-                        '<div class="space-y-1 text-sm text-secondary">' +
-                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📍</span> ' + (lead.location || 'N/A') + locationExtra + '</div>' +
-                            '<div class="flex items-center"><span class="w-5 text-center mr-2">📅</span> ' + (lead.year || '----') + (lead.mileage ? '<span class="ml-2 text-secondary">• ' + lead.mileage + '</span>' : '') + '</div>' +
-                            '<div class="flex items-center mt-1"><span class="w-5 text-center mr-2 text-secondary">👤</span> ' + (lead.seller || 'Desconocido') + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="bg-surface px-4 py-3 border-t border-default flex justify-between items-center gap-2">' +
-                        '<a href="' + lead.url + '" target="_blank" rel="noopener noreferrer" class="flex-1 text-center bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">Ver en FB</a>' +
-                        '<div class="relative inline-block text-left group">' +
-                            '<button class="text-secondary hover:text-primary p-2 text-lg">⋮</button>' +
-                            '<div class="hidden group-hover:block absolute right-0 bottom-full mb-2 w-36 glass-card shadow-lg ring-1 ring-black ring-opacity-5 z-10">' +
-                                '<div class="py-1">' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"contacted\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">✅ Contactado</button>' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"ignored\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">🚫 Ignorar</button>' +
-                                    '<button onclick="updateLead(\'' + lead.url + '\', {status: \"new\"})" class="block w-full text-left px-4 py-2 text-sm text-secondary hover:bg-hover">🔄 Resetear</button>' +
-                                '</div>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>';
+                card.innerHTML = `
+                    <div style="position:relative;">
+                        ${photoHtml}
+                        ${lead.is_sold ? `<span class="badge badge-ignored" style="position:absolute;top:8px;left:8px;">VENDIDO</span>` : ''}
+                        <div style="position:absolute;top:8px;right:8px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                            <span class="badge badge-score">🔥 ${lead.score || 0}/100</span>
+                            ${statusBadge}
+                            ${timerHtml}
+                        </div>
+                    </div>
+                    <div style="padding:14px;flex:1;">
+                        <h3 style="font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;" title="${lead.title}">${lead.title}</h3>
+                        <div style="margin-bottom:10px;">
+                            <span style="font-size:10px;color:#8b949e;text-transform:uppercase;font-weight:600;letter-spacing:.05em;">Precio pedido</span>
+                            <p style="font-size:20px;font-weight:700;color:#60a5fa;margin:0;">${price}</p>
+                        </div>
+                        ${valuationContent}
+                        <div style="border-top:1px solid rgba(255,255,255,0.07);margin:10px 0;"></div>
+                        <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:#8b949e;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span>📍</span> ${lead.location || 'N/A'}
+                                ${lead.is_v_region && lead.distance_to_vina !== undefined && lead.distance_to_vina !== 9999
+                                    ? `<span class="badge badge-new" style="font-size:10px;">${lead.distance_to_vina}km a Viña</span>` : ''}
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span>📅</span> ${lead.year || '----'}
+                                ${lead.mileage ? `<span style="color:#6b7280;">• ${lead.mileage}</span>` : ''}
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span>👤</span> ${lead.seller || 'Desconocido'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="${lead.url}" target="_blank" rel="noopener noreferrer"
+                           class="btn-primary" style="flex:1;justify-content:center;">
+                            Ver en FB
+                        </a>
+                        <div class="dropdown-wrap" style="position:relative;display:inline-block;">
+                            <button class="btn-ghost" style="padding:7px 10px;font-size:18px;line-height:1;">⋮</button>
+                            <div class="dropdown-menu">
+                                <button onclick="updateLead('${lead.url}', {status: 'contacted'})" class="dropdown-item">✅ Contactado</button>
+                                <button onclick="updateLead('${lead.url}', {status: 'ignored'})"   class="dropdown-item">🚫 Ignorar</button>
+                                <button onclick="updateLead('${lead.url}', {status: 'new'})"       class="dropdown-item">🔄 Resetear</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
                 grid.appendChild(card);
             });
-            // Update summary boxes
-            let totalAutos = allLeads.length;
-            let comisionesRecibir = 0;
-            filtered.forEach(lead => {
-                let priceNum = parsePrice(lead.price);
-                let commission = priceNum ? Math.round(priceNum * 0.039 * 1.19) : 0;
-                if (!lead.is_sold && priceNum) comisionesRecibir += commission;
-            });
-            document.getElementById('summary-total-autos').innerText = totalAutos;
-            document.getElementById('summary-comisiones-recibir').innerText = 'CLP ' + comisionesRecibir.toLocaleString('es-CL');
-            // ...existing code...
         }
 
+        // ── Load data from API ───────────────────────────────────────────
         async function loadLeads() {
             const grid = document.getElementById('leads-grid');
-            grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500">Cargando autos...</div>';
+            grid.innerHTML = '<div class="col-span-full text-center py-12 empty-state">Cargando autos...</div>';
+
             try {
                 const response = await fetch(apiUrl('/api/leads'));
                 allLeads = await response.json();
@@ -521,19 +723,20 @@
                 renderLeads();
             } catch (err) {
                 console.error(err);
-                grid.innerHTML = '<div class="col-span-full text-center py-12 text-red-500">Error cargando datos. Revisa la consola.</div>';
+                grid.innerHTML = '<div class="col-span-full text-center py-12" style="color:#f87171;">Error cargando datos. Revisa la consola.</div>';
             }
         }
 
+        // ── Update lead status/valuation ─────────────────────────────────
         async function updateLead(url, changes) {
             try {
-                const payload = { url: url };
-                Object.assign(payload, changes);
+                const payload = { url, ...changes };
                 await fetch(apiUrl('/api/leads/status'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+
                 const lead = allLeads.find(l => l.url === url);
                 if (lead) {
                     if (changes.status) {
@@ -552,6 +755,7 @@
             }
         }
 
+        // ── Trigger scrape via SSE ───────────────────────────────────────
         function startScrape() {
             const banner   = document.getElementById('scrape-banner');
             const bar      = document.getElementById('scrape-bar');
@@ -559,6 +763,7 @@
             const logEl    = document.getElementById('scrape-log');
             const vehEl    = document.getElementById('scrape-vehicles');
 
+            // Show banner
             banner.classList.remove('hidden');
             bar.style.width = '0%';
             pctEl.textContent = '0%';
@@ -567,38 +772,40 @@
 
             const evtSource = new EventSource(apiUrl('/api/scrape'));
 
-            evtSource.onmessage = function(e) {
+            evtSource.onmessage = (e) => {
                 let msg;
-                try { msg = JSON.parse(e.data); } catch(ex) { return; }
+                try { msg = JSON.parse(e.data); } catch { return; }
 
                 const pct = msg.pct || 0;
                 bar.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
                 if (msg.log) logEl.textContent = msg.log;
-                if (msg.vehicles) vehEl.textContent = msg.vehicles + ' vehiculos encontrados';
+                if (msg.vehicles) vehEl.textContent = `${msg.vehicles} vehículos encontrados`;
 
                 if (msg.done) {
                     evtSource.close();
                     bar.classList.remove('bg-green-400');
                     bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
-                    setTimeout(function() {
+                    // Reload leads after short delay
+                    setTimeout(() => {
                         loadLeads();
-                        setTimeout(function() { banner.classList.add('hidden'); }, 4000);
+                        setTimeout(() => banner.classList.add('hidden'), 4000);
                     }, 1500);
                 }
             };
 
-            evtSource.onerror = function() {
+            evtSource.onerror = () => {
                 evtSource.close();
                 logEl.textContent = '❌ Connection lost or scraper exited.';
                 bar.classList.add('bg-red-400');
             };
         }
 
+        // ── Trigger auto-messenger via SSE ───────────────────────────────
         function startMessaging() {
-            const limit = prompt('Cuantos mensajes enviar? (max recomendado: 50)', '10');
+            const limit = prompt('¿Cuántos mensajes enviar? (máx recomendado: 50)', '10');
             if (!limit || isNaN(limit)) return;
-
+            
             const banner = document.getElementById('msg-banner');
             const bar    = document.getElementById('msg-bar');
             const pctEl  = document.getElementById('msg-pct');
@@ -611,30 +818,30 @@
             logEl.textContent = 'Iniciando auto-messenger...';
             sentEl.textContent = '';
 
-            const evtSource = new EventSource(apiUrl('/api/auto_message?limit=' + limit));
+            const evtSource = new EventSource(apiUrl(`/api/auto_message?limit=${limit}`));
 
-            evtSource.onmessage = function(e) {
+            evtSource.onmessage = (e) => {
                 let msg;
-                try { msg = JSON.parse(e.data); } catch(ex) { return; }
+                try { msg = JSON.parse(e.data); } catch { return; }
 
                 const pct = msg.pct || 0;
                 bar.style.width = pct + '%';
                 pctEl.textContent = pct + '%';
                 if (msg.log) logEl.textContent = msg.log;
-                if (msg.sent !== undefined) sentEl.textContent = msg.sent + ' mensaje(s) enviado(s)';
+                if (msg.sent !== undefined) sentEl.textContent = `${msg.sent} mensaje(s) enviado(s)`;
 
                 if (msg.done) {
                     evtSource.close();
                     bar.classList.remove('bg-yellow-400');
                     bar.classList.add(msg.success ? 'bg-blue-400' : 'bg-red-400');
-                    setTimeout(function() {
+                    setTimeout(() => {
                         loadLeads();
-                        setTimeout(function() { banner.classList.add('hidden'); }, 5000);
+                        setTimeout(() => banner.classList.add('hidden'), 5000);
                     }, 2000);
                 }
             };
 
-            evtSource.onerror = function() {
+            evtSource.onerror = () => {
                 evtSource.close();
                 logEl.textContent = '❌ Connection lost or messenger exited.';
                 bar.classList.add('bg-red-400');
@@ -645,4 +852,5 @@
         loadLeads();
     </script>
 </body>
+
 </html>
