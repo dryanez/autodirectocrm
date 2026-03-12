@@ -374,10 +374,10 @@ if FUNNELS_DIR.exists():
         def _load_fb_cookies_from_supabase():
             """Fetch saved FB cookies from Supabase app_settings table."""
             try:
-                supa_url = os.environ.get("SUPABASE_URL", "")
+                supa_url = os.environ.get("SUPABASE_URL", "").strip()
                 supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
                             or os.environ.get("SUPABASE_SERVICE_KEY")
-                            or os.environ.get("SUPABASE_KEY", ""))
+                            or os.environ.get("SUPABASE_KEY", "")).strip()
                 headers  = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
                 r = _requests.get(
                     f"{supa_url}/rest/v1/app_settings?key=eq.fb_playwright_cookies&select=value",
