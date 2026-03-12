@@ -200,7 +200,7 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/scrape', methods=['POST', 'GET'])
     def funnels_api_scrape():
-        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
+        """Stream scraper output via SSE using scrape_fb_live.py (proper login + cookies)."""
         import subprocess as _sp
         import requests as _requests
         WHATSAPP_NUMBER = "4917632407062"
@@ -212,43 +212,65 @@ if FUNNELS_DIR.exists():
                 out = out.replace(old, new)
             return out
 
-        fb_app_dir = ROOT.parent / "fb app"
-        scraper_script = fb_app_dir / "scrape_marketplace.py"
+        execution_dir = ROOT / "Funnels" / "execution"
+        scraper_script = execution_dir / "scrape_fb_live.py"
+        data_write_dir = ROOT / "Funnels" / "dashboard"
 
         def generate():
-            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
+            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper (with login)...', 'pct': 0})}\n\n"
 
             if not scraper_script.exists():
-                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
+                yield f"data: {json.dumps({'log': '❌ scrape_fb_live.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
                 return
 
-            cmd = [sys.executable, str(scraper_script)]
+            # Build output path (match Apify naming so load_all_listings picks it up)
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            out_file = data_write_dir / f"dataset_facebook-marketplace-scraper_{ts}_live.json"
+
+            cmd = [sys.executable, str(scraper_script),
+                   "--output", str(out_file),
+                   "--scrolls", "2000"]
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
 
+            print(f"[scrape] Running: {' '.join(cmd)}")
+
             proc = _sp.Popen(
-                cmd, cwd=str(fb_app_dir),
-                stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                cmd, cwd=str(execution_dir),
+                stdout=_sp.PIPE, stderr=_sp.PIPE,
                 text=True, env=env, bufsize=1
             )
 
-            total_scrolls = 40
+            # scrape_fb_live.py sends progress to stderr, JSON to stdout
+            total_scrolls = 2000
             scroll_count = 0
             vehicle_count = 0
 
-            for line in proc.stdout:
+            for line in proc.stderr:
                 line = line.rstrip()
                 if not line:
                     continue
 
+                # Parse scroll progress: "  Scroll  42/2000 — 123 vehicles | 56 GraphQL hits"
                 if "Scroll " in line and "/" in line:
                     try:
-                        part = line.split("Scroll ")[1].split(" — ")[0]
-                        cur, tot = part.split("/")
-                        scroll_count = int(cur)
-                        total_scrolls = int(tot)
+                        part = line.split("Scroll")[1].strip()
+                        nums = part.split("—")[0].strip() if "—" in part else part.split("-")[0].strip()
+                        cur, tot = nums.split("/")
+                        scroll_count = int(cur.strip())
+                        total_scrolls = int(tot.strip())
                         if "vehicles" in line:
-                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                            v_part = line.split("vehicles")[0]
+                            v_part = v_part.split("—")[-1] if "—" in v_part else v_part.split("-")[-1]
+                            vehicle_count = int(v_part.strip())
+                    except Exception:
+                        pass
+
+                # Parse vehicle captures: "  ✅ [  3] ..."
+                if "✅" in line and "[" in line:
+                    try:
+                        count_str = line.split("[")[1].split("]")[0].strip()
+                        vehicle_count = max(vehicle_count, int(count_str))
                     except Exception:
                         pass
 
@@ -274,6 +296,102 @@ if FUNNELS_DIR.exists():
 
         return Response(stream_with_context(generate()), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ── Polling-based scrape-live (for the "Scrapear Facebook" button) ────
+    import threading, uuid
+    _scrape_jobs = {}  # job_id -> {status, process, listings, log, ...}
+
+    @funnels_bp.route('/api/scrape-live', methods=['POST'])
+    def funnels_api_scrape_live_start():
+        """Start scrape_fb_live.py in background, return job_id for polling."""
+        import subprocess as _sp
+        data = request.json or {}
+        scrolls = int(data.get('scrolls', 30))
+        headless = data.get('headless', False)
+
+        execution_dir = ROOT / "Funnels" / "execution"
+        scraper_script = execution_dir / "scrape_fb_live.py"
+        data_write_dir = ROOT / "Funnels" / "dashboard"
+
+        if not scraper_script.exists():
+            return jsonify({"success": False, "error": f"scrape_fb_live.py not found at {scraper_script}"}), 404
+
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        out_file = data_write_dir / f"dataset_facebook-marketplace-scraper_{ts}_live.json"
+
+        cmd = [sys.executable, str(scraper_script),
+               "--output", str(out_file),
+               "--scrolls", str(scrolls)]
+        if headless:
+            cmd.append("--headless")
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+
+        job_id = str(uuid.uuid4())[:8]
+        print(f"[scrape-live] Starting job {job_id}: {' '.join(cmd)}")
+
+        try:
+            proc = _sp.Popen(
+                cmd, cwd=str(execution_dir),
+                stdout=_sp.PIPE, stderr=_sp.PIPE,
+                text=True, env=env, bufsize=1
+            )
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        job = {
+            "status": "running",
+            "process": proc,
+            "out_file": str(out_file),
+            "listings": 0,
+            "log_lines": [],
+            "started_at": datetime.now().isoformat(),
+        }
+        _scrape_jobs[job_id] = job
+
+        # Background thread to read stderr and track progress
+        def _monitor():
+            for line in proc.stderr:
+                line = line.rstrip()
+                if line:
+                    job["log_lines"].append(line)
+                    # Parse vehicle counts
+                    if "✅" in line and "[" in line:
+                        try:
+                            count_str = line.split("[")[1].split("]")[0].strip()
+                            job["listings"] = max(job["listings"], int(count_str))
+                        except Exception:
+                            pass
+            proc.wait()
+            job["status"] = "done" if proc.returncode == 0 else "error"
+            # Reload cached listings
+            funnels_module._cached_listings = funnels_module.load_all_listings()
+            print(f"[scrape-live] Job {job_id} finished: {job['status']}, {job['listings']} listings")
+
+        t = threading.Thread(target=_monitor, daemon=True)
+        t.start()
+
+        return jsonify({"success": True, "job_id": job_id})
+
+    @funnels_bp.route('/api/scrape-live/<job_id>', methods=['GET'])
+    def funnels_api_scrape_live_status(job_id):
+        """Poll status of a running scrape job."""
+        job = _scrape_jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
+
+        recent_logs = job["log_lines"][-10:] if job["log_lines"] else []
+        result = {
+            "status": job["status"],
+            "listings": job["listings"],
+            "recent_logs": recent_logs,
+        }
+        # If done, include final count and clean up
+        if job["status"] in ("done", "error"):
+            result["final"] = True
+            # Don't delete yet — let client poll one more time
+        return jsonify(result)
 
     @funnels_bp.route('/api/leads/status', methods=['POST'])
     def funnels_api_update_status():
