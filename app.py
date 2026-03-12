@@ -200,7 +200,7 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/scrape', methods=['POST', 'GET'])
     def funnels_api_scrape():
-        """Stream scraper output via SSE using scrape_fb_live.py (proper login + cookies)."""
+        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
         import subprocess as _sp
         import requests as _requests
         WHATSAPP_NUMBER = "4917632407062"
@@ -212,65 +212,58 @@ if FUNNELS_DIR.exists():
                 out = out.replace(old, new)
             return out
 
-        execution_dir = ROOT / "Funnels" / "execution"
-        scraper_script = execution_dir / "scrape_fb_live.py"
-        data_write_dir = ROOT / "Funnels" / "dashboard"
+        fb_app_dir = ROOT.parent / "fb app"
+        scraper_script = fb_app_dir / "scrape_marketplace.py"
+
+        # ── Chrome user data dir (macOS only) ──
+        chrome_user_data = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
 
         def generate():
-            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper (with login)...', 'pct': 0})}\n\n"
-
-            if not scraper_script.exists():
-                yield f"data: {json.dumps({'log': '❌ scrape_fb_live.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
+            # ── Guard: must have Chrome profile (local Mac only) ──
+            if not chrome_user_data.exists():
+                yield f"data: {json.dumps({'log': '⚠️ El scraper solo puede correr en tu Mac local — Chrome no está instalado en el servidor. Corre scrape_marketplace.py directamente en tu máquina.', 'pct': 100, 'done': True, 'success': False})}\n\n"
                 return
 
-            # Build output path (match Apify naming so load_all_listings picks it up)
-            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            out_file = data_write_dir / f"dataset_facebook-marketplace-scraper_{ts}_live.json"
+            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
 
-            cmd = [sys.executable, str(scraper_script),
-                   "--output", str(out_file),
-                   "--scrolls", "2000"]
+            if not scraper_script.exists():
+                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
+
+            # ── Guard: Chrome must be closed ──
+            lock_file = chrome_user_data / "Default" / "lockfile"
+            singleton_lock = chrome_user_data / "SingletonLock"
+            if singleton_lock.exists() or lock_file.exists():
+                yield f"data: {json.dumps({'log': '⚠️ Cierra Google Chrome antes de correr el scraper (el perfil está bloqueado). Cierra Chrome y haz click en Scrape Now de nuevo.', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                return
+
+            cmd = [sys.executable, str(scraper_script)]
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
 
-            print(f"[scrape] Running: {' '.join(cmd)}")
-
             proc = _sp.Popen(
-                cmd, cwd=str(execution_dir),
-                stdout=_sp.PIPE, stderr=_sp.PIPE,
+                cmd, cwd=str(fb_app_dir),
+                stdout=_sp.PIPE, stderr=_sp.STDOUT,
                 text=True, env=env, bufsize=1
             )
 
-            # scrape_fb_live.py sends progress to stderr, JSON to stdout
-            total_scrolls = 2000
+            total_scrolls = 40
             scroll_count = 0
             vehicle_count = 0
 
-            for line in proc.stderr:
+            for line in proc.stdout:
                 line = line.rstrip()
                 if not line:
                     continue
 
-                # Parse scroll progress: "  Scroll  42/2000 — 123 vehicles | 56 GraphQL hits"
                 if "Scroll " in line and "/" in line:
                     try:
-                        part = line.split("Scroll")[1].strip()
-                        nums = part.split("—")[0].strip() if "—" in part else part.split("-")[0].strip()
-                        cur, tot = nums.split("/")
-                        scroll_count = int(cur.strip())
-                        total_scrolls = int(tot.strip())
+                        part = line.split("Scroll ")[1].split(" — ")[0]
+                        cur, tot = part.split("/")
+                        scroll_count = int(cur)
+                        total_scrolls = int(tot)
                         if "vehicles" in line:
-                            v_part = line.split("vehicles")[0]
-                            v_part = v_part.split("—")[-1] if "—" in v_part else v_part.split("-")[-1]
-                            vehicle_count = int(v_part.strip())
-                    except Exception:
-                        pass
-
-                # Parse vehicle captures: "  ✅ [  3] ..."
-                if "✅" in line and "[" in line:
-                    try:
-                        count_str = line.split("[")[1].split("]")[0].strip()
-                        vehicle_count = max(vehicle_count, int(count_str))
+                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
                     except Exception:
                         pass
 
@@ -296,102 +289,6 @@ if FUNNELS_DIR.exists():
 
         return Response(stream_with_context(generate()), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-    # ── Polling-based scrape-live (for the "Scrapear Facebook" button) ────
-    import threading, uuid
-    _scrape_jobs = {}  # job_id -> {status, process, listings, log, ...}
-
-    @funnels_bp.route('/api/scrape-live', methods=['POST'])
-    def funnels_api_scrape_live_start():
-        """Start scrape_fb_live.py in background, return job_id for polling."""
-        import subprocess as _sp
-        data = request.json or {}
-        scrolls = int(data.get('scrolls', 30))
-        headless = data.get('headless', False)
-
-        execution_dir = ROOT / "Funnels" / "execution"
-        scraper_script = execution_dir / "scrape_fb_live.py"
-        data_write_dir = ROOT / "Funnels" / "dashboard"
-
-        if not scraper_script.exists():
-            return jsonify({"success": False, "error": f"scrape_fb_live.py not found at {scraper_script}"}), 404
-
-        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        out_file = data_write_dir / f"dataset_facebook-marketplace-scraper_{ts}_live.json"
-
-        cmd = [sys.executable, str(scraper_script),
-               "--output", str(out_file),
-               "--scrolls", str(scrolls)]
-        if headless:
-            cmd.append("--headless")
-
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-
-        job_id = str(uuid.uuid4())[:8]
-        print(f"[scrape-live] Starting job {job_id}: {' '.join(cmd)}")
-
-        try:
-            proc = _sp.Popen(
-                cmd, cwd=str(execution_dir),
-                stdout=_sp.PIPE, stderr=_sp.PIPE,
-                text=True, env=env, bufsize=1
-            )
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-
-        job = {
-            "status": "running",
-            "process": proc,
-            "out_file": str(out_file),
-            "listings": 0,
-            "log_lines": [],
-            "started_at": datetime.now().isoformat(),
-        }
-        _scrape_jobs[job_id] = job
-
-        # Background thread to read stderr and track progress
-        def _monitor():
-            for line in proc.stderr:
-                line = line.rstrip()
-                if line:
-                    job["log_lines"].append(line)
-                    # Parse vehicle counts
-                    if "✅" in line and "[" in line:
-                        try:
-                            count_str = line.split("[")[1].split("]")[0].strip()
-                            job["listings"] = max(job["listings"], int(count_str))
-                        except Exception:
-                            pass
-            proc.wait()
-            job["status"] = "done" if proc.returncode == 0 else "error"
-            # Reload cached listings
-            funnels_module._cached_listings = funnels_module.load_all_listings()
-            print(f"[scrape-live] Job {job_id} finished: {job['status']}, {job['listings']} listings")
-
-        t = threading.Thread(target=_monitor, daemon=True)
-        t.start()
-
-        return jsonify({"success": True, "job_id": job_id})
-
-    @funnels_bp.route('/api/scrape-live/<job_id>', methods=['GET'])
-    def funnels_api_scrape_live_status(job_id):
-        """Poll status of a running scrape job."""
-        job = _scrape_jobs.get(job_id)
-        if not job:
-            return jsonify({"error": "Job not found"}), 404
-
-        recent_logs = job["log_lines"][-10:] if job["log_lines"] else []
-        result = {
-            "status": job["status"],
-            "listings": job["listings"],
-            "recent_logs": recent_logs,
-        }
-        # If done, include final count and clean up
-        if job["status"] in ("done", "error"):
-            result["final"] = True
-            # Don't delete yet — let client poll one more time
-        return jsonify(result)
 
     @funnels_bp.route('/api/leads/status', methods=['POST'])
     def funnels_api_update_status():
@@ -800,87 +697,6 @@ def _legacy_init_schema():
 # Schema managed via setup_crm.sql in Supabase
 
 
-# ─── Notifications Helper ─────────────────────────────────────────────────────
-def _create_notification(ntype, title, message="", icon="🔔", link_view=None, link_id=None):
-    """Insert a notification row. Non-fatal — errors are just logged."""
-    try:
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO notifications (type, title, message, icon, link_view, link_id) "
-                "VALUES (?,?,?,?,?,?)",
-                (ntype, title, message, icon, link_view, link_id)
-            )
-            conn.commit()
-    except Exception as e:
-        print(f"[notifications] Error creating notification: {e}", flush=True)
-
-
-# ─── API: Notifications ──────────────────────────────────────────────────────
-@app.route("/api/notifications", methods=["GET"])
-def get_notifications():
-    """Return notifications, newest first. ?unread=1 for unread only."""
-    unread_only = request.args.get("unread", "")
-    limit = int(request.args.get("limit", "50"))
-    with get_db() as conn:
-        if unread_only == "1":
-            rows = conn.execute(
-                "SELECT * FROM notifications WHERE is_read=false ORDER BY id DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM notifications ORDER BY id DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-    return jsonify([row_to_dict(r) for r in rows])
-
-
-@app.route("/api/notifications/unread-count", methods=["GET"])
-def notifications_unread_count():
-    """Return the count of unread notifications."""
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT count(*) as cnt FROM notifications WHERE is_read=false"
-        ).fetchone()
-    count = row["cnt"] if row else 0
-    return jsonify({"count": count})
-
-
-@app.route("/api/notifications/<int:nid>/read", methods=["POST"])
-def mark_notification_read(nid):
-    """Mark a single notification as read."""
-    with get_db() as conn:
-        conn.execute("UPDATE notifications SET is_read=true WHERE id=?", (nid,))
-        conn.commit()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/notifications/read-all", methods=["POST"])
-def mark_all_notifications_read():
-    """Mark all notifications as read."""
-    with get_db() as conn:
-        conn.execute("UPDATE notifications SET is_read=true WHERE is_read=false")
-        conn.commit()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/notifications/clear", methods=["POST"])
-def clear_notifications():
-    """Delete all read notifications older than 7 days, or all if ?all=1."""
-    if request.args.get("all") == "1":
-        with get_db() as conn:
-            conn.execute("DELETE FROM notifications")
-            conn.commit()
-    else:
-        with get_db() as conn:
-            conn.execute(
-                "DELETE FROM notifications WHERE is_read=true AND created_at < ?",
-                ((datetime.now() - timedelta(days=7)).isoformat(),)
-            )
-            conn.commit()
-    return jsonify({"ok": True})
-
-
 # ─── API: Users ───────────────────────────────────────────────────────────────
 @app.route("/api/users", methods=["GET"])
 def get_users():
@@ -1166,23 +982,6 @@ def create_inspeccion():
                     params
                 )
                 conn.commit()
-
-        # ── Notification: Inspection completed ──
-        if consignacion_id:
-            try:
-                with get_db() as _nc:
-                    _cr = _nc.execute("SELECT plate, car_make, car_model, car_year, owner_full_name FROM consignaciones WHERE id=?", (consignacion_id,)).fetchone()
-                if _cr:
-                    _cr = row_to_dict(_cr)
-                    _lbl = f"{_cr.get('car_make','')} {_cr.get('car_model','')} {_cr.get('car_year','')}".strip()
-                    _create_notification(
-                        "inspection",
-                        "Inspección Completada",
-                        f"{_cr.get('owner_full_name','')} — {_lbl} ({_cr.get('plate','')})",
-                        "🔍", "consignaciones", consignacion_id
-                    )
-            except Exception:
-                pass
 
         return jsonify({"ok": True, "appraisal_id": appraisal_id})
 
@@ -1500,22 +1299,23 @@ def update_inspeccion(appraisal_id):
         return jsonify({"error": str(e)}), 500
 
 
-def _build_inspeccion_html(appraisal_id):
+@app.route("/api/inspecciones/<appraisal_id>/pdf", methods=["GET"])
+def get_inspeccion_pdf(appraisal_id):
     """
-    Fetch appraisal + photos from Supabase and render the full inspection HTML report.
-    Returns (html_string, appraisal_dict) or raises RuntimeError on failure.
+    Generate a beautiful PDF inspection report.
+    Uses HTML → PDF via WeasyPrint if available, otherwise returns HTML.
     """
     import requests as req_lib
     supabase_url, headers = _supa_headers()
     if not supabase_url:
-        raise RuntimeError("Supabase not configured")
+        return jsonify({"error": "Supabase not configured"}), 500
 
     # Fetch data
     r = req_lib.get(supabase_url + "/rest/v1/appraisals",
                     params={"select": "*", "id": "eq.{}".format(appraisal_id)},
                     headers=headers, timeout=10)
     if r.status_code != 200 or not r.json():
-        raise RuntimeError("Appraisal not found")
+        return jsonify({"error": "Not found"}), 404
     a = r.json()[0]
 
     # Fetch photos
@@ -1742,20 +1542,6 @@ def _build_inspeccion_html(appraisal_id):
         id_short=appraisal_id[:8] if appraisal_id else "—",
     )
 
-    return html, a
-
-
-@app.route("/api/inspecciones/<appraisal_id>/pdf", methods=["GET"])
-def get_inspeccion_pdf(appraisal_id):
-    """
-    Generate a beautiful PDF inspection report.
-    Uses HTML → PDF via WeasyPrint if available, otherwise returns HTML.
-    """
-    try:
-        html, a = _build_inspeccion_html(appraisal_id)
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 404
-
     # Check if they want PDF format
     fmt = request.args.get("format", "html")
     if fmt == "pdf":
@@ -1778,9 +1564,10 @@ def get_inspeccion_pdf(appraisal_id):
 @app.route("/api/inspecciones/<appraisal_id>/email", methods=["POST"])
 def send_inspeccion_email(appraisal_id):
     """
-    Send the inspection report via Resend (autodirecto.cl domain).
+    Send the inspection report via Resend (autochile.cl domain).
     Body: { "to": "email@example.com", "cc": "...", "subject": "..." }
     """
+    import requests as req_lib
     data = request.json or {}
     to_email = data.get("to")
     if not to_email:
@@ -1790,24 +1577,36 @@ def send_inspeccion_email(appraisal_id):
     if not resend_key:
         return jsonify({"error": "RESEND_API_KEY no configurada en .env"}), 500
 
-    # Build the report HTML directly (no localhost self-call)
-    try:
-        html_body, a = _build_inspeccion_html(appraisal_id)
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 404
+    # Fetch the HTML report
+    supabase_url, headers = _supa_headers()
+    r = req_lib.get(supabase_url + "/rest/v1/appraisals",
+                    params={"select": "*", "id": "eq.{}".format(appraisal_id)},
+                    headers=headers, timeout=10)
+    if r.status_code != 200 or not r.json():
+        return jsonify({"error": "Appraisal not found"}), 404
+    a = r.json()[0]
 
     patente = (a.get("vehicle_patente") or "").upper()
-    marca   = a.get("vehicle_marca") or ""
-    modelo  = a.get("vehicle_modelo") or ""
-    año     = a.get("vehicle_año") or ""
+    marca = a.get("vehicle_marca") or ""
+    modelo = a.get("vehicle_modelo") or ""
+    año = a.get("vehicle_año") or ""
+
+    # Get the full HTML by calling our own PDF endpoint
+    import urllib.request
+    try:
+        local_url = "http://127.0.0.1:8080/api/inspecciones/{}/pdf".format(appraisal_id)
+        with urllib.request.urlopen(local_url, timeout=10) as resp:
+            html_body = resp.read().decode("utf-8")
+    except Exception as e:
+        return jsonify({"error": "Could not generate report: {}".format(e)}), 500
 
     subject = data.get("subject") or "Informe de Inspección — {} {} {} · {}".format(
         marca, modelo, año, patente
     )
 
-    # Send via Resend API — from verified autodirecto.cl domain
+    # Send via Resend API
     email_payload = {
-        "from": "Auto Directo <inspeccion@autodirecto.cl>",
+        "from": "Auto Directo <inspeccion@autochile.cl>",
         "to": [to_email],
         "subject": subject,
         "html": html_body,
@@ -1816,7 +1615,6 @@ def send_inspeccion_email(appraisal_id):
         email_payload["cc"] = [data["cc"]] if isinstance(data["cc"], str) else data["cc"]
 
     try:
-        import requests as req_lib
         resp = req_lib.post(
             "https://api.resend.com/emails",
             json=email_payload,
@@ -2429,15 +2227,6 @@ def create_consignacion():
         print("[consignacion→crm_lead] error:", e, flush=True)
         traceback.print_exc()
 
-    # ── Notification: New consignación from website ──
-    car_label = f"{car.get('make') or g('carMake','car_make') or ''} {car.get('model') or g('carModel','car_model') or ''} {car.get('year') or g('carYear','car_year') or ''}".strip()
-    _create_notification(
-        "consignacion",
-        "Nueva Consignación",
-        f"{full_name} agendó {car_label} ({plate})" if car_label else f"{full_name} agendó una inspección ({plate})",
-        "📋", "consignaciones", new_id
-    )
-
     return jsonify({"ok": True, "id": new_id, "consignacion": row_to_dict(row or inserted)}), 201
 
 
@@ -2526,61 +2315,7 @@ def create_quick_consignacion():
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-    # ── Create CRM lead so it shows up in the CRM pipeline ──
-    try:
-        with get_crm_conn() as crm:
-            # Check if a CRM lead already exists for this plate
-            existing_lead = None
-            if plate:
-                existing_lead = crm.execute(
-                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
-                ).fetchone()
-            if not existing_lead and owner_rut:
-                existing_lead = crm.execute(
-                    "SELECT id FROM crm_leads WHERE rut=? LIMIT 1", (owner_rut,)
-                ).fetchone()
-            if not existing_lead and owner_phone:
-                existing_lead = crm.execute(
-                    "SELECT id FROM crm_leads WHERE phone=? LIMIT 1", (owner_phone,)
-                ).fetchone()
-
-            if existing_lead:
-                # Update existing lead stage
-                crm.execute(
-                    "UPDATE crm_leads SET stage=?, plate=?, updated_at=? WHERE id=?",
-                    ("nuevo", plate, now, existing_lead["id"])
-                )
-                crm.commit()
-                print(f"[quick_consig] Updated existing CRM lead #{existing_lead['id']} for plate {plate}", flush=True)
-            else:
-                # Create new CRM lead
-                crm.execute("""
-                    INSERT INTO crm_leads (
-                        first_name, last_name, full_name, rut, phone, country_code, email,
-                        plate, car_make, car_model, car_year, mileage,
-                        stage, source, created_at, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    first, last, owner_name,
-                    owner_rut, owner_phone, "+56", owner_email,
-                    plate, car_make, car_model, car_year, mileage,
-                    "nuevo", "camera_app", now, now
-                ))
-                crm.commit()
-                print(f"[quick_consig] Created new CRM lead for plate {plate}", flush=True)
-    except Exception as e:
-        print(f"[quick_consig] CRM lead creation error: {e}", flush=True)
-
     label = f"{car_make} {car_model} {car_year or ''}".strip()
-
-    # ── Notification: Quick consignación from camera app ──
-    _create_notification(
-        "consignacion",
-        "Nueva Consignación (Cámara)",
-        f"{owner_name or 'Sin nombre'} — {label or plate}",
-        "📸", "consignaciones", new_id
-    )
-
     return jsonify({
         "ok": True, "created": True,
         "consignacion_id": new_id,
@@ -2926,72 +2661,6 @@ def update_consignacion(cid):
 
     result["ok"] = True
     return jsonify(result)
-
-
-@app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
-def delete_consignacion(cid):
-    """Permanently delete a single consignacion + its linked CRM lead."""
-    try:
-        with get_db() as conn:
-            row = conn.execute("SELECT id, plate FROM consignaciones WHERE id=?", (cid,)).fetchone()
-            if not row:
-                return jsonify({"error": "Not found"}), 404
-            plate = row_to_dict(row).get("plate")
-            conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
-            conn.commit()
-            # Also delete the matching CRM lead
-            if plate:
-                try:
-                    conn.execute("DELETE FROM crm_leads WHERE plate=?", (plate,))
-                    conn.commit()
-                except Exception as e_crm:
-                    print(f"[delete_consignacion] CRM lead cleanup warning: {e_crm}", flush=True)
-        return jsonify({"ok": True, "deleted": cid})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/consignaciones/bulk-delete", methods=["POST"])
-def bulk_delete_consignaciones():
-    """Delete multiple consignaciones by ID list + their linked CRM leads.
-    Body: {"ids": [1, 2, 3]}"""
-    data = request.json or {}
-    ids = data.get("ids", [])
-    if not ids or not isinstance(ids, list):
-        return jsonify({"error": "ids list required"}), 400
-    ids = [int(i) for i in ids if str(i).isdigit()]
-    if not ids:
-        return jsonify({"error": "no valid ids"}), 400
-    try:
-        # 1. Fetch plates before deleting (for CRM lead cleanup)
-        plates = []
-        with get_db() as conn:
-            for cid in ids:
-                row = conn.execute("SELECT plate FROM consignaciones WHERE id=?", (cid,)).fetchone()
-                if row:
-                    p = row_to_dict(row).get("plate")
-                    if p:
-                        plates.append(p)
-
-        # 2. Delete consignaciones one by one (avoids IN-clause parser issues)
-        with get_db() as conn:
-            for cid in ids:
-                conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
-            conn.commit()
-
-        # 3. Delete matching CRM leads
-        with get_db() as conn:
-            for plate in plates:
-                try:
-                    conn.execute("DELETE FROM crm_leads WHERE plate=?", (plate,))
-                except Exception:
-                    pass
-            conn.commit()
-
-        return jsonify({"ok": True, "deleted": ids, "crm_leads_cleaned": plates})
-    except Exception as e:
-        print(f"[bulk_delete] Error: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
 
 
 def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=None):
@@ -3487,14 +3156,6 @@ def publicar_en_catalogo(cid):
 
         # Sync CRM lead stage
         _sync_crm_lead_stage(c.get("plate"), "en_venta")
-
-        # ── Notification: Vehicle published ──
-        _create_notification(
-            "published",
-            "Vehículo Publicado 🏷️",
-            f"{brand} {model} {year} ({plate}) — ${price:,}".replace(",", ".") if price else f"{brand} {model} {year} ({plate})",
-            "🚗", "inventario", cid
-        )
 
         return jsonify({"ok": True, "listing_id": listing_id, "image_count": len(image_urls)})
 
@@ -4631,14 +4292,6 @@ def sign_contract_client(cid):
         )
         conn.commit()
 
-    # ── Notification: Contract signed ──
-    _create_notification(
-        "contract_signed",
-        "Contrato Firmado ✍️",
-        f"{consig.get('owner_full_name','')} firmó el contrato — {consig.get('plate','')}",
-        "✅", "consignaciones", cid
-    )
-
     return jsonify({"ok": True, "filename": signed_filename, "signed_at": now})
 
 
@@ -4771,16 +4424,6 @@ def create_comprador():
         )
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-    # ── Notification: New buyer ──
-    car_desc = data.get("car_description") or data.get("car_plate") or ""
-    _create_notification(
-        "comprador",
-        "Nuevo Comprador 🛒",
-        f"{full_name} interesado en {car_desc}".strip(),
-        "🛒", "compradores", new_id
-    )
-
     return jsonify({"ok": True, "id": new_id})
 
 
@@ -5744,134 +5387,13 @@ def update_car(car_id):
 
 @app.route("/api/cars/<int:car_id>", methods=["DELETE"])
 def delete_car(car_id):
-    import requests as req_lib
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
-    supa_headers = {
-        "apikey": supabase_key,
-        "Authorization": "Bearer " + supabase_key,
-        "Content-Type": "application/json",
-    }
-
     with get_conn() as conn:
         row = conn.execute("SELECT patente FROM cars WHERE id=?", (car_id,)).fetchone()
         if not row:
             return jsonify({"error": "Not found"}), 404
-        plate = row[0] or ""
-
-        # 1. Find linked consignacion (to un-publish it)
-        consig = conn.execute(
-            "SELECT id, listing_id FROM consignaciones WHERE plate=? OR car_id=?",
-            (plate.upper(), car_id)
-        ).fetchone()
-
-        listing_id = None
-        if consig:
-            listing_id = consig[1]  # listing_id stored on consignacion
-
-        # 2. Delete listing from Supabase (autodirecto.cl)
-        if listing_id and supabase_url and supabase_key:
-            try:
-                req_lib.delete(
-                    f"{supabase_url}/rest/v1/listings?id=eq.{listing_id}",
-                    headers=supa_headers, timeout=10
-                )
-            except Exception as e:
-                print(f"[delete_car] listing delete error: {e}", flush=True)
-
-        # Also try deleting by consignacion_id in case listing_id wasn't saved
-        if consig and supabase_url and supabase_key:
-            try:
-                req_lib.delete(
-                    f"{supabase_url}/rest/v1/listings?consignacion_id=eq.{consig[0]}",
-                    headers=supa_headers, timeout=10
-                )
-            except Exception as e:
-                print(f"[delete_car] listing delete by cid error: {e}", flush=True)
-
-        # 3. Reset consignacion status back to parte2_completa (un-published)
-        if consig:
-            try:
-                conn.execute(
-                    "UPDATE consignaciones SET status='parte2_completa', listing_id=NULL, car_id=NULL, updated_at=? WHERE id=?",
-                    (datetime.now().isoformat(), consig[0])
-                )
-            except Exception as e:
-                print(f"[delete_car] consig reset error: {e}", flush=True)
-
-        # 4. Delete the car from local inventory
         conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
         conn.commit()
-
-    return jsonify({"ok": True, "listing_deleted": listing_id is not None})
-
-
-@app.route("/api/cars/bulk-delete", methods=["POST"])
-def bulk_delete_cars():
-    """Delete multiple cars + their Supabase listings in one call."""
-    import requests as req_lib
-    data = request.json or {}
-    ids = data.get("ids", [])
-    if not ids:
-        return jsonify({"error": "No ids provided"}), 400
-
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", "")
-    supa_headers = {
-        "apikey": supabase_key,
-        "Authorization": "Bearer " + supabase_key,
-        "Content-Type": "application/json",
-    }
-
-    deleted = []
-    try:
-        with get_conn() as conn:
-            for car_id in ids:
-                row = conn.execute("SELECT patente FROM cars WHERE id=?", (car_id,)).fetchone()
-                if not row:
-                    continue
-                plate = row[0] or ""
-
-                consig = conn.execute(
-                    "SELECT id, listing_id FROM consignaciones WHERE plate=? OR car_id=?",
-                    (plate.upper(), car_id)
-                ).fetchone()
-
-                # Delete Supabase listing
-                if consig and supabase_url and supabase_key:
-                    listing_id = consig[1]
-                    if listing_id:
-                        try:
-                            req_lib.delete(
-                                f"{supabase_url}/rest/v1/listings?id=eq.{listing_id}",
-                                headers=supa_headers, timeout=10
-                            )
-                        except Exception:
-                            pass
-                    try:
-                        req_lib.delete(
-                            f"{supabase_url}/rest/v1/listings?consignacion_id=eq.{consig[0]}",
-                            headers=supa_headers, timeout=10
-                        )
-                    except Exception:
-                        pass
-                    # Reset consignacion
-                    try:
-                        conn.execute(
-                            "UPDATE consignaciones SET status='parte2_completa', listing_id=NULL, car_id=NULL, updated_at=? WHERE id=?",
-                            (datetime.now().isoformat(), consig[0])
-                        )
-                    except Exception:
-                        pass
-
-                conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
-                deleted.append(car_id)
-
-            conn.commit()
-        return jsonify({"ok": True, "deleted": deleted})
-    except Exception as e:
-        print(f"[bulk_delete_cars] Error: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
 
 
 # ─── API: Commission Calculator ───────────────────────────────────────────────
@@ -6721,14 +6243,6 @@ def chileautos_lead_webhook():
     except Exception as e:
         print(f"[chileautos_lead] Error creating comprador: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
-
-    # ── Notification: ChileAutos lead ──
-    _create_notification(
-        "chileautos",
-        "Lead ChileAutos 🌐",
-        f"{full_name} interesado en {car_description}",
-        "🌐", "compradores", new_id
-    )
 
     return jsonify({"ok": True, "comprador_id": new_id}), 202
 
