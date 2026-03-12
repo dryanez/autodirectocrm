@@ -1,0 +1,34 @@
+# Railway / Nixpacks build config
+# Installs system deps required by Playwright's bundled Chromium
+
+[phases.setup]
+nixPkgs = [
+  "chromium",
+  "nss",
+  "nspr",
+  "atk",
+  "cups",
+  "dbus",
+  "expat",
+  "libdrm",
+  "libxkbcommon",
+  "mesa",
+  "libGL",
+  "libxcomposite",
+  "libxdamage",
+  "libxfixes",
+  "libxrandr",
+  "gbm",
+  "pango",
+  "cairo",
+  "alsa-lib",
+]
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "playwright install chromium --with-deps || true",
+]
+
+[start]
+cmd = "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180"

@@ -226,6 +226,9 @@
                 <button onclick="startMessaging()" class="btn-primary btn-success">
                     <span>💬</span> Send Messages
                 </button>
+                <button onclick="saveFbSession()" class="btn-ghost" title="Guarda tu sesión de Facebook para que Railway pueda scraper desde el servidor">
+                    <span>💾</span> Sesión FB
+                </button>
                 <span id="total-leads"
                     class="badge badge-new text-xs px-3 py-1">...</span>
                 <button onclick="loadLeads()" title="Refresh" class="btn-ghost px-2 py-2">
@@ -846,6 +849,66 @@ Agente de Ventas | Autodirecto.cl</textarea>
                 logEl.textContent = '❌ Connection lost or messenger exited.';
                 bar.classList.add('bg-red-400');
             };
+        }
+
+        // ── Save FB session cookies → backend → Supabase (enables Railway scraping) ──
+        async function saveFbSession() {
+            // Must be run from a tab that has facebook.com open, OR we grab document.cookie
+            // Best approach: open FB in a new tab and use a bookmarklet — but we can try
+            // to collect from current browsing context via the backend cookie-grab helper.
+
+            const confirmed = confirm(
+                '💾 Guardar Sesión de Facebook\n\n' +
+                'Esto guardará tus cookies de Facebook en el servidor para que el scraper ' +
+                'pueda correr en Railway sin necesitar tu Chrome local.\n\n' +
+                'Pasos:\n' +
+                '1. Asegúrate de estar logueado en Facebook en este navegador\n' +
+                '2. Haz click en OK\n' +
+                '3. Se abrirá Facebook — espera que cargue y vuelve aquí\n\n' +
+                '¿Continuar?'
+            );
+            if (!confirmed) return;
+
+            // Open FB in a popup to ensure we can get cookies via document.cookie
+            const fbWin = window.open('https://www.facebook.com', '_blank', 'width=1000,height=700');
+            
+            setTimeout(async () => {
+                try {
+                    // Use the Cookie Store API if available (Chrome 87+)
+                    let cookies = [];
+                    if (window.cookieStore) {
+                        const all = await window.cookieStore.getAll();
+                        cookies = all
+                            .filter(c => c.domain && c.domain.includes('facebook'))
+                            .map(c => ({
+                                name: c.name, value: c.value,
+                                domain: c.domain, path: c.path || '/',
+                                secure: c.secure || false,
+                                sameSite: c.sameSite || 'Lax',
+                            }));
+                    }
+
+                    if (cookies.length === 0) {
+                        alert('⚠️ No se pudieron obtener las cookies de Facebook automáticamente.\n\nUsa el método manual:\n1. Ve a facebook.com\n2. Abre DevTools (F12) → Application → Cookies → facebook.com\n3. Copia los valores de "c_user" y "xs" y pégalos en el campo que aparecerá.');
+                        return;
+                    }
+
+                    const r = await fetch(apiUrl('/api/fb-cookies'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cookies }),
+                    });
+                    const d = await r.json();
+                    if (d.ok) {
+                        alert(`✅ Sesión guardada — ${d.count} cookies de Facebook almacenadas en el servidor.\n\nAhora puedes usar "🚀 Scrape Now" desde cualquier lugar.`);
+                    } else {
+                        alert('❌ Error guardando sesión: ' + (d.error || 'desconocido'));
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('❌ Error: ' + e.message);
+                }
+            }, 4000); // wait 4s for FB tab to load
         }
 
         // Init

@@ -198,11 +198,32 @@ if FUNNELS_DIR.exists():
                 pass
         return jsonify({"success": True, "count": len(funnels_module._cached_listings)})
 
+    @funnels_bp.route('/api/fb-cookies', methods=['POST'])
+    def funnels_save_fb_cookies():
+        """Save Facebook cookies from browser → Supabase (so Railway scraper can reuse them)."""
+        data = request.json or {}
+        cookies = data.get("cookies")
+        if not cookies:
+            return jsonify({"error": "No cookies provided"}), 400
+        try:
+            import requests as _req
+            supa_url  = os.environ.get("SUPABASE_URL", "")
+            supa_key  = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+            headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
+                       "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
+            payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
+                       "updated_at": datetime.utcnow().isoformat()}
+            _req.post(f"{supa_url}/rest/v1/app_settings", json=payload, headers=headers, timeout=10)
+            return jsonify({"ok": True, "count": len(cookies)})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @funnels_bp.route('/api/scrape', methods=['POST', 'GET'])
     def funnels_api_scrape():
-        """Stream Playwright scraper output via SSE, then send WhatsApp notification."""
+        """Stream Playwright scraper — runs headless on Railway, or local Chrome on Mac."""
         import subprocess as _sp
         import requests as _requests
+
         WHATSAPP_NUMBER = "4917632407062"
         CALLMEBOT_API_KEY = "4106204"
 
@@ -212,74 +233,127 @@ if FUNNELS_DIR.exists():
                 out = out.replace(old, new)
             return out
 
-        fb_app_dir = ROOT.parent / "fb app"
-        scraper_script = fb_app_dir / "scrape_marketplace.py"
-
-        # ── Chrome user data dir (macOS only) ──
+        # ── Detect environment ──
         chrome_user_data = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
+        is_local_mac = chrome_user_data.exists()
+
+        def _load_fb_cookies_from_supabase():
+            """Fetch saved FB cookies from Supabase app_settings table."""
+            try:
+                supa_url = os.environ.get("SUPABASE_URL", "")
+                supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+                headers  = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
+                r = _requests.get(
+                    f"{supa_url}/rest/v1/app_settings?key=eq.fb_playwright_cookies&select=value",
+                    headers=headers, timeout=10
+                )
+                rows = r.json()
+                if rows:
+                    return json.loads(rows[0]["value"])
+            except Exception:
+                pass
+            return None
 
         def generate():
-            # ── Guard: must have Chrome profile (local Mac only) ──
-            if not chrome_user_data.exists():
-                yield f"data: {json.dumps({'log': '⚠️ El scraper solo puede correr en tu Mac local — Chrome no está instalado en el servidor. Corre scrape_marketplace.py directamente en tu máquina.', 'pct': 100, 'done': True, 'success': False})}\n\n"
-                return
+            yield f"data: {json.dumps({'log': '🚀 Iniciando scraper de Facebook Marketplace...', 'pct': 0})}\n\n"
 
-            yield f"data: {json.dumps({'log': '🚀 Starting Facebook Marketplace scraper...', 'pct': 0})}\n\n"
+            if is_local_mac:
+                # ── LOCAL MAC: use existing Chrome profile ──
+                fb_app_dir = ROOT.parent / "fb app"
+                scraper_script = fb_app_dir / "scrape_marketplace.py"
 
-            if not scraper_script.exists():
-                yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found at ' + str(scraper_script), 'pct': 100, 'done': True, 'success': False})}\n\n"
-                return
+                if not scraper_script.exists():
+                    yield f"data: {json.dumps({'log': '❌ scrape_marketplace.py not found', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    return
 
-            # ── Guard: Chrome must be closed ──
-            lock_file = chrome_user_data / "Default" / "lockfile"
-            singleton_lock = chrome_user_data / "SingletonLock"
-            if singleton_lock.exists() or lock_file.exists():
-                yield f"data: {json.dumps({'log': '⚠️ Cierra Google Chrome antes de correr el scraper (el perfil está bloqueado). Cierra Chrome y haz click en Scrape Now de nuevo.', 'pct': 100, 'done': True, 'success': False})}\n\n"
-                return
+                singleton_lock = chrome_user_data / "SingletonLock"
+                if singleton_lock.exists():
+                    yield f"data: {json.dumps({'log': '⚠️ Cierra Google Chrome primero (perfil bloqueado) y haz click en Scrape Now de nuevo.', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    return
 
-            cmd = [sys.executable, str(scraper_script)]
-            env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"
+                cmd = [sys.executable, str(scraper_script)]
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
 
-            proc = _sp.Popen(
-                cmd, cwd=str(fb_app_dir),
-                stdout=_sp.PIPE, stderr=_sp.STDOUT,
-                text=True, env=env, bufsize=1
-            )
+                proc = _sp.Popen(cmd, cwd=str(fb_app_dir),
+                                 stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                                 text=True, env=env, bufsize=1)
 
-            total_scrolls = 40
-            scroll_count = 0
-            vehicle_count = 0
+                total_scrolls, scroll_count, vehicle_count = 40, 0, 0
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if not line:
+                        continue
+                    if "Scroll " in line and "/" in line:
+                        try:
+                            part = line.split("Scroll ")[1].split(" — ")[0]
+                            cur, tot = part.split("/")
+                            scroll_count = int(cur)
+                            total_scrolls = int(tot)
+                            if "vehicles" in line:
+                                vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                        except Exception:
+                            pass
+                    pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
+                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
 
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line:
-                    continue
+                proc.wait()
+                success = proc.returncode == 0
 
-                if "Scroll " in line and "/" in line:
-                    try:
-                        part = line.split("Scroll ")[1].split(" — ")[0]
-                        cur, tot = part.split("/")
-                        scroll_count = int(cur)
-                        total_scrolls = int(tot)
-                        if "vehicles" in line:
-                            vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
-                    except Exception:
-                        pass
+            else:
+                # ── RAILWAY SERVER: headless Playwright + saved FB cookies ──
+                yield f"data: {json.dumps({'log': '☁️ Modo servidor — usando Playwright headless + sesión de Facebook guardada...', 'pct': 2})}\n\n"
 
-                pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
-                yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+                fb_cookies = _load_fb_cookies_from_supabase()
+                if not fb_cookies:
+                    yield f"data: {json.dumps({'log': '⚠️ No hay sesión de Facebook guardada. Ve a Funnels → botón \"💾 Guardar Sesión FB\" desde tu Mac, luego vuelve a intentar.', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    return
 
-            proc.wait()
-            success = proc.returncode == 0
+                # Run the headless scraper inline using asyncio + playwright
+                headless_script = ROOT / "Funnels" / "scrape_headless.py"
+                if not headless_script.exists():
+                    yield f"data: {json.dumps({'log': '❌ scrape_headless.py no encontrado en servidor.', 'pct': 100, 'done': True, 'success': False})}\n\n"
+                    return
 
-            # Reload cached listings
+                import tempfile as _tmp
+                cookies_file = Path(_tmp.mktemp(suffix=".json"))
+                cookies_file.write_text(json.dumps(fb_cookies))
+
+                cmd = [sys.executable, str(headless_script), "--cookies", str(cookies_file)]
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+
+                proc = _sp.Popen(cmd, cwd=str(ROOT / "Funnels"),
+                                 stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                                 text=True, env=env, bufsize=1)
+
+                total_scrolls, scroll_count, vehicle_count = 40, 0, 0
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if not line:
+                        continue
+                    if "Scroll " in line and "/" in line:
+                        try:
+                            part = line.split("Scroll ")[1].split(" — ")[0]
+                            cur, tot = part.split("/")
+                            scroll_count = int(cur)
+                            total_scrolls = int(tot)
+                            if "vehicles" in line:
+                                vehicle_count = int(line.split("vehicles")[0].split("— ")[-1].strip())
+                        except Exception:
+                            pass
+                    pct = min(95, int((scroll_count / max(total_scrolls, 1)) * 90))
+                    yield f"data: {json.dumps({'log': line, 'pct': pct, 'vehicles': vehicle_count})}\n\n"
+
+                proc.wait()
+                success = proc.returncode == 0
+                cookies_file.unlink(missing_ok=True)
+
+            # ── Reload + notify ──
             funnels_module._cached_listings = funnels_module.load_all_listings()
-
-            done_msg = f"✅ Scrape complete! {vehicle_count} vehicles saved." if success else "❌ Scraper exited with errors."
+            done_msg = f"✅ ¡Scrape completo! {vehicle_count} vehículos guardados." if success else "❌ Scraper terminó con errores."
             yield f"data: {json.dumps({'log': done_msg, 'pct': 100, 'vehicles': vehicle_count, 'done': True, 'success': success})}\n\n"
 
-            # WhatsApp notification via CallMeBot
             try:
                 msg = f"🚗 Autodirecto Scraper\n{done_msg} ({datetime.now().strftime('%H:%M')})"
                 wa_url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_NUMBER}&text={_wa_encode(msg)}&apikey={CALLMEBOT_API_KEY}"
