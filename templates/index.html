@@ -5023,6 +5023,7 @@
                 edSkewH: 0,
                 edDragging: false,
                 edDragStart: { x: 0, y: 0 },
+                edDragStartPan: { x: 0, y: 0 },
                 edSaving: false,
                 edGridOverlay: false,
                 cameraProModal: false,
@@ -6813,67 +6814,74 @@
 
         <!-- Main content -->
         <div class="flex-1 flex overflow-hidden">
-            <!-- Left: Photo canvas -->
-            <div class="flex-1 flex items-center justify-center bg-slate-950 relative overflow-hidden"
-                @wheel.prevent="edZoom = Math.max(0.25, Math.min(8, edZoom + ($event.deltaY < 0 ? 0.1 : -0.1)))"
-                @mousedown.prevent="edDragging=true; edDragStart={x:$event.clientX-edPanX, y:$event.clientY-edPanY}"
-                @mousemove.prevent="if(edDragging){edPanX=$event.clientX-edDragStart.x; edPanY=$event.clientY-edDragStart.y}"
-                @mouseup="edDragging=false" @mouseleave="edDragging=false"
-                @touchstart.prevent="if($event.touches.length===1){edDragging=true; edDragStart={x:$event.touches[0].clientX-edPanX, y:$event.touches[0].clientY-edPanY}}"
-                @touchmove.prevent="if(edDragging && $event.touches.length===1){edPanX=$event.touches[0].clientX-edDragStart.x; edPanY=$event.touches[0].clientY-edDragStart.y}"
-                @touchend="edDragging=false"
-                :style="`cursor: ${edDragging ? 'grabbing' : 'grab'}`">
+            <!-- Left: Photo canvas — renders identical to autodirecto.cl (object-cover, 16:9) -->
+            <div class="flex-1 flex flex-col items-center justify-center bg-slate-950 relative overflow-hidden p-6"
+                :style="`cursor: default`">
 
-                <!-- Checkerboard BG to show transparency -->
+                <!-- Checkerboard BG -->
                 <div class="absolute inset-0 opacity-5" style="background-image: repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%); background-size: 20px 20px;"></div>
+
+                <!-- "Vista Web" label -->
+                <div class="absolute top-4 left-4 z-20 bg-cyan-600/80 text-white text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1">
+                    <i class="ph ph-globe"></i> Vista exacta del sitio web
+                </div>
 
                 <!-- Grid overlay toggle button -->
                 <button @click="edGridOverlay = !edGridOverlay"
-                    class="absolute top-4 right-4 z-10 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5"
+                    class="absolute top-4 right-4 z-20 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5"
                     :class="edGridOverlay ? 'bg-amber-500/80 text-black' : 'bg-black/60 text-slate-300 hover:bg-black/80'"
                     title="Mostrar/ocultar cuadrícula">
                     <i class="ph ph-grid-four text-base"></i>
                     <span>Grilla</span>
                 </button>
 
-                <!-- Rule-of-thirds + centre crosshair grid overlay -->
-                <div x-show="edGridOverlay" class="absolute inset-0 pointer-events-none z-10" style="display:none;">
-                    <!-- Rule of thirds vertical lines -->
-                    <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:33.333%"></div>
-                    <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:66.666%"></div>
-                    <!-- Rule of thirds horizontal lines -->
-                    <div class="absolute left-0 right-0 border-t border-white/30" style="top:33.333%"></div>
-                    <div class="absolute left-0 right-0 border-t border-white/30" style="top:66.666%"></div>
-                    <!-- Centre crosshair -->
-                    <div class="absolute top-0 bottom-0 border-l border-amber-400/60" style="left:50%; transform:translateX(-50%)"></div>
-                    <div class="absolute left-0 right-0 border-t border-amber-400/60" style="top:50%; transform:translateY(-50%)"></div>
-                    <!-- Centre dot -->
-                    <div class="absolute w-2.5 h-2.5 rounded-full bg-amber-400/80 border border-amber-300" style="top:50%; left:50%; transform:translate(-50%,-50%)"></div>
-                    <!-- Corner markers -->
-                    <div class="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white/50 rounded-tl"></div>
-                    <div class="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white/50 rounded-tr"></div>
-                    <div class="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white/50 rounded-bl"></div>
-                    <div class="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white/50 rounded-br"></div>
+                <!-- THE PREVIEW FRAME: same aspect ratio as autodirecto.cl gallery (16:9-ish, ~450px tall) -->
+                <!-- object-cover + overflow:hidden + same transform = pixel-perfect match -->
+                <div class="relative rounded-xl overflow-hidden shadow-2xl"
+                    style="width: 100%; max-width: 800px; aspect-ratio: 16/9;"
+                    @wheel.prevent="edZoom = Math.max(1, Math.min(8, edZoom + ($event.deltaY < 0 ? 0.1 : -0.1)))"
+                    @mousedown.prevent="edDragging=true; edDragStart={x:$event.clientX, y:$event.clientY}; edDragStartPan={x:edPanX, y:edPanY}"
+                    @mousemove.prevent="if(edDragging){ const el=$event.currentTarget; edPanX = edDragStartPan.x + ($event.clientX - edDragStart.x) / el.offsetWidth * 100; edPanY = edDragStartPan.y + ($event.clientY - edDragStart.y) / el.offsetHeight * 100; }"
+                    @mouseup="edDragging=false" @mouseleave="edDragging=false"
+                    @touchstart.prevent="if($event.touches.length===1){edDragging=true; edDragStart={x:$event.touches[0].clientX, y:$event.touches[0].clientY}; edDragStartPan={x:edPanX, y:edPanY}}"
+                    @touchmove.prevent="if(edDragging && $event.touches.length===1){ const el=$event.currentTarget; edPanX = edDragStartPan.x + ($event.touches[0].clientX - edDragStart.x) / el.offsetWidth * 100; edPanY = edDragStartPan.y + ($event.touches[0].clientY - edDragStart.y) / el.offsetHeight * 100; }"
+                    @touchend="edDragging=false"
+                    :style="`cursor: ${edDragging ? 'grabbing' : 'grab'}`">
+
+                    <img :src="invDetail?.photos?.[photoEditorIdx]?.url"
+                        class="w-full h-full object-cover select-none transition-transform duration-75"
+                        :style="`transform: scale(${edZoom}) translate(${edPanX/edZoom}%, ${edPanY/edZoom}%); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%); transform-origin: center center;`"
+                        style="will-change:transform,filter;" draggable="false">
+
+                    <!-- Rule-of-thirds + centre crosshair grid overlay (inside the frame) -->
+                    <div x-show="edGridOverlay" class="absolute inset-0 pointer-events-none z-10" style="display:none;">
+                        <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:33.333%"></div>
+                        <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:66.666%"></div>
+                        <div class="absolute left-0 right-0 border-t border-white/30" style="top:33.333%"></div>
+                        <div class="absolute left-0 right-0 border-t border-white/30" style="top:66.666%"></div>
+                        <div class="absolute top-0 bottom-0 border-l border-amber-400/60" style="left:50%; transform:translateX(-50%)"></div>
+                        <div class="absolute left-0 right-0 border-t border-amber-400/60" style="top:50%; transform:translateY(-50%)"></div>
+                        <div class="absolute w-2.5 h-2.5 rounded-full bg-amber-400/80 border border-amber-300" style="top:50%; left:50%; transform:translate(-50%,-50%)"></div>
+                        <div class="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white/50 rounded-tl"></div>
+                        <div class="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white/50 rounded-tr"></div>
+                        <div class="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white/50 rounded-bl"></div>
+                        <div class="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white/50 rounded-br"></div>
+                    </div>
                 </div>
 
-                <img :src="invDetail?.photos?.[photoEditorIdx]?.url"
-                    class="max-w-full max-h-full object-contain transition-transform duration-75 select-none"
-                    :style="`transform: perspective(800px) scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px) rotateX(${edSkewV}deg) rotateY(${edSkewH}deg); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`"
-                    style="will-change:transform,filter;" draggable="false">
-
-                <!-- Nav arrows -->
+                <!-- Nav arrows (outside the frame) -->
                 <button x-show="(invDetail?.photos?.length || 0) > 1" @click.stop="edNavigate(-1)"
-                    class="absolute left-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors">
+                    class="absolute left-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors z-20">
                     <i class="ph ph-caret-left text-2xl"></i></button>
                 <button x-show="(invDetail?.photos?.length || 0) > 1" @click.stop="edNavigate(1)"
-                    class="absolute right-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors">
+                    class="absolute right-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors z-20">
                     <i class="ph ph-caret-right text-2xl"></i></button>
 
-                <!-- Zoom indicator -->
-                <div class="absolute top-4 left-4 bg-black/70 text-white text-xs px-3 py-1.5 rounded-lg font-mono flex items-center gap-2">
+                <!-- Zoom + position indicator -->
+                <div class="mt-3 bg-black/60 text-white text-xs px-3 py-1.5 rounded-lg font-mono flex items-center gap-2 z-20">
                     <span x-text="Math.round(edZoom * 100) + '%'"></span>
                     <span class="text-slate-500">|</span>
-                    <span class="text-slate-400" x-text="'X:' + Math.round(edPanX) + ' Y:' + Math.round(edPanY)"></span>
+                    <span class="text-slate-400" x-text="'X:' + Math.round(edPanX) + '% Y:' + Math.round(edPanY) + '%'"></span>
                 </div>
             </div>
 
@@ -6882,8 +6890,8 @@
                 <!-- Thumbnail preview -->
                 <div class="p-4 border-b border-slate-800 bg-slate-900/50">
                     <div class="w-full aspect-video rounded-lg overflow-hidden bg-black">
-                        <img :src="invDetail?.photos?.[photoEditorIdx]?.url" class="w-full h-full object-contain"
-                            :style="`transform: perspective(800px) scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px) rotateX(${edSkewV}deg) rotateY(${edSkewH}deg); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`">
+                        <img :src="invDetail?.photos?.[photoEditorIdx]?.url" class="w-full h-full object-cover"
+                            :style="`transform: scale(${edZoom}) translate(${edPanX/edZoom}%, ${edPanY/edZoom}%); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%); transform-origin: center center;`">
                     </div>
                     <p class="text-[10px] text-slate-500 text-center mt-1.5 font-medium uppercase tracking-wider"
                         x-text="(invDetail?.photos?.[photoEditorIdx]?.photo_type || 'exterior')"></p>
@@ -6922,17 +6930,17 @@
                     <div class="flex items-center justify-center">
                         <div class="grid grid-cols-3 gap-1 w-fit">
                             <div></div>
-                            <button @click="edPanY += 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover arriba">
+                            <button @click="edPanY += 2" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover arriba">
                                 <i class="ph ph-caret-up text-lg"></i></button>
                             <div></div>
-                            <button @click="edPanX += 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover izquierda">
+                            <button @click="edPanX += 2" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover izquierda">
                                 <i class="ph ph-caret-left text-lg"></i></button>
                             <button @click="edPanX=0; edPanY=0" class="bg-slate-700 hover:bg-slate-600 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors text-[10px] font-bold" title="Centrar">
                                 <i class="ph ph-crosshair text-lg"></i></button>
-                            <button @click="edPanX -= 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover derecha">
+                            <button @click="edPanX -= 2" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover derecha">
                                 <i class="ph ph-caret-right text-lg"></i></button>
                             <div></div>
-                            <button @click="edPanY -= 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover abajo">
+                            <button @click="edPanY -= 2" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover abajo">
                                 <i class="ph ph-caret-down text-lg"></i></button>
                             <div></div>
                         </div>
@@ -6940,21 +6948,21 @@
                     <!-- Fine controls -->
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div>
-                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje X</label>
+                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje X (%)</label>
                             <div class="flex items-center gap-1 mt-0.5">
-                                <button @click="edPanX -= 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">◀</button>
-                                <input type="number" :value="Math.round(edPanX)" @input="edPanX = +$event.target.value"
+                                <button @click="edPanX -= 0.5" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">◀</button>
+                                <input type="number" :value="Math.round(edPanX * 10) / 10" @input="edPanX = +$event.target.value"
                                     class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-center text-xs font-mono w-14">
-                                <button @click="edPanX += 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▶</button>
+                                <button @click="edPanX += 0.5" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▶</button>
                             </div>
                         </div>
                         <div>
-                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje Y</label>
+                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje Y (%)</label>
                             <div class="flex items-center gap-1 mt-0.5">
-                                <button @click="edPanY -= 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▲</button>
-                                <input type="number" :value="Math.round(edPanY)" @input="edPanY = +$event.target.value"
+                                <button @click="edPanY -= 0.5" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▲</button>
+                                <input type="number" :value="Math.round(edPanY * 10) / 10" @input="edPanY = +$event.target.value"
                                     class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-center text-xs font-mono w-14">
-                                <button @click="edPanY += 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▼</button>
+                                <button @click="edPanY += 0.5" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▼</button>
                             </div>
                         </div>
                     </div>
