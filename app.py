@@ -2635,6 +2635,46 @@ def create_quick_consignacion():
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+    # ── Also create a CRM lead with stage "fotografiado" ──
+    try:
+        with get_crm_conn() as crm:
+            existing_lead = crm.execute(
+                "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
+            ).fetchone()
+            if existing_lead:
+                # Update existing lead stage to fotografiado
+                crm.execute(
+                    "UPDATE crm_leads SET stage='fotografiado', updated_at=? WHERE id=?",
+                    (now, existing_lead["id"])
+                )
+                crm.execute(
+                    "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                    (existing_lead["id"], "stage_change", "Fotografiado desde cámara",
+                     "Vehículo fotografiado desde app de cámara")
+                )
+            else:
+                # Create new CRM lead
+                crm.execute("""
+                    INSERT INTO crm_leads (
+                        full_name, first_name, last_name, phone, rut, email, plate,
+                        car_make, car_model, car_year, mileage,
+                        stage, source, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    owner_name, first, last, owner_phone, owner_rut, owner_email, plate,
+                    car_make, car_model, car_year, mileage,
+                    "fotografiado", "camera", now, now
+                ))
+                lead_id = crm.execute("SELECT last_insert_rowid()").fetchone()[0]
+                crm.execute(
+                    "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                    (lead_id, "note", "Lead creado desde cámara",
+                     f"Vehículo {car_make} {car_model} {car_year or ''} — patente {plate} — registrado desde app de cámara")
+                )
+            crm.commit()
+    except Exception as e:
+        print(f"[quick_consignacion] Error creating CRM lead: {e}")
+
     label = f"{car_make} {car_model} {car_year or ''}".strip()
     return jsonify({
         "ok": True, "created": True,
@@ -2990,7 +3030,7 @@ def _sync_crm_lead_stage(plate, consig_status, appt_id=None, rut=None, phone=Non
     """
     # Map consignacion status → CRM stage
     status_to_stage = {
-        "fotos_pendientes": "nuevo",
+        "fotos_pendientes": "fotografiado",
         "pendiente":       "nuevo",
         "parte1_completa": "agendado",
         "parte2_completa": "inspeccionado",
@@ -5216,6 +5256,7 @@ CRM_STAGE_LABELS = {
     'nuevo': 'Nuevo',
     'contactado': 'Contactado',
     'agendado': 'Agendado',
+    'fotografiado': 'Fotografiado',
     'inspeccionado': 'Inspeccionado',
     'en_venta': 'En Venta',
     'vendido': 'Vendido',

@@ -1,0 +1,27 @@
+
+<table width="581" border="0" cellspacing="0" cellpadding="0" align="center">
+  <tbody><tr>
+    <td height="28" class="tituloSecciones">
+        <!--    Tesorer&iacute;a General de La Rep&uacute;blica<br> -->
+		Servicio de Pagos en Línea
+    </td>
+  </tr>
+</tbody></table>
+
+<table width="575" height="100%" cellpadding="3" cellspacing="0" align="center" class="bordetabla">
+    <tbody><tr>
+        <td>&nbsp;</td>
+    </tr>
+    <tr>
+        <td align="center" class="parrafoGrande" height="70">
+            El servicio de pago no está disponible entre las 23:50 y 00:10.<br>
+            Por favor reintente en horario hábil.
+        </td>
+    </tr>
+    <tr>
+        <td align="center" class="bajada" valign="top">
+            <input type="button" class="boton2" value="Volver" onclick="history.back()" style="">
+        </td>
+    </tr>
+</tbody></table>
+
