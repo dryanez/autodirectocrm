@@ -583,6 +583,11 @@
                                 class="bg-white/10 hover:bg-white/20 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
                                 <i class="ph ph-arrows-in"></i>
                             </button>
+                            <!-- Open full editor -->
+                            <button @click="openPhotoEditor(invPhotoIdx)" title="Editor de foto completo"
+                                class="bg-amber-600/40 hover:bg-amber-600/60 text-amber-300 h-8 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-semibold gap-1">
+                                <i class="ph ph-pencil-simple"></i> Editar
+                            </button>
                             <!-- Delete current photo -->
                             <button @click="deleteCurrentPhoto()" title="Eliminar esta foto"
                                 class="bg-red-600/30 hover:bg-red-600/50 text-red-400 w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
@@ -4933,6 +4938,18 @@
                 photoContrast: 100,
                 photoSaturate: 100,
                 photoBeingDragged: -1,
+                // Full-screen photo editor overlay
+                photoEditorOpen: false,
+                photoEditorIdx: 0,
+                edZoom: 1,
+                edPanX: 0,
+                edPanY: 0,
+                edBrightness: 100,
+                edContrast: 100,
+                edSaturate: 100,
+                edDragging: false,
+                edDragStart: { x: 0, y: 0 },
+                edSaving: false,
                 cameraProModal: false,
                 cameraProUrl: null,
                 cameraProLoading: false,
@@ -5091,12 +5108,90 @@
 
                 // ─── Photo Editor Functions ─────────────────────────────
                 resetPhotoView() {
-                    this.photoZoom = 1;
-                    this.photoPanX = 0;
-                    this.photoPanY = 0;
-                    this.photoBrightness = 100;
-                    this.photoContrast = 100;
-                    this.photoSaturate = 100;
+                    // Load saved edits from the current photo, or defaults
+                    const photo = this.invDetail?.photos?.[this.invPhotoIdx];
+                    const e = photo?.edits || {};
+                    this.photoZoom = e.zoom || 1;
+                    this.photoPanX = e.panX || 0;
+                    this.photoPanY = e.panY || 0;
+                    this.photoBrightness = e.brightness || 100;
+                    this.photoContrast = e.contrast || 100;
+                    this.photoSaturate = e.saturate || 100;
+                },
+
+                loadPhotoEdits() {
+                    // Same as resetPhotoView — apply saved edits for the current photo
+                    this.resetPhotoView();
+                },
+
+                // ─── Full-screen Photo Editor ──────────────────────────
+                openPhotoEditor(idx) {
+                    if (idx === undefined) idx = this.invPhotoIdx;
+                    this.photoEditorIdx = idx;
+                    const photo = this.invDetail?.photos?.[idx];
+                    const e = photo?.edits || {};
+                    this.edZoom = e.zoom || 1;
+                    this.edPanX = e.panX || 0;
+                    this.edPanY = e.panY || 0;
+                    this.edBrightness = e.brightness || 100;
+                    this.edContrast = e.contrast || 100;
+                    this.edSaturate = e.saturate || 100;
+                    this.edSaving = false;
+                    this.photoEditorOpen = true;
+                },
+
+                edResetDefaults() {
+                    this.edZoom = 1;
+                    this.edPanX = 0;
+                    this.edPanY = 0;
+                    this.edBrightness = 100;
+                    this.edContrast = 100;
+                    this.edSaturate = 100;
+                },
+
+                async edSaveEdits() {
+                    const photo = this.invDetail?.photos?.[this.photoEditorIdx];
+                    if (!photo?.id) return;
+                    this.edSaving = true;
+                    const edits = {
+                        zoom: this.edZoom,
+                        panX: this.edPanX,
+                        panY: this.edPanY,
+                        brightness: this.edBrightness,
+                        contrast: this.edContrast,
+                        saturate: this.edSaturate
+                    };
+                    try {
+                        await this.authFetch('/api/vehicle-images/' + photo.id, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ edits })
+                        });
+                        // Save locally too
+                        photo.edits = edits;
+                        // Apply to inline viewer
+                        if (this.invPhotoIdx === this.photoEditorIdx) {
+                            this.resetPhotoView();
+                        }
+                        this.invSaveFlash = true;
+                        setTimeout(() => { this.invSaveFlash = false; }, 1200);
+                    } catch (e) { console.error('edSaveEdits', e); }
+                    this.edSaving = false;
+                },
+
+                edNavigate(dir) {
+                    const photos = this.invDetail?.photos || [];
+                    if (photos.length <= 1) return;
+                    this.photoEditorIdx = (this.photoEditorIdx + dir + photos.length) % photos.length;
+                    this.invPhotoIdx = this.photoEditorIdx;
+                    const photo = photos[this.photoEditorIdx];
+                    const e = photo?.edits || {};
+                    this.edZoom = e.zoom || 1;
+                    this.edPanX = e.panX || 0;
+                    this.edPanY = e.panY || 0;
+                    this.edBrightness = e.brightness || 100;
+                    this.edContrast = e.contrast || 100;
+                    this.edSaturate = e.saturate || 100;
                 },
 
                 async deleteCurrentPhoto() {
@@ -6540,6 +6635,222 @@
             }
         }
     </script>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- FULL-SCREEN PHOTO EDITOR OVERLAY                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div x-show="photoEditorOpen" class="fixed inset-0 z-[110] bg-slate-950 flex flex-col overflow-hidden"
+        style="display:none;"
+        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        @keydown.escape.window="if(photoEditorOpen) photoEditorOpen=false"
+        @keydown.left.window="if(photoEditorOpen) edNavigate(-1)"
+        @keydown.right.window="if(photoEditorOpen) edNavigate(1)">
+
+        <!-- Top bar -->
+        <div class="h-12 flex-shrink-0 bg-slate-900 border-b border-slate-800 flex items-center px-5 gap-3">
+            <button @click="photoEditorOpen=false"
+                class="text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-sm">
+                <i class="ph ph-arrow-left text-lg"></i> Volver
+            </button>
+            <div class="flex-1 flex items-center justify-center gap-2 text-sm">
+                <i class="ph ph-pencil-simple text-amber-400"></i>
+                <span class="text-white font-semibold">Editor de Fotos</span>
+                <span class="text-slate-500 font-mono text-xs" x-text="(photoEditorIdx+1) + ' / ' + (invDetail?.photos?.length || 0)"></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- Reset defaults -->
+                <button @click="edResetDefaults()" title="Valores por defecto"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
+                    <i class="ph ph-arrows-counter-clockwise"></i> Reset
+                </button>
+                <!-- Save -->
+                <button @click="edSaveEdits()" :disabled="edSaving"
+                    class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5">
+                    <i class="ph" :class="edSaving ? 'ph-spinner animate-spin' : 'ph-floppy-disk'"></i>
+                    <span x-text="edSaving ? 'Guardando…' : 'Guardar'"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left: Photo canvas -->
+            <div class="flex-1 flex items-center justify-center bg-slate-950 relative overflow-hidden"
+                @wheel.prevent="edZoom = Math.max(0.25, Math.min(8, edZoom + ($event.deltaY < 0 ? 0.1 : -0.1)))"
+                @mousedown.prevent="edDragging=true; edDragStart={x:$event.clientX-edPanX, y:$event.clientY-edPanY}"
+                @mousemove.prevent="if(edDragging){edPanX=$event.clientX-edDragStart.x; edPanY=$event.clientY-edDragStart.y}"
+                @mouseup="edDragging=false" @mouseleave="edDragging=false"
+                @touchstart.prevent="if($event.touches.length===1){edDragging=true; edDragStart={x:$event.touches[0].clientX-edPanX, y:$event.touches[0].clientY-edPanY}}"
+                @touchmove.prevent="if(edDragging && $event.touches.length===1){edPanX=$event.touches[0].clientX-edDragStart.x; edPanY=$event.touches[0].clientY-edDragStart.y}"
+                @touchend="edDragging=false"
+                :style="`cursor: ${edDragging ? 'grabbing' : 'grab'}`">
+
+                <!-- Checkerboard BG to show transparency -->
+                <div class="absolute inset-0 opacity-5" style="background-image: repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%); background-size: 20px 20px;"></div>
+
+                <img :src="invDetail?.photos?.[photoEditorIdx]?.url"
+                    class="max-w-full max-h-full object-contain transition-transform duration-75 select-none"
+                    :style="`transform: scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`"
+                    style="will-change:transform,filter;" draggable="false">
+
+                <!-- Nav arrows -->
+                <button x-show="(invDetail?.photos?.length || 0) > 1" @click.stop="edNavigate(-1)"
+                    class="absolute left-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors">
+                    <i class="ph ph-caret-left text-2xl"></i></button>
+                <button x-show="(invDetail?.photos?.length || 0) > 1" @click.stop="edNavigate(1)"
+                    class="absolute right-4 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-12 h-12 rounded-full flex items-center justify-center transition-colors">
+                    <i class="ph ph-caret-right text-2xl"></i></button>
+
+                <!-- Zoom indicator -->
+                <div class="absolute top-4 left-4 bg-black/70 text-white text-xs px-3 py-1.5 rounded-lg font-mono flex items-center gap-2">
+                    <span x-text="Math.round(edZoom * 100) + '%'"></span>
+                    <span class="text-slate-500">|</span>
+                    <span class="text-slate-400" x-text="'X:' + Math.round(edPanX) + ' Y:' + Math.round(edPanY)"></span>
+                </div>
+            </div>
+
+            <!-- Right: Controls panel -->
+            <div class="w-72 flex-shrink-0 bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto">
+                <!-- Thumbnail preview -->
+                <div class="p-4 border-b border-slate-800 bg-slate-900/50">
+                    <div class="w-full aspect-video rounded-lg overflow-hidden bg-black">
+                        <img :src="invDetail?.photos?.[photoEditorIdx]?.url" class="w-full h-full object-contain"
+                            :style="`filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`">
+                    </div>
+                    <p class="text-[10px] text-slate-500 text-center mt-1.5 font-medium uppercase tracking-wider"
+                        x-text="(invDetail?.photos?.[photoEditorIdx]?.photo_type || 'exterior')"></p>
+                </div>
+
+                <!-- ═══ ZOOM ═══ -->
+                <div class="p-4 border-b border-slate-800 space-y-3">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="ph ph-magnifying-glass-plus text-cyan-400"></i> Zoom
+                    </h4>
+                    <div class="flex items-center gap-2">
+                        <button @click="edZoom = Math.max(0.25, edZoom - 0.25)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                            <i class="ph ph-minus"></i></button>
+                        <input type="range" min="25" max="500" step="5" :value="Math.round(edZoom*100)"
+                            @input="edZoom = $event.target.value / 100"
+                            class="flex-1 h-1.5 accent-cyan-400 cursor-pointer">
+                        <button @click="edZoom = Math.min(5, edZoom + 0.25)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                            <i class="ph ph-plus"></i></button>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-500">
+                        <span x-text="Math.round(edZoom * 100) + '%'"></span>
+                        <div class="flex gap-1">
+                            <button @click="edZoom=0.5" class="bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">50%</button>
+                            <button @click="edZoom=1" class="bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">100%</button>
+                            <button @click="edZoom=2" class="bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">200%</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ POSITION / ALIGNMENT (X / Y) ═══ -->
+                <div class="p-4 border-b border-slate-800 space-y-3">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="ph ph-arrows-out-cardinal text-violet-400"></i> Posición
+                    </h4>
+                    <!-- D-pad controls -->
+                    <div class="flex items-center justify-center">
+                        <div class="grid grid-cols-3 gap-1 w-fit">
+                            <div></div>
+                            <button @click="edPanY += 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover arriba">
+                                <i class="ph ph-caret-up text-lg"></i></button>
+                            <div></div>
+                            <button @click="edPanX += 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover izquierda">
+                                <i class="ph ph-caret-left text-lg"></i></button>
+                            <button @click="edPanX=0; edPanY=0" class="bg-slate-700 hover:bg-slate-600 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors text-[10px] font-bold" title="Centrar">
+                                <i class="ph ph-crosshair text-lg"></i></button>
+                            <button @click="edPanX -= 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover derecha">
+                                <i class="ph ph-caret-right text-lg"></i></button>
+                            <div></div>
+                            <button @click="edPanY -= 10" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-lg flex items-center justify-center transition-colors" title="Mover abajo">
+                                <i class="ph ph-caret-down text-lg"></i></button>
+                            <div></div>
+                        </div>
+                    </div>
+                    <!-- Fine controls -->
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje X</label>
+                            <div class="flex items-center gap-1 mt-0.5">
+                                <button @click="edPanX -= 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">◀</button>
+                                <input type="number" :value="Math.round(edPanX)" @input="edPanX = +$event.target.value"
+                                    class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-center text-xs font-mono w-14">
+                                <button @click="edPanX += 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▶</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-slate-500 text-[10px] uppercase tracking-wider">Eje Y</label>
+                            <div class="flex items-center gap-1 mt-0.5">
+                                <button @click="edPanY -= 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▲</button>
+                                <input type="number" :value="Math.round(edPanY)" @input="edPanY = +$event.target.value"
+                                    class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-center text-xs font-mono w-14">
+                                <button @click="edPanY += 1" class="bg-slate-800 text-slate-400 w-5 h-5 rounded flex items-center justify-center text-[8px]">▼</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ ADJUSTMENTS ═══ -->
+                <div class="p-4 space-y-4">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="ph ph-sliders-horizontal text-amber-400"></i> Ajustes
+                    </h4>
+                    <!-- Brightness -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs text-slate-400 flex items-center gap-1"><i class="ph ph-sun text-yellow-400"></i> Brillo</label>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="edBrightness + '%'"></span>
+                        </div>
+                        <input type="range" min="20" max="300" step="5" x-model.number="edBrightness"
+                            class="w-full h-1.5 accent-yellow-400 cursor-pointer">
+                    </div>
+                    <!-- Contrast -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs text-slate-400 flex items-center gap-1"><i class="ph ph-circle-half text-blue-400"></i> Contraste</label>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="edContrast + '%'"></span>
+                        </div>
+                        <input type="range" min="20" max="300" step="5" x-model.number="edContrast"
+                            class="w-full h-1.5 accent-blue-400 cursor-pointer">
+                    </div>
+                    <!-- Saturation -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs text-slate-400 flex items-center gap-1"><i class="ph ph-palette text-pink-400"></i> Saturación</label>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="edSaturate + '%'"></span>
+                        </div>
+                        <input type="range" min="0" max="300" step="5" x-model.number="edSaturate"
+                            class="w-full h-1.5 accent-pink-400 cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Quick presets -->
+                <div class="p-4 border-t border-slate-800 space-y-2">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Presets</h4>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <button @click="edBrightness=100;edContrast=100;edSaturate=100" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">Original</button>
+                        <button @click="edBrightness=110;edContrast=115;edSaturate=120" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">Vibrante</button>
+                        <button @click="edBrightness=115;edContrast=95;edSaturate=85" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">Suave</button>
+                        <button @click="edBrightness=100;edContrast=100;edSaturate=0" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">B&W</button>
+                        <button @click="edBrightness=105;edContrast=120;edSaturate=130" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">Concesionario</button>
+                        <button @click="edBrightness=120;edContrast=105;edSaturate=110" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-2 rounded-lg transition-colors font-medium">Luminoso</button>
+                    </div>
+                </div>
+
+                <!-- Delete -->
+                <div class="p-4 border-t border-slate-800 mt-auto">
+                    <button @click="deleteSinglePhoto(photoEditorIdx); if(!invDetail?.photos?.length) photoEditorOpen=false; else { if(photoEditorIdx >= invDetail.photos.length) photoEditorIdx = invDetail.photos.length - 1; edNavigate(0); }"
+                        class="w-full flex items-center justify-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 py-2.5 rounded-lg text-xs font-semibold transition-colors">
+                        <i class="ph ph-trash"></i> Eliminar esta foto
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ═══ END FULL-SCREEN PHOTO EDITOR ═══ -->
 
     <!-- ─── Send Photo Link Modal ────────────────────────────────────────── -->
     <div x-show="sendPhotoLinkModal" @click.self="sendPhotoLinkModal = false"

@@ -1411,6 +1411,33 @@ def delete_single_vehicle_image(image_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/vehicle-images/<image_id>", methods=["PATCH"])
+def update_vehicle_image(image_id):
+    """Update a vehicle image record (edits metadata, photo_type, label, etc.).
+    Stores photo-editing adjustments (zoom, pan, brightness, contrast, saturation)
+    so they persist across page reloads."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    data = request.json or {}
+    # Only allow safe fields to be updated
+    allowed = {"edits", "label", "photo_type"}
+    payload = {k: v for k, v in data.items() if k in allowed}
+    if not payload:
+        return jsonify({"error": "Nothing to update"}), 400
+    try:
+        r = req_lib.patch(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"id": "eq.{}".format(image_id)},
+            json=payload,
+            headers=headers, timeout=8
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/vehicle-images/reorder", methods=["POST"])
 def reorder_vehicle_images():
     """Reorder photos by updating their created_at timestamps.
@@ -2826,10 +2853,18 @@ def get_consignacion_photos(cid):
     try:
         r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
-            params={"select": "id,url,photo_type,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
+            params={"select": "id,url,photo_type,edits,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
             headers=headers, timeout=8
         )
         photos = r.json() if r.status_code == 200 else []
+        # Fallback if 'edits' column doesn't exist yet (42703 error)
+        if isinstance(photos, dict) and photos.get("code") == "42703":
+            r = req_lib.get(
+                supabase_url + "/rest/v1/vehicle_images",
+                params={"select": "id,url,photo_type,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
+                headers=headers, timeout=8
+            )
+            photos = r.json() if r.status_code == 200 else []
         return jsonify({"photos": photos})
     except Exception as e:
         return jsonify({"photos": [], "error": str(e)})
