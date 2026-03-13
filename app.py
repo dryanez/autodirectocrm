@@ -1415,24 +1415,63 @@ def delete_single_vehicle_image(image_id):
 def update_vehicle_image(image_id):
     """Update a vehicle image record (edits metadata, photo_type, label, etc.).
     Stores photo-editing adjustments (zoom, pan, brightness, contrast, saturation)
-    so they persist across page reloads."""
+    so they persist across page reloads.
+
+    Strategy: tries to write `edits` JSONB column first.  If Supabase returns
+    42703 (column does not exist) we fall back to storing the edits JSON
+    inside the existing `label` TEXT column with a '__edits__:' prefix so we
+    can parse it back on GET."""
     import requests as req_lib
     supabase_url, headers = _supa_headers()
     if not supabase_url:
         return jsonify({"error": "Supabase not configured"}), 500
     data = request.json or {}
-    # Only allow safe fields to be updated
-    allowed = {"edits", "label", "photo_type"}
-    payload = {k: v for k, v in data.items() if k in allowed}
-    if not payload:
+
+    edits_obj = data.get("edits")
+    photo_type = data.get("photo_type")
+    label_val = data.get("label")
+
+    if not any([edits_obj, photo_type, label_val]):
         return jsonify({"error": "Nothing to update"}), 400
+
+    # Build payload — try with edits column first
+    payload = {}
+    if edits_obj is not None:
+        payload["edits"] = edits_obj
+    if photo_type is not None:
+        payload["photo_type"] = photo_type
+    if label_val is not None:
+        payload["label"] = label_val
+
     try:
         r = req_lib.patch(
             supabase_url + "/rest/v1/vehicle_images",
             params={"id": "eq.{}".format(image_id)},
             json=payload,
-            headers=headers, timeout=8
+            headers={**headers, "Prefer": "return=minimal"}, timeout=8
         )
+        resp = None
+        try:
+            resp = r.json()
+        except Exception:
+            pass
+
+        # If 'edits' column doesn't exist, fall back to label column
+        # Supabase returns PGRST204 (schema cache miss) or 42703 (Postgres column error)
+        if isinstance(resp, dict) and resp.get("code") in ("42703", "PGRST204") and edits_obj is not None:
+            fallback_payload = {}
+            # Encode edits into label field with prefix
+            fallback_payload["label"] = "__edits__:" + json.dumps(edits_obj)
+            if photo_type is not None:
+                fallback_payload["photo_type"] = photo_type
+            r2 = req_lib.patch(
+                supabase_url + "/rest/v1/vehicle_images",
+                params={"id": "eq.{}".format(image_id)},
+                json=fallback_payload,
+                headers={**headers, "Prefer": "return=minimal"}, timeout=8
+            )
+            return jsonify({"ok": True, "fallback": True})
+
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2853,18 +2892,27 @@ def get_consignacion_photos(cid):
     try:
         r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
-            params={"select": "id,url,photo_type,edits,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
+            params={"select": "id,url,photo_type,edits,label,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
             headers=headers, timeout=8
         )
         photos = r.json() if r.status_code == 200 else []
-        # Fallback if 'edits' column doesn't exist yet (42703 error)
-        if isinstance(photos, dict) and photos.get("code") == "42703":
+        # Fallback if 'edits' column doesn't exist yet (PGRST204 or 42703 error)
+        if isinstance(photos, dict) and photos.get("code") in ("42703", "PGRST204"):
             r = req_lib.get(
                 supabase_url + "/rest/v1/vehicle_images",
-                params={"select": "id,url,photo_type,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
+                params={"select": "id,url,photo_type,label,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
                 headers=headers, timeout=8
             )
             photos = r.json() if r.status_code == 200 else []
+        # Parse edits from label field (fallback storage: "__edits__:{json}")
+        if isinstance(photos, list):
+            for p in photos:
+                if not p.get("edits") and isinstance(p.get("label"), str) and p["label"].startswith("__edits__:"):
+                    try:
+                        p["edits"] = json.loads(p["label"][len("__edits__:"):])
+                    except Exception:
+                        pass
+                    p["label"] = None  # Don't expose the raw prefix to the frontend
         return jsonify({"photos": photos})
     except Exception as e:
         return jsonify({"photos": [], "error": str(e)})

@@ -5127,8 +5127,14 @@
                 // ─── Full-screen Photo Editor ──────────────────────────
                 openPhotoEditor(idx) {
                     if (idx === undefined) idx = this.invPhotoIdx;
+                    const photos = this.invDetail?.photos || [];
+                    if (photos.length === 0) {
+                        alert('No hay fotos para editar. Sube fotos primero.');
+                        return;
+                    }
+                    if (idx >= photos.length) idx = 0;
                     this.photoEditorIdx = idx;
-                    const photo = this.invDetail?.photos?.[idx];
+                    const photo = photos[idx];
                     const e = photo?.edits || {};
                     this.edZoom = e.zoom || 1;
                     this.edPanX = e.panX || 0;
@@ -5138,6 +5144,7 @@
                     this.edSaturate = e.saturate || 100;
                     this.edSaving = false;
                     this.photoEditorOpen = true;
+                    console.log('[openPhotoEditor] opened idx=', idx, 'photo.id=', photo?.id);
                 },
 
                 edResetDefaults() {
@@ -5150,32 +5157,54 @@
                 },
 
                 async edSaveEdits() {
-                    const photo = this.invDetail?.photos?.[this.photoEditorIdx];
-                    if (!photo?.id) return;
+                    console.log('[edSaveEdits] called, photoEditorIdx=', this.photoEditorIdx);
+                    const photos = this.invDetail?.photos || [];
+                    console.log('[edSaveEdits] photos count:', photos.length);
+                    const photo = photos[this.photoEditorIdx];
+                    if (!photo || !photo.id) {
+                        alert('⚠️ No hay foto seleccionada para guardar (idx=' + this.photoEditorIdx + ', total=' + photos.length + ')');
+                        return;
+                    }
+                    console.log('[edSaveEdits] saving photo.id=', photo.id);
                     this.edSaving = true;
                     const edits = {
-                        zoom: this.edZoom,
-                        panX: this.edPanX,
-                        panY: this.edPanY,
-                        brightness: this.edBrightness,
-                        contrast: this.edContrast,
-                        saturate: this.edSaturate
+                        zoom: parseFloat(this.edZoom) || 1,
+                        panX: parseFloat(this.edPanX) || 0,
+                        panY: parseFloat(this.edPanY) || 0,
+                        brightness: parseInt(this.edBrightness) || 100,
+                        contrast: parseInt(this.edContrast) || 100,
+                        saturate: parseInt(this.edSaturate) || 100
                     };
                     try {
-                        await this.authFetch('/api/vehicle-images/' + photo.id, {
+                        const url = '/api/vehicle-images/' + photo.id;
+                        console.log('[edSaveEdits] PATCH', url, edits);
+                        const resp = await this.authFetch(url, {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ edits })
                         });
+                        console.log('[edSaveEdits] response status:', resp.status);
+                        const result = await resp.json().catch(() => ({}));
+                        console.log('[edSaveEdits] response body:', result);
+                        if (!resp.ok || result.error) {
+                            alert('❌ Error al guardar: ' + (result.error || resp.status + ' ' + resp.statusText));
+                            this.edSaving = false;
+                            return;
+                        }
                         // Save locally too
                         photo.edits = edits;
                         // Apply to inline viewer
                         if (this.invPhotoIdx === this.photoEditorIdx) {
                             this.resetPhotoView();
                         }
+                        // Show green flash + brief "saved" toast
                         this.invSaveFlash = true;
-                        setTimeout(() => { this.invSaveFlash = false; }, 1200);
-                    } catch (e) { console.error('edSaveEdits', e); }
+                        setTimeout(() => { this.invSaveFlash = false; }, 1500);
+                        console.log('[edSaveEdits] ✅ saved successfully', result.fallback ? '(label fallback)' : '');
+                    } catch (e) {
+                        console.error('[edSaveEdits] network error:', e);
+                        alert('❌ Error de red al guardar ediciones: ' + e.message);
+                    }
                     this.edSaving = false;
                 },
 
@@ -6670,6 +6699,11 @@
                     <i class="ph" :class="edSaving ? 'ph-spinner animate-spin' : 'ph-floppy-disk'"></i>
                     <span x-text="edSaving ? 'Guardando…' : 'Guardar'"></span>
                 </button>
+                <!-- Saved toast -->
+                <div x-show="invSaveFlash" x-transition
+                    class="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1">
+                    <i class="ph ph-check-circle"></i> ¡Guardado!
+                </div>
             </div>
         </div>
 
