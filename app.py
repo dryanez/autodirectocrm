@@ -183,6 +183,18 @@ if FUNNELS_DIR.exists():
                     lead["valuation"] = s.get("valuation")
         except Exception:
             pass  # fall back to file-based status
+        # Calculate liquidity score for each lead (price_num → price mapping)
+        try:
+            from Funnels.dashboard.utils import calculate_liquidity_score
+            for lead in leads:
+                if lead.get("score") is None:
+                    # utils.py reads "price" key; our Supabase data uses "price_num"
+                    score_input = dict(lead)
+                    if score_input.get("price_num") and not score_input.get("price"):
+                        score_input["price"] = f"CLP{score_input['price_num']}"
+                    lead["score"] = calculate_liquidity_score(score_input)
+        except Exception as e:
+            print(f"[funnels] score calc error: {e}")
         return jsonify(leads)
 
     @funnels_bp.route('/api/reload', methods=['POST'])

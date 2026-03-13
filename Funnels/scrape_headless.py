@@ -369,8 +369,24 @@ def _save_to_supabase(vehicles, qualifying_count, graphql_count):
             "apikey": supa_key, "Authorization": f"Bearer {supa_key}",
             "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates",
         }
+        try:
+            from Funnels.dashboard.utils import calculate_liquidity_score as _calc_score
+        except Exception:
+            _calc_score = None
+
         saved = 0
         for v in vehicles.values():
+            _score = None
+            if _calc_score:
+                try:
+                    _score = _calc_score({
+                        "title": v.get("title", ""),
+                        "year": v.get("year"),
+                        "mileage": v.get("km", ""),
+                        "price": f"CLP{v['price_clp']}" if v.get("price_clp") else "CLP0",
+                    })
+                except Exception:
+                    pass
             row = {
                 "id": v["id"],
                 "title": v["title"],
@@ -386,6 +402,7 @@ def _save_to_supabase(vehicles, qualifying_count, graphql_count):
                 "updated_at": datetime.utcnow().isoformat(),
                 "seller": v.get("seller", ""),
                 "is_v_region": v.get("v_region", False),
+                "score": _score,
             }
             try:
                 r = _req.post(f"{supa_url}/rest/v1/funnel_listings",
