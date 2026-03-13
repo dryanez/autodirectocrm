@@ -5067,6 +5067,7 @@
 
                         // Show cached photos right away
                         this.invDetail = { ...detail, photos: cachedPhotos };
+                        this.resetPhotoView();  // apply saved edits now that photos are loaded
                         this.invCompradores = (this.compradores || []).filter(b => b.consignacion_id == id);
 
                         // Fetch listing data if published (for description, features, image_urls)
@@ -5083,8 +5084,10 @@
                                     // Fall back to listing image_urls if no vehicle_images yet
                                     if (cachedPhotos.length === 0 && listing.image_urls?.length) {
                                         this.invDetail = { ...this.invDetail, photos: listing.image_urls.map(u => ({ url: u })) };
+                                        this.resetPhotoView();
                                     } else {
                                         this.invDetail = { ...this.invDetail, ...detail };
+                                        this.resetPhotoView();
                                     }
                                 }
                             } catch (_) {}
@@ -5101,6 +5104,7 @@
                                 if (!this._photosCache) this._photosCache = {};
                                 this._photosCache[String(id)] = freshPhotos;
                                 this.invDetail = { ...this.invDetail, photos: freshPhotos };
+                                this.resetPhotoView();  // re-apply edits from fresh data
                             }
                         }).catch(() => {});
                     } catch (e) { console.error('openInvDetail', e); }
