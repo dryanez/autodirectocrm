@@ -409,7 +409,7 @@
                         <div class="relative w-full aspect-[4/3] bg-slate-800 overflow-hidden">
                             <img x-show="car.cover_photo" :src="car.cover_photo"
                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" loading="lazy"
-                                :style="(() => { const e = car.cover_edits || {}; const hasEdits = e.zoom || e.panX || e.panY || (e.brightness && e.brightness !== 100) || (e.contrast && e.contrast !== 100) || (e.saturate && e.saturate !== 100); if (!hasEdits) return ''; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
+                                :style="(() => { const e = car.cover_edits || {}; const hasEdits = e.zoom || e.panX || e.panY || e.skewV || e.skewH || (e.brightness && e.brightness !== 100) || (e.contrast && e.contrast !== 100) || (e.saturate && e.saturate !== 100); if (!hasEdits) return ''; return `transform: perspective(800px) scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px) rotateX(${e.skewV||0}deg) rotateY(${e.skewH||0}deg); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                             <div x-show="!car.cover_photo"
                                 class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
                                 <i class="ph ph-car text-4xl text-slate-600 group-hover:text-cyan-700 transition-colors"></i>
@@ -528,7 +528,7 @@
                         @touchend="photoDragging=false">
                         <img x-show="invDetail?.photos?.length" :src="invDetail?.photos?.[invPhotoIdx]?.url || invDetail?.photos?.[0]?.url"
                             class="w-full h-full object-contain mx-auto transition-transform duration-100"
-                            :style="`max-height:55vh; transform: scale(${photoZoom}) translate(${photoPanX/photoZoom}px, ${photoPanY/photoZoom}px); filter: brightness(${photoBrightness}%) contrast(${photoContrast}%) saturate(${photoSaturate}%);`"
+                            :style="`max-height:55vh; transform: perspective(800px) scale(${photoZoom}) translate(${photoPanX/photoZoom}px, ${photoPanY/photoZoom}px) rotateX(${photoSkewV}deg) rotateY(${photoSkewH}deg); filter: brightness(${photoBrightness}%) contrast(${photoContrast}%) saturate(${photoSaturate}%);`"
                             style="will-change:transform,filter;">
                         <div x-show="!invDetail?.photos?.length" class="w-full flex items-center justify-center" style="height:40vh;">
                             <i class="ph ph-car text-8xl text-slate-700"></i>
@@ -614,7 +614,7 @@
                                     class="w-16 h-12 rounded-lg overflow-hidden transition-all"
                                     title="Exterior · arrastrar para reordenar">
                                     <img :src="photo.url" class="w-full h-full object-cover"
-                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: perspective(800px) scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px) rotateX(${e.skewV||0}deg) rotateY(${e.skewH||0}deg); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                 </button>
                                 <!-- Move left -->
                                 <button x-show="idx > 0" @click.stop="movePhotoTo((invDetail.photos || []).indexOf(photo), (invDetail.photos || []).indexOf((invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')[idx-1])))"
@@ -654,7 +654,7 @@
                                     class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
                                     title="Interior · arrastrar para reordenar">
                                     <img :src="photo.url" class="w-full h-full object-cover"
-                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: perspective(800px) scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px) rotateX(${e.skewV||0}deg) rotateY(${e.skewH||0}deg); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                     <div class="absolute top-0 left-0 right-0 flex justify-center">
                                         <span class="text-[8px] bg-emerald-600/80 text-white px-1 rounded-b leading-4">🪑</span>
                                     </div>
@@ -686,7 +686,7 @@
                                     class="w-9 h-14 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
                                     title="📱 Social · arrastrar para reordenar">
                                     <img :src="photo.url" class="w-full h-full object-cover"
-                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: perspective(800px) scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px) rotateX(${e.skewV||0}deg) rotateY(${e.skewH||0}deg); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                     <div class="absolute top-0 left-0 right-0 flex justify-center">
                                         <span class="text-[8px] bg-pink-600/80 text-white px-1 rounded-b leading-4">📱</span>
                                     </div>
@@ -4941,6 +4941,8 @@
                 photoBrightness: 100,
                 photoContrast: 100,
                 photoSaturate: 100,
+                photoSkewV: 0,
+                photoSkewH: 0,
                 photoBeingDragged: -1,
                 // Full-screen photo editor overlay
                 photoEditorOpen: false,
@@ -4951,6 +4953,8 @@
                 edBrightness: 100,
                 edContrast: 100,
                 edSaturate: 100,
+                edSkewV: 0,
+                edSkewH: 0,
                 edDragging: false,
                 edDragStart: { x: 0, y: 0 },
                 edSaving: false,
@@ -5125,6 +5129,8 @@
                     this.photoBrightness = e.brightness || 100;
                     this.photoContrast = e.contrast || 100;
                     this.photoSaturate = e.saturate || 100;
+                    this.photoSkewV = e.skewV || 0;
+                    this.photoSkewH = e.skewH || 0;
                 },
 
                 loadPhotoEdits() {
@@ -5150,6 +5156,8 @@
                     this.edBrightness = e.brightness || 100;
                     this.edContrast = e.contrast || 100;
                     this.edSaturate = e.saturate || 100;
+                    this.edSkewV = e.skewV || 0;
+                    this.edSkewH = e.skewH || 0;
                     this.edSaving = false;
                     this.photoEditorOpen = true;
                     console.log('[openPhotoEditor] opened idx=', idx, 'photo.id=', photo?.id);
@@ -5162,6 +5170,8 @@
                     this.edBrightness = 100;
                     this.edContrast = 100;
                     this.edSaturate = 100;
+                    this.edSkewV = 0;
+                    this.edSkewH = 0;
                 },
 
                 async edSaveEdits() {
@@ -5181,7 +5191,9 @@
                         panY: parseFloat(this.edPanY) || 0,
                         brightness: parseInt(this.edBrightness) || 100,
                         contrast: parseInt(this.edContrast) || 100,
-                        saturate: parseInt(this.edSaturate) || 100
+                        saturate: parseInt(this.edSaturate) || 100,
+                        skewV: parseFloat(this.edSkewV) || 0,
+                        skewH: parseFloat(this.edSkewH) || 0
                     };
                     try {
                         const url = '/api/vehicle-images/' + photo.id;
@@ -5229,6 +5241,8 @@
                     this.edBrightness = e.brightness || 100;
                     this.edContrast = e.contrast || 100;
                     this.edSaturate = e.saturate || 100;
+                    this.edSkewV = e.skewV || 0;
+                    this.edSkewH = e.skewH || 0;
                 },
 
                 async deleteCurrentPhoto() {
@@ -6733,7 +6747,7 @@
 
                 <img :src="invDetail?.photos?.[photoEditorIdx]?.url"
                     class="max-w-full max-h-full object-contain transition-transform duration-75 select-none"
-                    :style="`transform: scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`"
+                    :style="`transform: perspective(800px) scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px) rotateX(${edSkewV}deg) rotateY(${edSkewH}deg); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`"
                     style="will-change:transform,filter;" draggable="false">
 
                 <!-- Nav arrows -->
@@ -6758,7 +6772,7 @@
                 <div class="p-4 border-b border-slate-800 bg-slate-900/50">
                     <div class="w-full aspect-video rounded-lg overflow-hidden bg-black">
                         <img :src="invDetail?.photos?.[photoEditorIdx]?.url" class="w-full h-full object-contain"
-                            :style="`filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`">
+                            :style="`transform: perspective(800px) scale(${edZoom}) translate(${edPanX/edZoom}px, ${edPanY/edZoom}px) rotateX(${edSkewV}deg) rotateY(${edSkewH}deg); filter: brightness(${edBrightness}%) contrast(${edContrast}%) saturate(${edSaturate}%);`">
                     </div>
                     <p class="text-[10px] text-slate-500 text-center mt-1.5 font-medium uppercase tracking-wider"
                         x-text="(invDetail?.photos?.[photoEditorIdx]?.photo_type || 'exterior')"></p>
@@ -6833,6 +6847,65 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- ═══ PERSPECTIVE CORRECTION (Vertical & Horizontal) ═══ -->
+                <div class="p-4 border-b border-slate-800 space-y-3">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="ph ph-frame-corners text-orange-400"></i> Perspectiva
+                    </h4>
+                    <p class="text-[10px] text-slate-600 -mt-1">Corrige fotos tomadas en ángulo (como el iPhone)</p>
+                    <!-- Vertical (rotateX) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs text-slate-400 flex items-center gap-1">
+                                <svg class="w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg>
+                                Vertical
+                            </label>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="edSkewV + '°'"></span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button @click="edSkewV = Math.max(-45, edSkewV - 1)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                                <i class="ph ph-minus"></i></button>
+                            <input type="range" min="-45" max="45" step="0.5" x-model.number="edSkewV"
+                                class="flex-1 h-1.5 accent-orange-400 cursor-pointer">
+                            <button @click="edSkewV = Math.min(45, edSkewV + 1)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                                <i class="ph ph-plus"></i></button>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>-45°</span>
+                            <button @click="edSkewV=0" class="bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded text-slate-400 font-medium">0° Reset</button>
+                            <span>45°</span>
+                        </div>
+                    </div>
+                    <!-- Horizontal (rotateY) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs text-slate-400 flex items-center gap-1">
+                                <svg class="w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M8 5l-5 7 5 7M16 5l5 7-5 7"/></svg>
+                                Horizontal
+                            </label>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="edSkewH + '°'"></span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button @click="edSkewH = Math.max(-45, edSkewH - 1)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                                <i class="ph ph-minus"></i></button>
+                            <input type="range" min="-45" max="45" step="0.5" x-model.number="edSkewH"
+                                class="flex-1 h-1.5 accent-orange-400 cursor-pointer">
+                            <button @click="edSkewH = Math.min(45, edSkewH + 1)" class="bg-slate-800 hover:bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors">
+                                <i class="ph ph-plus"></i></button>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>-45°</span>
+                            <button @click="edSkewH=0" class="bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded text-slate-400 font-medium">0° Reset</button>
+                            <span>45°</span>
+                        </div>
+                    </div>
+                    <!-- Quick reset both -->
+                    <button @click="edSkewV=0; edSkewH=0"
+                        class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 text-[10px] py-1.5 rounded-lg transition-colors font-medium flex items-center justify-center gap-1">
+                        <i class="ph ph-arrows-counter-clockwise text-xs"></i> Reset perspectiva
+                    </button>
                 </div>
 
                 <!-- ═══ ADJUSTMENTS ═══ -->
