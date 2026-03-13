@@ -2826,6 +2826,56 @@ def create_quick_consignacion():
     }), 201
 
 
+@app.route("/api/inventario/covers", methods=["GET"])
+def get_inventario_covers():
+    """Return {appraisal_id: first_photo_url} for all appraisal IDs in one Supabase call."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({})
+    try:
+        # Get all consignaciones appraisal_supabase_ids in one go
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, appraisal_supabase_id FROM consignaciones WHERE appraisal_supabase_id IS NOT NULL AND appraisal_supabase_id != ''"
+            ).fetchall()
+        if not rows:
+            return jsonify({})
+
+        appraisal_ids = [r["appraisal_supabase_id"] for r in rows]
+        id_to_cid = {r["appraisal_supabase_id"]: r["id"] for r in rows}
+
+        # Fetch first photo for each appraisal in one Supabase query using IN filter
+        # PostgREST supports: appraisal_id=in.(id1,id2,...)
+        ids_str = ",".join(appraisal_ids)
+        r = req_lib.get(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={
+                "select": "appraisal_id,url",
+                "appraisal_id": f"in.({ids_str})",
+                "order": "created_at.asc",
+            },
+            headers=headers, timeout=10
+        )
+        if r.status_code != 200:
+            return jsonify({})
+
+        photos = r.json() if isinstance(r.json(), list) else []
+        # Build map: consignacion_id -> first photo url
+        seen = set()
+        result = {}  # cid -> url
+        for p in photos:
+            aid = p.get("appraisal_id")
+            if aid and aid not in seen:
+                seen.add(aid)
+                cid = id_to_cid.get(aid)
+                if cid:
+                    result[str(cid)] = p.get("url")
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 @app.route("/api/consignaciones", methods=["GET"])
 def get_consignaciones():
     status = request.args.get("status")

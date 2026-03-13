@@ -4979,36 +4979,21 @@
                 async loadInventario() {
                     this.invLoading = true;
                     try {
-                        const r = await this.authFetch('/api/consignaciones');
+                        const [r, coversR] = await Promise.all([
+                            this.authFetch('/api/consignaciones'),
+                            this.authFetch('/api/inventario/covers'),
+                        ]);
                         const all = await r.json();
+                        const covers = coversR.ok ? await coversR.json() : {};
                         // Only show inventory-worthy consignaciones (with inspection or promoted)
                         const worthy = (all || []).filter(c =>
                             ['en_venta', 'parte2_completa', 'vendida'].includes(c.status) || c.appraisal_supabase_id || c.listing_id
                         );
-                        // Fetch cover photo for each (parallel, best-effort)
-                        this.inventarioCars = await Promise.all(worthy.map(async c => {
-                            let photo = null;
-                            if (c.appraisal_supabase_id) {
-                                try {
-                                    const pr = await this.authFetch('/api/consignaciones/' + c.id + '/photos');
-                                    if (pr.ok) {
-                                        const pd = await pr.json();
-                                        photo = pd.photos?.[0]?.url || null;
-                                    }
-                                } catch (_) {}
-                            }
-                            // Fall back to listing image_urls for cover photo
-                            if (!photo && c.listing_id) {
-                                try {
-                                    const lr = await this.authFetch('/api/listings/' + c.listing_id);
-                                    if (lr.ok) {
-                                        const listing = await lr.json();
-                                        photo = listing.image_urls?.[0] || null;
-                                    }
-                                } catch (_) {}
-                            }
+                        this.inventarioCars = worthy.map(c => {
+                            // Use bulk cover photo (single Supabase call for all cars)
+                            let photo = covers[String(c.id)] || null;
                             return { ...c, cover_photo: photo };
-                        }));
+                        });
                     } catch (e) { console.error('loadInventario', e); this.inventarioCars = []; }
                     this.invLoading = false;
                 },
