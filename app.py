@@ -2881,11 +2881,21 @@ def get_inventario_covers():
             # Build full photo list
             if cid_str not in photos:
                 photos[cid_str] = []
+            # Parse edits stored in label field (fallback: "__edits__:{json}")
+            label_val = p.get("label")
+            edits_val = None
+            if isinstance(label_val, str) and label_val.startswith("__edits__:"):
+                try:
+                    edits_val = json.loads(label_val[len("__edits__:"):])
+                except Exception:
+                    edits_val = {}
+                label_val = None
             photos[cid_str].append({
                 "id": p.get("id"),
                 "url": p.get("url"),
                 "photo_type": p.get("photo_type"),
-                "label": p.get("label"),
+                "label": label_val,
+                "edits": edits_val,
                 "created_at": p.get("created_at"),
             })
         return jsonify({"covers": covers, "photos": photos})
@@ -2970,6 +2980,14 @@ def get_consignacion_photos(cid):
         photos = r.json() if r.status_code == 200 else []
         if not isinstance(photos, list):
             photos = []
+        # Parse edits stored in label field (fallback: "__edits__:{json}")
+        for p in photos:
+            if isinstance(p.get("label"), str) and p["label"].startswith("__edits__:"):
+                try:
+                    p["edits"] = json.loads(p["label"][len("__edits__:"):])
+                except Exception:
+                    p["edits"] = {}
+                p["label"] = None
         return jsonify({"photos": photos})
     except Exception as e:
         return jsonify({"photos": [], "error": str(e)})
