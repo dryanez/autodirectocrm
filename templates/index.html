@@ -4998,6 +4998,7 @@
                 edDragging: false,
                 edDragStart: { x: 0, y: 0 },
                 edSaving: false,
+                edGridOverlay: false,
                 cameraProModal: false,
                 cameraProUrl: null,
                 cameraProLoading: false,
@@ -6799,6 +6800,35 @@
 
                 <!-- Checkerboard BG to show transparency -->
                 <div class="absolute inset-0 opacity-5" style="background-image: repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%); background-size: 20px 20px;"></div>
+
+                <!-- Grid overlay toggle button -->
+                <button @click="edGridOverlay = !edGridOverlay"
+                    class="absolute top-4 right-4 z-10 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5"
+                    :class="edGridOverlay ? 'bg-amber-500/80 text-black' : 'bg-black/60 text-slate-300 hover:bg-black/80'"
+                    title="Mostrar/ocultar cuadrícula">
+                    <i class="ph ph-grid-four text-base"></i>
+                    <span>Grilla</span>
+                </button>
+
+                <!-- Rule-of-thirds + centre crosshair grid overlay -->
+                <div x-show="edGridOverlay" class="absolute inset-0 pointer-events-none z-10" style="display:none;">
+                    <!-- Rule of thirds vertical lines -->
+                    <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:33.333%"></div>
+                    <div class="absolute top-0 bottom-0 border-l border-white/30" style="left:66.666%"></div>
+                    <!-- Rule of thirds horizontal lines -->
+                    <div class="absolute left-0 right-0 border-t border-white/30" style="top:33.333%"></div>
+                    <div class="absolute left-0 right-0 border-t border-white/30" style="top:66.666%"></div>
+                    <!-- Centre crosshair -->
+                    <div class="absolute top-0 bottom-0 border-l border-amber-400/60" style="left:50%; transform:translateX(-50%)"></div>
+                    <div class="absolute left-0 right-0 border-t border-amber-400/60" style="top:50%; transform:translateY(-50%)"></div>
+                    <!-- Centre dot -->
+                    <div class="absolute w-2.5 h-2.5 rounded-full bg-amber-400/80 border border-amber-300" style="top:50%; left:50%; transform:translate(-50%,-50%)"></div>
+                    <!-- Corner markers -->
+                    <div class="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white/50 rounded-tl"></div>
+                    <div class="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white/50 rounded-tr"></div>
+                    <div class="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white/50 rounded-bl"></div>
+                    <div class="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white/50 rounded-br"></div>
+                </div>
 
                 <img :src="invDetail?.photos?.[photoEditorIdx]?.url"
                     class="max-w-full max-h-full object-contain transition-transform duration-75 select-none"
