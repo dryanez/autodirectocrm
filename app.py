@@ -1278,10 +1278,17 @@ def create_inspeccion():
 
 @app.route("/api/inspecciones/fotos", methods=["POST"])
 def upload_inspeccion_foto():
-    """Upload a photo for an appraisal to Supabase Storage."""
+    """Upload a photo for an appraisal to Supabase Storage.
+    Accepts optional form field 'photo_type': 'exterior' (default) or 'social'.
+    - 'exterior' photos are used on autodirecto.cl listings.
+    - 'social' photos are vertical/portrait shots for socials only — excluded from listings.
+    """
     import requests as req_lib
     appraisal_id = request.form.get("appraisal_id")
     file = request.files.get("file")
+    photo_type = request.form.get("photo_type", "exterior")  # 'exterior' or 'social'
+    if photo_type not in ("exterior", "social"):
+        photo_type = "exterior"
     if not file or not appraisal_id:
         return jsonify({"error": "file and appraisal_id required"}), 400
 
@@ -1308,9 +1315,13 @@ def upload_inspeccion_foto():
             timeout=30
         )
         public_url = f"{supabase_url}/storage/v1/object/public/vehicle-images/{filename}"
-        # Save reference to vehicle_images table
-        # Try with storage_path first; if column doesn't exist, retry without it
-        insert_payload = {"appraisal_id": appraisal_id, "storage_path": filename, "url": public_url}
+        # Save reference to vehicle_images table (with photo_type)
+        insert_payload = {
+            "appraisal_id": appraisal_id,
+            "storage_path": filename,
+            "url": public_url,
+            "photo_type": photo_type,
+        }
         insert_headers = {"apikey": supabase_key, "Authorization": "Bearer " + supabase_key,
                      "Content-Type": "application/json", "Prefer": "return=representation"}
         db_r = req_lib.post(
@@ -1320,9 +1331,9 @@ def upload_inspeccion_foto():
             timeout=10
         )
         if db_r.status_code not in (200, 201):
-            # Probably missing storage_path column — retry without it
-            print(f"[upload_foto] insert with storage_path failed ({db_r.status_code}): {db_r.text}, retrying without it", flush=True)
-            insert_payload = {"appraisal_id": appraisal_id, "url": public_url}
+            # Retry without optional columns
+            print(f"[upload_foto] insert failed ({db_r.status_code}): {db_r.text}, retrying minimal", flush=True)
+            insert_payload = {"appraisal_id": appraisal_id, "url": public_url, "photo_type": photo_type}
             db_r = req_lib.post(
                 supabase_url + "/rest/v1/vehicle_images",
                 json=insert_payload,
@@ -1330,8 +1341,17 @@ def upload_inspeccion_foto():
                 timeout=10
             )
             if db_r.status_code not in (200, 201):
-                print(f"[upload_foto] insert STILL failed ({db_r.status_code}): {db_r.text}", flush=True)
-        return jsonify({"ok": True, "url": public_url})
+                # Last resort: no photo_type
+                insert_payload = {"appraisal_id": appraisal_id, "url": public_url}
+                db_r = req_lib.post(
+                    supabase_url + "/rest/v1/vehicle_images",
+                    json=insert_payload,
+                    headers=insert_headers,
+                    timeout=10
+                )
+                if db_r.status_code not in (200, 201):
+                    print(f"[upload_foto] insert STILL failed ({db_r.status_code}): {db_r.text}", flush=True)
+        return jsonify({"ok": True, "url": public_url, "photo_type": photo_type})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1367,11 +1387,13 @@ def setup_db_tables():
     CREATE TABLE IF NOT EXISTS vehicle_images (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       appraisal_id  UUID,
-      storage_path  TEXT NOT NULL,
+      storage_path  TEXT,
       url           TEXT NOT NULL,
       label         TEXT,
+      photo_type    TEXT DEFAULT 'exterior',
       created_at    TIMESTAMPTZ DEFAULT now()
     );
+    ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS photo_type TEXT DEFAULT 'exterior';
     CREATE INDEX IF NOT EXISTS idx_vehicle_images_appraisal ON vehicle_images(appraisal_id);
     ALTER TABLE vehicle_images ENABLE ROW LEVEL SECURITY;
     DROP POLICY IF EXISTS "Service role full access" ON vehicle_images;

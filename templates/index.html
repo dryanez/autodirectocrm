@@ -479,17 +479,39 @@
                 </div>
                 <!-- Thumbnails -->
                 <div x-show="invDetail?.photos?.length > 1" class="flex gap-1.5 p-3 overflow-x-auto bg-slate-900/50">
-                    <template x-for="(photo, idx) in invDetail?.photos || []" :key="idx">
-                        <button @click="invPhotoIdx = idx"
-                            :class="invPhotoIdx === idx ? 'ring-2 ring-cyan-500 opacity-100' : 'opacity-50 hover:opacity-80'"
-                            class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all">
+                    <!-- Exterior photos first -->
+                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')" :key="'ext-'+idx">
+                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
+                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-cyan-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                            class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
+                            title="Exterior · autodirecto.cl">
                             <img :src="photo.url" class="w-full h-full object-cover">
                         </button>
                     </template>
+                    <!-- Divider if there are social photos -->
+                    <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'social')">
+                        <div class="flex items-center gap-1 px-1 flex-shrink-0">
+                            <div class="w-px h-10 bg-slate-600"></div>
+                            <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">📱 Sociales</span>
+                            <div class="w-px h-10 bg-slate-600"></div>
+                        </div>
+                    </template>
+                    <!-- Social (vertical) photos after divider -->
+                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'social')" :key="'soc-'+idx">
+                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
+                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-pink-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                            class="w-9 h-14 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
+                            title="📱 Social — no publicada en autodirecto.cl">
+                            <img :src="photo.url" class="w-full h-full object-cover">
+                            <div class="absolute top-0 left-0 right-0 flex justify-center">
+                                <span class="text-[8px] bg-pink-600/80 text-white px-1 rounded-b leading-4">📱</span>
+                            </div>
+                        </button>
+                    </template>
                 </div>
-                <!-- Add Photos Bar -->
-                <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800">
-                    <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">📸 Agregar fotos</span>
+                <!-- Add Photos Bar — Exterior row -->
+                <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-700/50">
+                    <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">� Fotos exterior</span>
                     <!-- Camera Pro (CameraCarApp) — module-gated -->
                     <button x-show="hasModule('camera_pro')"
                         @click="openCameraPro(invDetail.id, invDetail.appraisal_supabase_id, invDetail.car_make + ' ' + invDetail.car_model + ' ' + invDetail.car_year)"
@@ -505,20 +527,38 @@
                         title="Enviar link al propietario para que tome fotos desde su celular">
                         <i class="ph" :class="sendPhotoLinkLoading ? 'ph-spinner animate-spin' : 'ph-whatsapp-logo'"></i> Enviar Link
                     </button>
-                    <!-- Quick camera -->
+                    <!-- Quick camera exterior -->
                     <button @click="$refs.invCameraInput.click()"
                         class="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
                         <i class="ph ph-camera"></i> Foto
                     </button>
                     <input type="file" accept="image/*" capture="environment" multiple x-ref="invCameraInput"
-                        class="hidden" @change="uploadInvPhotos($event)">
-                    <!-- File upload -->
+                        class="hidden" @change="uploadInvPhotos($event, 'exterior')">
+                    <!-- File upload exterior -->
                     <button @click="$refs.invFileInput.click()"
                         class="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
                         <i class="ph ph-folder-open"></i> Archivos
                     </button>
                     <input type="file" accept="image/*" multiple x-ref="invFileInput"
-                        class="hidden" @change="uploadInvPhotos($event)">
+                        class="hidden" @change="uploadInvPhotos($event, 'exterior')">
+                </div>
+                <!-- Add Photos Bar — Social row -->
+                <div class="flex items-center gap-2 px-4 py-2 bg-slate-900/60 border-b border-slate-800">
+                    <span class="text-[10px] text-pink-400/70 uppercase tracking-wider font-semibold mr-auto">📱 Fotos sociales <span class="normal-case text-slate-500 font-normal">(verticales · no se publican en autodirecto.cl)</span></span>
+                    <!-- Quick camera social -->
+                    <button @click="$refs.invSocialCameraInput.click()"
+                        class="flex items-center gap-1.5 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/30 text-pink-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-device-mobile-camera"></i> Foto Social
+                    </button>
+                    <input type="file" accept="image/*" capture="environment" multiple x-ref="invSocialCameraInput"
+                        class="hidden" @change="uploadInvPhotos($event, 'social')">
+                    <!-- File upload social -->
+                    <button @click="$refs.invSocialFileInput.click()"
+                        class="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-folder-open"></i> Archivos
+                    </button>
+                    <input type="file" accept="image/*" multiple x-ref="invSocialFileInput"
+                        class="hidden" @change="uploadInvPhotos($event, 'social')">
                 </div>
                 <!-- Description -->
                 <div class="p-5">
@@ -4881,7 +4921,7 @@
                     } catch (e) { console.error('updateInvField', e); alert('❌ Error guardando: ' + e.message); }
                 },
 
-                async uploadInvPhotos(event) {
+                async uploadInvPhotos(event, photoType) {
                     if (!this.invDetail) return;
                     const files = Array.from(event.target.files);
                     if (!files.length) return;
@@ -4890,17 +4930,19 @@
                         alert('⚠️ Este vehículo no tiene inspección asociada. Crea una inspección primero.');
                         return;
                     }
+                    const type = photoType || 'exterior'; // 'exterior' or 'social'
                     let uploaded = 0;
                     for (const file of files) {
                         try {
                             const fd = new FormData();
                             fd.append('file', file);
                             fd.append('appraisal_id', appraisalId);
+                            fd.append('photo_type', type);
                             const r = await this.authFetch('/api/inspecciones/fotos', { method: 'POST', body: fd });
                             const d = await r.json();
                             if (d.url) {
                                 if (!this.invDetail.photos) this.invDetail.photos = [];
-                                this.invDetail.photos.push({ url: d.url, storage_path: d.storage_path || '' });
+                                this.invDetail.photos.push({ url: d.url, storage_path: d.storage_path || '', photo_type: type });
                                 uploaded++;
                             }
                         } catch (e) { console.error('uploadInvPhoto', e); }
@@ -4908,14 +4950,16 @@
                     event.target.value = '';
                     if (uploaded) {
                         this.invPhotoIdx = this.invDetail.photos.length - 1;
-                        // Auto-sync image_urls to the live listing so the website updates immediately
+                        // Auto-sync image_urls to the live listing — ONLY exterior photos go to autodirecto.cl
                         if (this.invDetail.listing_id) {
                             try {
-                                const allUrls = (this.invDetail.photos || []).map(p => p.url).filter(Boolean);
+                                const exteriorUrls = (this.invDetail.photos || [])
+                                    .filter(p => (p.photo_type || 'exterior') === 'exterior')
+                                    .map(p => p.url).filter(Boolean);
                                 await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ image_urls: allUrls })
+                                    body: JSON.stringify({ image_urls: exteriorUrls })
                                 });
                             } catch (e) { console.warn('auto-sync listing images', e); }
                         }
