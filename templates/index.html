@@ -2877,7 +2877,7 @@
             </div>
             <div class="flex gap-2">
                 <template
-                    x-for="f in [['todas','Todas'],['fotos_pendientes','📸 Fotos'],['pendiente','Pendientes'],['parte1_completa','Parte 1'],['parte2_completa','Parte 2'],['en_venta','En Venta']]"
+                    x-for="f in [['todas','Todas'],['fotos_pendientes','📸 Fotos'],['pendiente','Pendientes'],['parte1_completa','Parte 1'],['parte2_completa','Parte 2'],['en_venta','📦 Inventario']]"
                     :key="f[0]">
                     <button @click="consigFilter=f[0]; loadConsignaciones()"
                         :class="consigFilter===f[0] ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
@@ -2906,7 +2906,7 @@
                                             'bg-green-500/20 text-green-400': c.status==='en_venta',
                                             'bg-purple-500/20 text-purple-400': c.status==='vendida'
                                         }"
-                                        x-text="{fotos_pendientes:'📸 Fotos',pendiente:'Pendiente',parte1_completa:'Parte 1 ✓',parte2_completa:'Parte 2 ✓',en_venta:'En Venta',vendida:'Vendida'}[c.status] || c.status"></span>
+                                        x-text="{fotos_pendientes:'📸 Fotos',pendiente:'Pendiente',parte1_completa:'Parte 1 ✓',parte2_completa:'Parte 2 ✓',en_venta:'📦 Inventario',vendida:'Vendida'}[c.status] || c.status"></span>
                                     <span x-show="c.assigned_user_name"
                                         class="flex items-center gap-1 text-xs text-slate-400">
                                         <span class="w-2.5 h-2.5 rounded-full"
@@ -2977,7 +2977,7 @@
                         </div>
                         <div class="flex gap-1.5 flex-wrap">
                             <template
-                                x-for="s in [['fotos_pendientes','📸 Fotos'],['pendiente','Pendiente'],['parte1_completa','Parte 1 ✓'],['parte2_completa','Parte 2 ✓'],['en_venta','En Venta'],['vendida','Vendida']]"
+                                x-for="s in [['fotos_pendientes','📸 Fotos'],['pendiente','Pendiente'],['parte1_completa','Parte 1 ✓'],['parte2_completa','Parte 2 ✓'],['en_venta','📦 Inventario'],['vendida','Vendida']]"
                                 :key="s[0]">
                                 <button @click="saveConsignacion(consigDetail.id, {status: s[0]})"
                                     :class="consigDetail?.status===s[0] ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
@@ -5988,14 +5988,16 @@
                 },
 
                 async promoteToInventory(id) {
-                    if (!confirm('¿Promover esta consignación al inventario? Se creará un auto en el inventario.')) return;
+                    if (!confirm('¿Promover esta consignación al inventario? Se creará un auto en el inventario y un lead en el CRM.')) return;
                     const res = await this.authFetch(`/api/consignaciones/${id}/promote`, { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
                         this.consigDetailOpen = false;
                         await this.loadConsignaciones();
+                        await this.loadInventario();
+                        await this.loadCRM();
                         await this.refresh();
-                        alert('✅ Vehículo agregado al inventario con ID #' + data.car_id);
+                        alert('✅ Vehículo promovido al inventario (ID #' + data.car_id + ') y agregado al CRM como En Venta');
                     } else {
                         alert('Error: ' + (data.error || 'No se pudo promover'));
                     }

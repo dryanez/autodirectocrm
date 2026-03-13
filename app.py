@@ -4089,6 +4089,47 @@ def promote_to_inventory(cid):
         )
         conn.commit()
 
+    # ── Sync / create CRM lead with stage "en_venta" and source "consignacion" ──
+    plate = (c.get("plate") or "").upper()
+    try:
+        _sync_crm_lead_stage(plate, "en_venta",
+                             rut=c.get("owner_rut"), phone=c.get("owner_phone"))
+        # If _sync_crm_lead_stage found no matching lead, create one
+        with get_crm_conn() as crm:
+            existing = crm.execute(
+                "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
+            ).fetchone()
+            if not existing:
+                owner_name = c.get("owner_full_name") or ""
+                parts = owner_name.split(" ", 1)
+                first = parts[0] if parts else ""
+                last = parts[1] if len(parts) > 1 else ""
+                crm.execute("""
+                    INSERT INTO crm_leads (
+                        full_name, first_name, last_name, phone, rut, email, plate,
+                        car_make, car_model, car_year, mileage,
+                        stage, source, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    owner_name, first, last,
+                    c.get("owner_phone"), c.get("owner_rut"), c.get("owner_email"),
+                    plate, c.get("car_make"), c.get("car_model"),
+                    c.get("car_year"), c.get("mileage"),
+                    "en_venta", "consignacion", now, now
+                ))
+                lead_id = crm.execute("SELECT last_insert_rowid()").fetchone()[0]
+                crm.execute(
+                    "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                    (lead_id, "note", "Promovido a inventario",
+                     "Vehículo {} {} {} — patente {} — promovido a inventario desde consignaciones".format(
+                         c.get("car_make", ""), c.get("car_model", ""),
+                         c.get("car_year") or "", plate))
+                )
+                crm.commit()
+                print(f"[promote] Created CRM lead #{lead_id} for plate {plate}", flush=True)
+    except Exception as e:
+        print(f"[promote] Error syncing CRM lead: {e}", flush=True)
+
     return jsonify({"ok": True, "car_id": car_id, "message": "Auto promovido al inventario"})
 
 
