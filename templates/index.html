@@ -408,7 +408,8 @@
                         <!-- Photo -->
                         <div class="relative w-full aspect-[4/3] bg-slate-800 overflow-hidden">
                             <img x-show="car.cover_photo" :src="car.cover_photo"
-                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" loading="lazy">
+                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" loading="lazy"
+                                :style="(() => { const e = car.cover_edits || {}; const hasEdits = e.zoom || e.panX || e.panY || (e.brightness && e.brightness !== 100) || (e.contrast && e.contrast !== 100) || (e.saturate && e.saturate !== 100); if (!hasEdits) return ''; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                             <div x-show="!car.cover_photo"
                                 class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
                                 <i class="ph ph-car text-4xl text-slate-600 group-hover:text-cyan-700 transition-colors"></i>
@@ -612,7 +613,8 @@
                                     :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-cyan-500 opacity-100' : 'opacity-50 hover:opacity-80'"
                                     class="w-16 h-12 rounded-lg overflow-hidden transition-all"
                                     title="Exterior · arrastrar para reordenar">
-                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                    <img :src="photo.url" class="w-full h-full object-cover"
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                 </button>
                                 <!-- Move left -->
                                 <button x-show="idx > 0" @click.stop="movePhotoTo((invDetail.photos || []).indexOf(photo), (invDetail.photos || []).indexOf((invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')[idx-1])))"
@@ -651,7 +653,8 @@
                                     :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-emerald-500 opacity-100' : 'opacity-50 hover:opacity-80'"
                                     class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
                                     title="Interior · arrastrar para reordenar">
-                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                    <img :src="photo.url" class="w-full h-full object-cover"
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                     <div class="absolute top-0 left-0 right-0 flex justify-center">
                                         <span class="text-[8px] bg-emerald-600/80 text-white px-1 rounded-b leading-4">🪑</span>
                                     </div>
@@ -682,7 +685,8 @@
                                     :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-pink-500 opacity-100' : 'opacity-50 hover:opacity-80'"
                                     class="w-9 h-14 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
                                     title="📱 Social · arrastrar para reordenar">
-                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                    <img :src="photo.url" class="w-full h-full object-cover"
+                                        :style="(() => { const e = photo?.edits || {}; return `transform: scale(${e.zoom||1}) translate(${(e.panX||0)/(e.zoom||1)}px, ${(e.panY||0)/(e.zoom||1)}px); filter: brightness(${e.brightness||100}%) contrast(${e.contrast||100}%) saturate(${e.saturate||100}%);`; })()">
                                     <div class="absolute top-0 left-0 right-0 flex justify-center">
                                         <span class="text-[8px] bg-pink-600/80 text-white px-1 rounded-b leading-4">📱</span>
                                     </div>
@@ -4985,8 +4989,9 @@
                         ]);
                         const all = await r.json();
                         const coversData = coversR.ok ? await coversR.json() : {};
-                        // coversData has {covers: {cid: url}, photos: {cid: [...]}}
+                        // coversData has {covers: {cid: url}, cover_edits: {cid: edits}, photos: {cid: [...]}}
                         const covers = coversData.covers || coversData || {};
+                        const coverEdits = coversData.cover_edits || {};
                         // Cache full photo lists so openInvDetail can use them instantly
                         this._photosCache = coversData.photos || {};
                         // Only show inventory-worthy consignaciones (with inspection or promoted)
@@ -4996,7 +5001,8 @@
                         this.inventarioCars = worthy.map(c => {
                             // Use bulk cover photo (single Supabase call for all cars)
                             let photo = covers[String(c.id)] || null;
-                            return { ...c, cover_photo: photo };
+                            let edits = coverEdits[String(c.id)] || null;
+                            return { ...c, cover_photo: photo, cover_edits: edits };
                         });
                     } catch (e) { console.error('loadInventario', e); this.inventarioCars = []; }
                     this.invLoading = false;

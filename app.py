@@ -2864,6 +2864,7 @@ def get_inventario_covers():
         all_photos = r.json() if isinstance(r.json(), list) else []
 
         covers = {}   # cid -> first url
+        cover_edits = {}  # cid -> edits dict for cover photo
         photos = {}   # cid -> [photo objects]
         seen_cover = set()
         for p in all_photos:
@@ -2874,14 +2875,7 @@ def get_inventario_covers():
             if not cid:
                 continue
             cid_str = str(cid)
-            # Build cover (first photo per car)
-            if aid not in seen_cover:
-                seen_cover.add(aid)
-                covers[cid_str] = p.get("url")
-            # Build full photo list
-            if cid_str not in photos:
-                photos[cid_str] = []
-            # Parse edits stored in label field (fallback: "__edits__:{json}")
+            # Parse edits early so we can attach to cover too
             label_val = p.get("label")
             edits_val = None
             if isinstance(label_val, str) and label_val.startswith("__edits__:"):
@@ -2890,6 +2884,15 @@ def get_inventario_covers():
                 except Exception:
                     edits_val = {}
                 label_val = None
+            # Build cover (first photo per car)
+            if aid not in seen_cover:
+                seen_cover.add(aid)
+                covers[cid_str] = p.get("url")
+                if edits_val:
+                    cover_edits[cid_str] = edits_val
+            # Build full photo list
+            if cid_str not in photos:
+                photos[cid_str] = []
             photos[cid_str].append({
                 "id": p.get("id"),
                 "url": p.get("url"),
@@ -2898,9 +2901,9 @@ def get_inventario_covers():
                 "edits": edits_val,
                 "created_at": p.get("created_at"),
             })
-        return jsonify({"covers": covers, "photos": photos})
+        return jsonify({"covers": covers, "cover_edits": cover_edits, "photos": photos})
     except Exception as e:
-        return jsonify({"covers": {}, "photos": {}, "error": str(e)})
+        return jsonify({"covers": {}, "cover_edits": {}, "photos": {}, "error": str(e)})
 
 
 @app.route("/api/consignaciones", methods=["GET"])
