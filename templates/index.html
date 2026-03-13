@@ -558,10 +558,36 @@
                             <i class="ph ph-car text-8xl text-slate-700"></i>
                         </div>
                     </div>
-                    <!-- Photo counter -->
-                    <span x-show="invDetail?.photos?.length"
-                        class="absolute top-3 right-3 bg-black/70 text-white text-xs px-3 py-1 rounded-full font-mono"
-                        x-text="(invPhotoIdx+1) + ' / ' + (invDetail?.photos?.length || 0)"></span>
+                    <!-- Photo counter: shows web position for web photos, social badge for social -->
+                    <template x-if="invDetail?.photos?.length">
+                        <div class="absolute top-3 right-3 flex items-center gap-1.5">
+                            <!-- Web position badge (exterior/interior) -->
+                            <template x-if="(invDetail?.photos?.[invPhotoIdx]?.photo_type || 'exterior') !== 'social'">
+                                <span class="bg-cyan-600/90 text-white text-xs px-2.5 py-1 rounded-full font-mono flex items-center gap-1">
+                                    <i class="ph ph-globe text-[10px]"></i>
+                                    <span x-text="'Web ' + ((invDetail?.photos || []).slice(0, invPhotoIdx+1).filter(p => (p.photo_type||'exterior') !== 'social').length) + ' / ' + ((invDetail?.photos || []).filter(p => (p.photo_type||'exterior') !== 'social').length)"></span>
+                                </span>
+                            </template>
+                            <!-- Social badge -->
+                            <template x-if="(invDetail?.photos?.[invPhotoIdx]?.photo_type || 'exterior') === 'social'">
+                                <span class="bg-pink-600/90 text-white text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
+                                    <i class="ph ph-instagram-logo text-[10px]"></i> Solo redes
+                                </span>
+                            </template>
+                            <!-- Total counter -->
+                            <span class="bg-black/70 text-white text-xs px-2.5 py-1 rounded-full font-mono"
+                                x-text="(invPhotoIdx+1) + ' / ' + (invDetail?.photos?.length || 0)"></span>
+                        </div>
+                    </template>
+                    <!-- "Not on website" overlay for social photos -->
+                    <template x-if="(invDetail?.photos?.[invPhotoIdx]?.photo_type || 'exterior') === 'social'">
+                        <div class="absolute inset-0 pointer-events-none flex items-end justify-center pb-20">
+                            <div class="bg-pink-600/80 backdrop-blur-sm text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg">
+                                <i class="ph ph-instagram-logo text-lg"></i>
+                                Esta foto es solo para redes sociales · NO aparece en autodirecto.cl
+                            </div>
+                        </div>
+                    </template>
                     <!-- Arrows -->
                     <button x-show="invDetail?.photos?.length > 1" @click="invPhotoIdx = (invPhotoIdx - 1 + invDetail.photos.length) % invDetail.photos.length; resetPhotoView()"
                         class="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors">
