@@ -2847,12 +2847,12 @@ def get_inventario_covers():
         appraisal_ids = [r["appraisal_supabase_id"] for r in rows]
         id_to_cid = {r["appraisal_supabase_id"]: r["id"] for r in rows}
 
-        # Single Supabase query — fetch ALL photos for all appraisals (no edits column)
+        # Single Supabase query — fetch ALL photos for all appraisals
         ids_str = ",".join(appraisal_ids)
         r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
             params={
-                "select": "appraisal_id,id,url,photo_type,label,created_at",
+                "select": "appraisal_id,id,url,photo_type,label,edits,created_at",
                 "appraisal_id": f"in.({ids_str})",
                 "order": "created_at.asc",
             },
@@ -2875,10 +2875,10 @@ def get_inventario_covers():
             if not cid:
                 continue
             cid_str = str(cid)
-            # Parse edits early so we can attach to cover too
+            # Parse edits: prefer 'edits' column, fall back to label prefix
             label_val = p.get("label")
-            edits_val = None
-            if isinstance(label_val, str) and label_val.startswith("__edits__:"):
+            edits_val = p.get("edits")  # from JSONB column
+            if not edits_val and isinstance(label_val, str) and label_val.startswith("__edits__:"):
                 try:
                     edits_val = json.loads(label_val[len("__edits__:"):])
                 except Exception:
@@ -2970,11 +2970,11 @@ def get_consignacion_photos(cid):
     if not supabase_url:
         return jsonify({"photos": []})
     try:
-        # Note: 'edits' column not in schema — only select columns that exist
+        # Include 'edits' JSONB column + label fallback
         r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
             params={
-                "select": "id,url,photo_type,label,created_at",
+                "select": "id,url,photo_type,label,edits,created_at",
                 "appraisal_id": "eq.{}".format(appraisal_id),
                 "order": "created_at.asc"
             },
@@ -2983,9 +2983,9 @@ def get_consignacion_photos(cid):
         photos = r.json() if r.status_code == 200 else []
         if not isinstance(photos, list):
             photos = []
-        # Parse edits stored in label field (fallback: "__edits__:{json}")
+        # Parse edits: prefer 'edits' column, fall back to label prefix
         for p in photos:
-            if isinstance(p.get("label"), str) and p["label"].startswith("__edits__:"):
+            if not p.get("edits") and isinstance(p.get("label"), str) and p["label"].startswith("__edits__:"):
                 try:
                     p["edits"] = json.loads(p["label"][len("__edits__:"):])
                 except Exception:
