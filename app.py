@@ -2811,6 +2811,56 @@ def delete_consignacion_photos(cid):
         return jsonify({"deleted": 0, "error": str(e)})
 
 
+@app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
+def delete_consignacion(cid):
+    """Delete a consignacion and its associated photos from Supabase."""
+    import requests as req_lib
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    # 1. Delete photos from Supabase if appraisal exists
+    appraisal_id = row["appraisal_supabase_id"] if "appraisal_supabase_id" in row.keys() else None
+    if appraisal_id:
+        supabase_url, headers = _supa_headers()
+        if supabase_url:
+            try:
+                r = req_lib.get(
+                    supabase_url + "/rest/v1/vehicle_images",
+                    params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
+                    headers=headers, timeout=8
+                )
+                photos = r.json() if r.status_code == 200 else []
+                for p in photos:
+                    url = p.get("url", "")
+                    if "/vehicle-images/" in url:
+                        obj_path = url.split("/vehicle-images/", 1)[1]
+                        try:
+                            req_lib.delete(
+                                supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
+                                headers=headers, timeout=8
+                            )
+                        except Exception:
+                            pass
+                if photos:
+                    ids_csv = ",".join(str(p["id"]) for p in photos)
+                    req_lib.delete(
+                        supabase_url + "/rest/v1/vehicle_images",
+                        params={"id": "in.({})".format(ids_csv)},
+                        headers=headers, timeout=8
+                    )
+            except Exception as e:
+                print(f"[delete_consignacion] photo cleanup error: {e}")
+
+    # 2. Delete the consignacion record
+    with get_db() as conn:
+        conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
+        conn.commit()
+
+    return jsonify({"ok": True})
+
+
 @app.route("/api/consignaciones/<int:cid>/fotos", methods=["POST"])
 def upload_consignacion_foto(cid):
     """Upload a camera photo for a consignacion. 
@@ -6712,6 +6762,66 @@ def chileautos_lead_webhook():
         return jsonify({"error": str(e)}), 500
 
     return jsonify({"ok": True, "comprador_id": new_id}), 202
+
+
+# ─── API: Notifications ──────────────────────────────────────────────────────
+@app.route("/api/notifications/unread-count", methods=["GET"])
+def notifications_unread_count():
+    """Return the count of recent activity items (last 24h) as unread notifications."""
+    try:
+        with get_db() as conn:
+            # Count recent consignaciones created in the last 24h
+            new_consig = conn.execute(
+                "SELECT COUNT(*) as c FROM consignaciones WHERE created_at > datetime('now', '-1 day')"
+            ).fetchone()["c"]
+            # Count recent CRM leads created in the last 24h
+            new_leads = conn.execute(
+                "SELECT COUNT(*) as c FROM crm_leads WHERE created_at > datetime('now', '-1 day')"
+            ).fetchone()["c"]
+        return jsonify({"count": new_consig + new_leads})
+    except Exception:
+        return jsonify({"count": 0})
+
+
+@app.route("/api/notifications/recent", methods=["GET"])
+def notifications_recent():
+    """Return the most recent activity items as notifications."""
+    items = []
+    try:
+        with get_db() as conn:
+            # Recent consignaciones
+            rows = conn.execute(
+                "SELECT id, owner_first_name, owner_last_name, plate, car_make, car_model, status, created_at "
+                "FROM consignaciones ORDER BY created_at DESC LIMIT 10"
+            ).fetchall()
+            for r in rows:
+                items.append({
+                    "type": "consignacion",
+                    "id": r["id"],
+                    "title": f"Consignación #{r['id']}",
+                    "subtitle": " ".join(filter(None, [r["car_make"], r["car_model"], r["plate"]])),
+                    "status": r["status"],
+                    "created_at": r["created_at"],
+                })
+            # Recent CRM leads
+            rows = conn.execute(
+                "SELECT id, full_name, stage, source, created_at "
+                "FROM crm_leads ORDER BY created_at DESC LIMIT 10"
+            ).fetchall()
+            for r in rows:
+                items.append({
+                    "type": "crm_lead",
+                    "id": r["id"],
+                    "title": r["full_name"] or f"Lead #{r['id']}",
+                    "subtitle": f"{r['source'] or ''} → {r['stage'] or ''}",
+                    "status": r["stage"],
+                    "created_at": r["created_at"],
+                })
+        # Sort by created_at descending
+        items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        return jsonify({"items": items[:15]})
+    except Exception as e:
+        return jsonify({"items": [], "error": str(e)})
 
 
 if __name__ == "__main__":

@@ -193,10 +193,57 @@
         <!-- Header -->
         <header class="h-16 glass border-b border-slate-700 flex items-center justify-between px-8">
             <h2 class="text-lg font-semibold text-white">Inventario de Vehículos</h2>
-            <button @click="openModal('addCar')"
-                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
-                <i class="ph ph-plus mr-2"></i> Nuevo Auto
-            </button>
+            <div class="flex items-center gap-3">
+                <!-- 🔔 Notification Bell -->
+                <div class="relative">
+                    <button @click="openNotifications()"
+                        class="relative text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors">
+                        <i class="ph ph-bell text-xl"></i>
+                        <span x-show="notifCount > 0"
+                            class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold w-4.5 h-4.5 flex items-center justify-center rounded-full min-w-[18px] px-1"
+                            x-text="notifCount > 99 ? '99+' : notifCount"></span>
+                    </button>
+                    <!-- Notification Dropdown -->
+                    <div x-show="notifOpen" @click.away="notifOpen=false"
+                        x-transition:enter="transition ease-out duration-150"
+                        x-transition:enter-start="opacity-0 scale-95"
+                        x-transition:enter-end="opacity-100 scale-100"
+                        class="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden"
+                        style="display:none;">
+                        <div class="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-white">Notificaciones</h4>
+                            <span class="bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded-full font-bold"
+                                x-text="notifCount + ' recientes'"></span>
+                        </div>
+                        <div class="max-h-80 overflow-y-auto divide-y divide-slate-800">
+                            <template x-for="n in notifItems" :key="n.type + n.id">
+                                <div class="px-4 py-3 hover:bg-slate-800/50 cursor-pointer transition-colors"
+                                    @click="n.type==='consignacion' ? (currentView='consignaciones', loadConsignaciones(), openConsignacion(n.id)) : (currentView='crm', loadCRM(), openCRMDetail(n.id)); notifOpen=false;">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                                            :class="n.type==='consignacion' ? 'bg-amber-500/20 text-amber-400' : 'bg-purple-500/20 text-purple-400'">
+                                            <i class="ph text-sm" :class="n.type==='consignacion' ? 'ph-clipboard-text' : 'ph-user'"></i>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-xs font-medium text-white truncate" x-text="n.title"></p>
+                                            <p class="text-[10px] text-slate-500 truncate" x-text="n.subtitle"></p>
+                                        </div>
+                                        <span class="text-[9px] text-slate-600 flex-shrink-0"
+                                            x-text="n.created_at ? new Date(n.created_at).toLocaleDateString('es-CL') : ''"></span>
+                                    </div>
+                                </div>
+                            </template>
+                            <div x-show="notifItems.length === 0" class="px-4 py-6 text-center text-slate-500 text-xs">
+                                Sin notificaciones recientes
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button @click="openModal('addCar')"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
+                    <i class="ph ph-plus mr-2"></i> Nuevo Auto
+                </button>
+            </div>
         </header>
 
         <!-- Stats Grid -->
@@ -288,10 +335,17 @@
                                     <span :class="`badge badge-${car.status}`" x-text="formatStatus(car.status)"></span>
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <button @click="openDTEModal(car)"
-                                        class="text-blue-400 hover:text-blue-300 font-medium text-xs px-3 py-1 rounded border border-blue-900 bg-blue-900/20 hover:bg-blue-900/40 transition-colors">
-                                        <i class="ph ph-file-text mr-1"></i> DTE
-                                    </button>
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button @click="openDTEModal(car)"
+                                            class="text-blue-400 hover:text-blue-300 font-medium text-xs px-3 py-1 rounded border border-blue-900 bg-blue-900/20 hover:bg-blue-900/40 transition-colors">
+                                            <i class="ph ph-file-text mr-1"></i> DTE
+                                        </button>
+                                        <button @click.stop="deleteInventarioCar(car.id)"
+                                            class="text-red-400 hover:text-red-300 p-1.5 rounded border border-red-900 bg-red-900/20 hover:bg-red-900/40 transition-colors"
+                                            title="Eliminar">
+                                            <i class="ph ph-trash text-sm"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -449,6 +503,12 @@
                     class="text-emerald-400 text-xs font-bold flex items-center gap-1 animate-pulse">
                     <i class="ph ph-check-circle"></i> Guardado
                 </span>
+                <!-- Delete -->
+                <button @click="deleteInventarioCar(invDetail.id)"
+                    class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-900/20 transition-colors"
+                    title="Eliminar vehículo">
+                    <i class="ph ph-trash text-lg"></i>
+                </button>
             </div>
         </div>
 
@@ -2956,10 +3016,17 @@
                 class="w-1/2 border-l border-slate-700 flex flex-col overflow-hidden shrink-0 bg-slate-900">
                 <div class="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
                     <h3 class="text-white font-semibold" x-text="'Consignación #' + (consigDetail?.id || '')"></h3>
-                    <button @click="consigDetailOpen=false"
-                        class="text-slate-400 hover:text-white p-1 rounded transition-colors">
-                        <i class="ph ph-x"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button @click="deleteConsignacion(consigDetail.id)"
+                            class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-900/20 transition-colors"
+                            title="Eliminar consignación">
+                            <i class="ph ph-trash text-lg"></i>
+                        </button>
+                        <button @click="consigDetailOpen=false"
+                            class="text-slate-400 hover:text-white p-1 rounded transition-colors">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="flex-1 overflow-y-auto">
                     <!-- Status + progress -->
@@ -4321,6 +4388,11 @@
                 activeCar: null,
                 dteLoading: false,
 
+                // ─── Notifications ───
+                notifCount: 0,
+                notifOpen: false,
+                notifItems: [],
+
                 // ─── Auth State ───
                 currentUser: null,
                 loginEmail: '',
@@ -4400,6 +4472,32 @@
                             this.refreshInvPhotos();
                         }
                     });
+                    // Poll notifications every 30s
+                    this.loadNotifications();
+                    setInterval(() => this.loadNotifications(), 30000);
+                },
+
+                // ─── Notifications ───
+                async loadNotifications() {
+                    try {
+                        const r = await this.authFetch('/api/notifications/unread-count');
+                        if (r.ok) {
+                            const d = await r.json();
+                            this.notifCount = d.count || 0;
+                        }
+                    } catch (e) { }
+                },
+                async openNotifications() {
+                    this.notifOpen = !this.notifOpen;
+                    if (this.notifOpen) {
+                        try {
+                            const r = await this.authFetch('/api/notifications/recent');
+                            if (r.ok) {
+                                const d = await r.json();
+                                this.notifItems = d.items || [];
+                            }
+                        } catch (e) { }
+                    }
                 },
 
                 // ─── Auth ───
@@ -6000,6 +6098,33 @@
                         alert('✅ Vehículo promovido al inventario (ID #' + data.car_id + ') y agregado al CRM como En Venta');
                     } else {
                         alert('Error: ' + (data.error || 'No se pudo promover'));
+                    }
+                },
+
+                async deleteConsignacion(id) {
+                    if (!confirm('¿Eliminar esta consignación permanentemente?\nSe borrarán también las fotos asociadas.')) return;
+                    const res = await this.authFetch(`/api/consignaciones/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        this.consigDetailOpen = false;
+                        this.consigDetail = null;
+                        await this.loadConsignaciones();
+                        await this.loadCRM();
+                        await this.refresh();
+                    } else {
+                        alert('Error al eliminar consignación');
+                    }
+                },
+
+                async deleteInventarioCar(id) {
+                    if (!confirm('¿Eliminar este vehículo del inventario permanentemente?')) return;
+                    const res = await this.authFetch(`/api/cars/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        this.invDetail = null;
+                        await this.loadInventario();
+                        await this.loadCRM();
+                        await this.refresh();
+                    } else {
+                        alert('Error al eliminar vehículo');
                     }
                 },
 
