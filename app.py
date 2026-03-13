@@ -1532,10 +1532,10 @@ def get_inspeccion(appraisal_id):
         appraisal_rows = r.json() if r.status_code == 200 else []
         appraisal = appraisal_rows[0] if appraisal_rows else None
 
-        # Get photos
+        # Get photos (ordered by insertion time, includes photo_type)
         r2 = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
-            params={"select": "*", "appraisal_id": "eq.{}".format(appraisal_id)},
+            params={"select": "id,url,photo_type,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
             headers=headers, timeout=10
         )
         photos = r2.json() if r2.status_code == 200 else []
@@ -2710,7 +2710,7 @@ def get_consignacion_photos(cid):
     try:
         r = req_lib.get(
             supabase_url + "/rest/v1/vehicle_images",
-            params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id), "order": "id.asc"},
+            params={"select": "id,url,photo_type,created_at", "appraisal_id": "eq.{}".format(appraisal_id), "order": "created_at.asc"},
             headers=headers, timeout=8
         )
         photos = r.json() if r.status_code == 200 else []
@@ -3302,17 +3302,25 @@ def publicar_en_catalogo(cid):
         except Exception as e:
             print("[publicar] appraisal fetch error:", e)
 
-    # 2. Fetch photos for this appraisal
+    # 2. Fetch photos for this appraisal — exterior only, in capture order
     image_urls = []
     if appraisal_id:
         try:
             r = req_lib.get(
                 supabase_url + "/rest/v1/vehicle_images",
-                params={"select": "url", "appraisal_id": "eq.{}".format(appraisal_id)},
+                params={
+                    "select": "url,photo_type,created_at",
+                    "appraisal_id": "eq.{}".format(appraisal_id),
+                    "order": "created_at.asc",
+                },
                 headers=headers, timeout=10
             )
             if r.status_code == 200:
-                image_urls = [row["url"] for row in r.json() if row.get("url")]
+                # Only exterior photos go to autodirecto.cl
+                image_urls = [
+                    row["url"] for row in r.json()
+                    if row.get("url") and (row.get("photo_type") or "exterior") == "exterior"
+                ]
         except Exception as e:
             print("[publicar] photos fetch error:", e)
 

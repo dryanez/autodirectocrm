@@ -4828,9 +4828,12 @@
                         if (pr.ok) {
                             const pd = await pr.json();
                             const newPhotos = pd.photos || [];
-                            if (newPhotos.length > (this.invDetail.photos || []).length) {
+                            // Always update — order or photo_type may have changed
+                            if (newPhotos.length >= (this.invDetail.photos || []).length) {
                                 this.invDetail.photos = newPhotos;
-                                this.invPhotoIdx = 0;
+                                if (newPhotos.length > (this.invDetail.photos || []).length) {
+                                    this.invPhotoIdx = 0;
+                                }
                             }
                         }
                     } catch (_) {}
