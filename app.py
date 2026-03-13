@@ -3631,29 +3631,47 @@ def publicar_en_catalogo(cid):
 
     # 2. Fetch photos for this appraisal — exterior only, in capture order
     image_urls = []
+    image_edits = []   # parallel array of edit objects for each photo
     if appraisal_id:
         try:
             r = req_lib.get(
                 supabase_url + "/rest/v1/vehicle_images",
                 params={
-                    "select": "url,photo_type,created_at",
+                    "select": "url,photo_type,created_at,label",
                     "appraisal_id": "eq.{}".format(appraisal_id),
                     "order": "created_at.asc",
                 },
                 headers=headers, timeout=10
             )
             if r.status_code == 200:
-                # Exterior + interior photos go to autodirecto.cl (exclude social/vertical only)
-                image_urls = [
-                    row["url"] for row in r.json()
-                    if row.get("url") and (row.get("photo_type") or "exterior") != "social"
-                ]
+                for row in r.json():
+                    if not row.get("url"):
+                        continue
+                    if (row.get("photo_type") or "exterior") == "social":
+                        continue
+                    image_urls.append(row["url"])
+                    # Parse edits from label fallback (__edits__:{json})
+                    edits = None
+                    lbl = row.get("label") or ""
+                    if "__edits__:" in lbl:
+                        try:
+                            edits = json.loads(lbl.split("__edits__:", 1)[1])
+                        except Exception:
+                            edits = None
+                    image_edits.append(edits)
         except Exception as e:
             print("[publicar] photos fetch error:", e)
 
     # Fall back to a placeholder if no photos
     if not image_urls:
         image_urls = ["https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&q=80"]
+        image_edits = [None]
+
+    # Strip None entries from image_edits (keep only non-default edits)
+    # image_edits is a parallel array to image_urls
+    has_any_edits = any(e for e in image_edits)
+    if not has_any_edits:
+        image_edits = []
 
     # 3. Build listing payload — maps inspection data to catalog fields
     brand  = (appraisal.get("vehicle_marca") or c.get("car_make") or "").strip()
@@ -3713,9 +3731,78 @@ def publicar_en_catalogo(cid):
         "description":       description,
         "features":          features,
         "image_urls":        image_urls,
+        "image_edits":       image_edits if image_edits else [],
         "status":            "disponible",
         "featured":          False,
     }
+
+    # Helper: attempt upsert, retry without image_edits if column doesn't exist yet
+    def _upsert_listing(payload, existing_listings):
+        """Upsert listing; strips image_edits and retries if column is missing."""
+        nonlocal headers, supabase_url
+        listing_id = None
+
+        for attempt in range(2):
+            cur_payload = dict(payload)
+            if attempt == 1:
+                cur_payload.pop("image_edits", None)
+                print("[publicar] retrying without image_edits column")
+
+            if existing_listings:
+                listing_id = existing_listings[0]["id"]
+                existing = existing_listings[0]
+                update_data = {
+                    "brand":        cur_payload["brand"],
+                    "model":        cur_payload["model"],
+                    "year":         cur_payload["year"],
+                    "color":        cur_payload["color"],
+                    "mileage_km":   cur_payload["mileage_km"],
+                    "plate":        cur_payload["plate"],
+                    "fuel_type":    cur_payload["fuel_type"],
+                    "transmission": cur_payload["transmission"],
+                    "motor":        cur_payload["motor"],
+                    "image_urls":   cur_payload["image_urls"],
+                    "status":       "disponible",
+                    "updated_at":   datetime.now().isoformat(),
+                    "price":        existing.get("price") or cur_payload["price"],
+                    "description":  existing.get("description") or cur_payload["description"],
+                    "features":     existing.get("features") or cur_payload["features"],
+                }
+                if "image_edits" in cur_payload:
+                    update_data["image_edits"] = cur_payload["image_edits"]
+
+                r = req_lib.patch(
+                    supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+                    json=update_data,
+                    headers={**headers, "Prefer": "return=representation"},
+                    timeout=10
+                )
+            else:
+                r = req_lib.post(
+                    supabase_url + "/rest/v1/listings",
+                    json=cur_payload,
+                    headers=headers,
+                    timeout=10
+                )
+
+            # Check if column-missing error — retry without it
+            if r.status_code not in (200, 201):
+                try:
+                    err_body = r.json()
+                except Exception:
+                    err_body = {}
+                if err_body.get("code") == "PGRST204" and "image_edits" in str(err_body.get("message", "")):
+                    if attempt == 0:
+                        continue  # retry without image_edits
+                    # Already retried, give up
+                return r, listing_id
+
+            result = r.json()
+            if isinstance(result, list) and result:
+                listing_id = result[0]["id"]
+            return r, listing_id
+
+        return r, listing_id
 
     # 4. Upsert into listings table (insert or update if plate already published)
     try:
@@ -3727,49 +3814,9 @@ def publicar_en_catalogo(cid):
         )
         existing_listings = check_r.json() if check_r.status_code == 200 else []
 
-        if existing_listings:
-            # Update — but preserve any hand-edited price/description/features
-            listing_id = existing_listings[0]["id"]
-            existing = existing_listings[0]
-            update_payload = {
-                "brand":        listing_payload["brand"],
-                "model":        listing_payload["model"],
-                "year":         listing_payload["year"],
-                "color":        listing_payload["color"],
-                "mileage_km":   listing_payload["mileage_km"],
-                "plate":        listing_payload["plate"],
-                "fuel_type":    listing_payload["fuel_type"],
-                "transmission": listing_payload["transmission"],
-                "motor":        listing_payload["motor"],
-                "image_urls":   listing_payload["image_urls"],
-                "status":       "disponible",
-                "updated_at":   datetime.now().isoformat(),
-                # Only overwrite price if not already set in listing
-                "price":        existing.get("price") or listing_payload["price"],
-                # Only overwrite description/features if not already customised
-                "description":  existing.get("description") or listing_payload["description"],
-                "features":     existing.get("features") or listing_payload["features"],
-            }
-            put_r = req_lib.patch(
-                supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
-                json=update_payload,
-                headers={**headers, "Prefer": "return=representation"},
-                timeout=10
-            )
-            result_listing = put_r.json()
-            listing_id = result_listing[0]["id"] if isinstance(result_listing, list) and result_listing else listing_id
-        else:
-            # Insert
-            post_r = req_lib.post(
-                supabase_url + "/rest/v1/listings",
-                json=listing_payload,
-                headers=headers,
-                timeout=10
-            )
-            if post_r.status_code not in (200, 201):
-                return jsonify({"error": "Supabase error {}: {}".format(post_r.status_code, post_r.text)}), 502
-            result_listing = post_r.json()
-            listing_id = result_listing[0]["id"] if isinstance(result_listing, list) and result_listing else None
+        upsert_r, listing_id = _upsert_listing(listing_payload, existing_listings)
+        if upsert_r.status_code not in (200, 201):
+            return jsonify({"error": "Supabase error {}: {}".format(upsert_r.status_code, upsert_r.text)}), 502
 
         # Mark consignacion as en_venta + store listing_id
         now = datetime.now().isoformat()

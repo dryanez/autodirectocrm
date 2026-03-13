@@ -479,6 +479,30 @@
             </div>
             <!-- Actions -->
             <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- Guardar button — explicitly re-syncs all data to listing -->
+                <button @click="async () => {
+                        if (!invDetail) return;
+                        // Sync photos (with edits) + data to listing
+                        if (invDetail.listing_id) {
+                            await publishToWebsite(invDetail.id);
+                        } else {
+                            // Save consignacion fields
+                            await authFetch('/api/consignaciones/' + invDetail.id, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    selling_price: invDetail.selling_price,
+                                    color: invDetail.color,
+                                    mileage: invDetail.mileage,
+                                })
+                            });
+                        }
+                        invSaveFlash = true;
+                        setTimeout(() => { invSaveFlash = false; }, 2000);
+                    }"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1">
+                    <i class="ph ph-floppy-disk"></i> Guardar
+                </button>
                 <button @click="publishToWebsite(invDetail.id)"
                     :class="invDetail?.listing_id ? 'bg-slate-700 hover:bg-slate-600' : 'bg-blue-600 hover:bg-blue-500'"
                     class="text-white text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1">
@@ -1289,7 +1313,7 @@
             </div>
         </div>
 
-        <!-- ═══ CLIENT PREVIEW MODE — iframe of actual autodirecto.cl ═══ -->
+        <!-- ═══ CLIENT PREVIEW MODE — link to autodirecto.cl ═══ -->
         <div x-show="invMode==='preview'" class="flex-1 flex flex-col overflow-hidden">
             <!-- Not published yet -->
             <div x-show="!invDetail?.listing_id" class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400">
@@ -1301,11 +1325,27 @@
                     <i class="ph ph-globe"></i> Publicar ahora
                 </button>
             </div>
-            <!-- Live iframe of autodirecto.cl -->
-            <iframe x-show="invDetail?.listing_id"
-                :src="invDetail?.listing_id ? 'https://autodirecto.cl/catalogo/' + invDetail.listing_id : ''"
-                class="flex-1 w-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            <!-- Published: open in new tab + quick info -->
+            <div x-show="invDetail?.listing_id" class="flex-1 flex flex-col items-center justify-center gap-6 text-slate-400">
+                <i class="ph ph-globe text-6xl text-blue-400"></i>
+                <p class="text-lg font-semibold text-white">Publicado en autodirecto.cl</p>
+                <p class="text-sm text-slate-400 max-w-md text-center">
+                    Este vehículo está activo en el catálogo. Haz clic abajo para ver cómo lo ven los clientes.
+                </p>
+                <a :href="'https://autodirecto.cl/catalogo/' + invDetail?.listing_id" target="_blank" rel="noopener"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 no-underline">
+                    <i class="ph ph-arrow-square-out text-lg"></i> Ver en autodirecto.cl
+                </a>
+                <div class="flex items-center gap-3 mt-2">
+                    <button @click="publishToWebsite(invDetail.id)"
+                        class="text-slate-400 hover:text-white text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-1">
+                        <i class="ph ph-arrows-clockwise"></i> Republicar cambios
+                    </button>
+                    <span class="text-xs text-slate-600">
+                        ID: <span x-text="invDetail?.listing_id" class="font-mono text-slate-500"></span>
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -5299,13 +5339,16 @@
                 async syncListingImages() {
                     if (!this.invDetail?.listing_id || !this.invDetail?.photos) return;
                     try {
-                        const listingUrls = (this.invDetail.photos || [])
-                            .filter(p => (p.photo_type || 'exterior') !== 'social')
-                            .map(p => p.url).filter(Boolean);
+                        const relevantPhotos = (this.invDetail.photos || [])
+                            .filter(p => (p.photo_type || 'exterior') !== 'social');
+                        const listingUrls = relevantPhotos.map(p => p.url).filter(Boolean);
+                        const listingEdits = relevantPhotos.map(p => p.edits || null);
+                        const patchBody = { image_urls: listingUrls };
+                        if (listingEdits.some(e => e)) patchBody.image_edits = listingEdits;
                         await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ image_urls: listingUrls })
+                            body: JSON.stringify(patchBody)
                         });
                     } catch (e) { console.warn('syncListingImages', e); }
                 },
@@ -5427,13 +5470,16 @@
                         // Auto-sync image_urls to the live listing — exterior + interior go to autodirecto.cl
                         if (this.invDetail.listing_id) {
                             try {
-                                const listingUrls = (this.invDetail.photos || [])
-                                    .filter(p => (p.photo_type || 'exterior') !== 'social')
-                                    .map(p => p.url).filter(Boolean);
+                                const relevantPhotos = (this.invDetail.photos || [])
+                                    .filter(p => (p.photo_type || 'exterior') !== 'social');
+                                const listingUrls = relevantPhotos.map(p => p.url).filter(Boolean);
+                                const listingEdits = relevantPhotos.map(p => p.edits || null);
+                                const patchBody = { image_urls: listingUrls };
+                                if (listingEdits.some(e => e)) patchBody.image_edits = listingEdits;
                                 await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ image_urls: listingUrls })
+                                    body: JSON.stringify(patchBody)
                                 });
                             } catch (e) { console.warn('auto-sync listing images', e); }
                         }
