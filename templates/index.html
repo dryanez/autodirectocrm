@@ -516,11 +516,19 @@
         <div x-show="invMode==='edit'" class="flex-1 flex overflow-hidden">
             <!-- Left: Gallery + Description -->
             <div class="w-1/2 xl:w-3/5 overflow-y-auto border-r border-slate-800">
-                <!-- Big photo -->
-                <div class="relative bg-black">
-                    <div class="w-full" style="max-height: 55vh;">
+                <!-- ═══ PHOTO VIEWER WITH ZOOM/PAN/EDIT ═══ -->
+                <div class="relative bg-black" @wheel.prevent="photoZoom = Math.max(1, Math.min(5, photoZoom + ($event.deltaY < 0 ? 0.25 : -0.25)))">
+                    <div class="w-full overflow-hidden" style="max-height: 55vh; cursor: grab;"
+                        @mousedown.prevent="photoDragging=true; photoDragStart={x:$event.clientX-photoPanX, y:$event.clientY-photoPanY}"
+                        @mousemove.prevent="if(photoDragging){photoPanX=$event.clientX-photoDragStart.x; photoPanY=$event.clientY-photoDragStart.y}"
+                        @mouseup="photoDragging=false" @mouseleave="photoDragging=false"
+                        @touchstart.prevent="if($event.touches.length===1){photoDragging=true; photoDragStart={x:$event.touches[0].clientX-photoPanX, y:$event.touches[0].clientY-photoPanY}}"
+                        @touchmove.prevent="if(photoDragging && $event.touches.length===1){photoPanX=$event.touches[0].clientX-photoDragStart.x; photoPanY=$event.touches[0].clientY-photoDragStart.y}"
+                        @touchend="photoDragging=false">
                         <img x-show="invDetail?.photos?.length" :src="invDetail?.photos?.[invPhotoIdx]?.url || invDetail?.photos?.[0]?.url"
-                            class="w-full h-full object-contain mx-auto" style="max-height:55vh;">
+                            class="w-full h-full object-contain mx-auto transition-transform duration-100"
+                            :style="`max-height:55vh; transform: scale(${photoZoom}) translate(${photoPanX/photoZoom}px, ${photoPanY/photoZoom}px); filter: brightness(${photoBrightness}%) contrast(${photoContrast}%) saturate(${photoSaturate}%);`"
+                            style="will-change:transform,filter;">
                         <div x-show="!invDetail?.photos?.length" class="w-full flex items-center justify-center" style="height:40vh;">
                             <i class="ph ph-car text-8xl text-slate-700"></i>
                         </div>
@@ -530,64 +538,158 @@
                         class="absolute top-3 right-3 bg-black/70 text-white text-xs px-3 py-1 rounded-full font-mono"
                         x-text="(invPhotoIdx+1) + ' / ' + (invDetail?.photos?.length || 0)"></span>
                     <!-- Arrows -->
-                    <button x-show="invDetail?.photos?.length > 1" @click="invPhotoIdx = (invPhotoIdx - 1 + invDetail.photos.length) % invDetail.photos.length"
+                    <button x-show="invDetail?.photos?.length > 1" @click="invPhotoIdx = (invPhotoIdx - 1 + invDetail.photos.length) % invDetail.photos.length; resetPhotoView()"
                         class="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors">
                         <i class="ph ph-caret-left text-lg"></i></button>
-                    <button x-show="invDetail?.photos?.length > 1" @click="invPhotoIdx = (invPhotoIdx + 1) % invDetail.photos.length"
+                    <button x-show="invDetail?.photos?.length > 1" @click="invPhotoIdx = (invPhotoIdx + 1) % invDetail.photos.length; resetPhotoView()"
                         class="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors">
                         <i class="ph ph-caret-right text-lg"></i></button>
+
+                    <!-- ═══ PHOTO TOOLBAR (bottom overlay) ═══ -->
+                    <div x-show="invDetail?.photos?.length" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-2 px-3">
+                        <div class="flex items-center gap-1.5 justify-center flex-wrap">
+                            <!-- Zoom controls -->
+                            <button @click="photoZoom = Math.max(1, photoZoom - 0.25)" title="Alejar"
+                                class="bg-white/10 hover:bg-white/20 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
+                                <i class="ph ph-minus"></i>
+                            </button>
+                            <span class="text-white text-[10px] font-mono w-10 text-center" x-text="Math.round(photoZoom * 100) + '%'"></span>
+                            <button @click="photoZoom = Math.min(5, photoZoom + 0.25)" title="Acercar"
+                                class="bg-white/10 hover:bg-white/20 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
+                                <i class="ph ph-plus"></i>
+                            </button>
+                            <div class="w-px h-5 bg-white/20 mx-1"></div>
+                            <!-- Brightness -->
+                            <div class="flex items-center gap-1" title="Brillo">
+                                <i class="ph ph-sun text-yellow-400 text-sm"></i>
+                                <input type="range" min="50" max="200" step="5" x-model="photoBrightness"
+                                    class="w-16 h-1 accent-yellow-400 cursor-pointer">
+                            </div>
+                            <!-- Contrast -->
+                            <div class="flex items-center gap-1" title="Contraste">
+                                <i class="ph ph-circle-half text-blue-400 text-sm"></i>
+                                <input type="range" min="50" max="200" step="5" x-model="photoContrast"
+                                    class="w-16 h-1 accent-blue-400 cursor-pointer">
+                            </div>
+                            <!-- Saturation -->
+                            <div class="flex items-center gap-1" title="Saturación">
+                                <i class="ph ph-palette text-pink-400 text-sm"></i>
+                                <input type="range" min="0" max="200" step="5" x-model="photoSaturate"
+                                    class="w-16 h-1 accent-pink-400 cursor-pointer">
+                            </div>
+                            <div class="w-px h-5 bg-white/20 mx-1"></div>
+                            <!-- Fit/Fill -->
+                            <button @click="resetPhotoView()" title="Restablecer vista"
+                                class="bg-white/10 hover:bg-white/20 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
+                                <i class="ph ph-arrows-in"></i>
+                            </button>
+                            <!-- Delete current photo -->
+                            <button @click="deleteCurrentPhoto()" title="Eliminar esta foto"
+                                class="bg-red-600/30 hover:bg-red-600/50 text-red-400 w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-sm">
+                                <i class="ph ph-trash"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <!-- Thumbnails -->
-                <div x-show="invDetail?.photos?.length > 1" class="flex gap-1.5 p-3 overflow-x-auto bg-slate-900/50">
-                    <!-- Exterior photos first -->
-                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')" :key="'ext-'+idx">
-                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
-                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-cyan-500 opacity-100' : 'opacity-50 hover:opacity-80'"
-                            class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
-                            title="Exterior · autodirecto.cl">
-                            <img :src="photo.url" class="w-full h-full object-cover">
-                        </button>
-                    </template>
-                    <!-- Divider if there are interior photos -->
-                    <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'interior')">
-                        <div class="flex items-center gap-1 px-1 flex-shrink-0">
-                            <div class="w-px h-10 bg-slate-600"></div>
-                            <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">🪑 Interior</span>
-                            <div class="w-px h-10 bg-slate-600"></div>
-                        </div>
-                    </template>
-                    <!-- Interior photos (landscape, goes to autodirecto.cl) -->
-                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'interior')" :key="'int-'+idx">
-                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
-                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-emerald-500 opacity-100' : 'opacity-50 hover:opacity-80'"
-                            class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
-                            title="Interior · autodirecto.cl">
-                            <img :src="photo.url" class="w-full h-full object-cover">
-                            <div class="absolute top-0 left-0 right-0 flex justify-center">
-                                <span class="text-[8px] bg-emerald-600/80 text-white px-1 rounded-b leading-4">🪑</span>
+
+                <!-- ═══ THUMBNAILS WITH REORDER + DELETE ═══ -->
+                <div x-show="invDetail?.photos?.length > 0" class="bg-slate-900/50 border-b border-slate-800">
+                    <!-- Thumbnail strip per type -->
+                    <div class="flex gap-1.5 p-3 overflow-x-auto items-end">
+                        <!-- Exterior photos -->
+                        <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')" :key="'ext-'+idx">
+                            <div class="flex-shrink-0 relative group"
+                                draggable="true"
+                                @dragstart="photoBeingDragged = (invDetail.photos || []).indexOf(photo)"
+                                @dragover.prevent
+                                @drop.prevent="movePhotoTo(photoBeingDragged, (invDetail.photos || []).indexOf(photo))">
+                                <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo); resetPhotoView()"
+                                    :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-cyan-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                                    class="w-16 h-12 rounded-lg overflow-hidden transition-all"
+                                    title="Exterior · arrastrar para reordenar">
+                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                </button>
+                                <!-- Move left -->
+                                <button x-show="idx > 0" @click.stop="movePhotoTo((invDetail.photos || []).indexOf(photo), (invDetail.photos || []).indexOf((invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')[idx-1])))"
+                                    class="absolute -left-1 top-1/2 -translate-y-1/2 bg-black/80 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <i class="ph ph-caret-left"></i>
+                                </button>
+                                <!-- Move right -->
+                                <button x-show="idx < (invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior').length - 1" @click.stop="movePhotoTo((invDetail.photos || []).indexOf(photo), (invDetail.photos || []).indexOf((invDetail?.photos || []).filter(p => (p.photo_type || 'exterior') === 'exterior')[idx+1])))"
+                                    class="absolute -right-1 top-1/2 -translate-y-1/2 bg-black/80 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <i class="ph ph-caret-right"></i>
+                                </button>
+                                <!-- Delete thumbnail -->
+                                <button @click.stop="deleteSinglePhoto((invDetail.photos || []).indexOf(photo))"
+                                    class="absolute -top-1.5 -right-1.5 bg-red-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-500"
+                                    title="Eliminar foto">
+                                    <i class="ph ph-x-bold"></i>
+                                </button>
                             </div>
-                        </button>
-                    </template>
-                    <!-- Divider if there are social photos -->
-                    <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'social')">
-                        <div class="flex items-center gap-1 px-1 flex-shrink-0">
-                            <div class="w-px h-10 bg-slate-600"></div>
-                            <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">📱 Sociales</span>
-                            <div class="w-px h-10 bg-slate-600"></div>
-                        </div>
-                    </template>
-                    <!-- Social (vertical) photos after divider -->
-                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'social')" :key="'soc-'+idx">
-                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
-                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-pink-500 opacity-100' : 'opacity-50 hover:opacity-80'"
-                            class="w-9 h-14 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
-                            title="📱 Social — no publicada en autodirecto.cl">
-                            <img :src="photo.url" class="w-full h-full object-cover">
-                            <div class="absolute top-0 left-0 right-0 flex justify-center">
-                                <span class="text-[8px] bg-pink-600/80 text-white px-1 rounded-b leading-4">📱</span>
+                        </template>
+                        <!-- Interior divider -->
+                        <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'interior')">
+                            <div class="flex items-center gap-1 px-1 flex-shrink-0">
+                                <div class="w-px h-10 bg-slate-600"></div>
+                                <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">🪑 Interior</span>
+                                <div class="w-px h-10 bg-slate-600"></div>
                             </div>
-                        </button>
-                    </template>
+                        </template>
+                        <!-- Interior photos -->
+                        <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'interior')" :key="'int-'+idx">
+                            <div class="flex-shrink-0 relative group"
+                                draggable="true"
+                                @dragstart="photoBeingDragged = (invDetail.photos || []).indexOf(photo)"
+                                @dragover.prevent
+                                @drop.prevent="movePhotoTo(photoBeingDragged, (invDetail.photos || []).indexOf(photo))">
+                                <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo); resetPhotoView()"
+                                    :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-emerald-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                                    class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
+                                    title="Interior · arrastrar para reordenar">
+                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                    <div class="absolute top-0 left-0 right-0 flex justify-center">
+                                        <span class="text-[8px] bg-emerald-600/80 text-white px-1 rounded-b leading-4">🪑</span>
+                                    </div>
+                                </button>
+                                <button @click.stop="deleteSinglePhoto((invDetail.photos || []).indexOf(photo))"
+                                    class="absolute -top-1.5 -right-1.5 bg-red-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-500"
+                                    title="Eliminar foto">
+                                    <i class="ph ph-x-bold"></i>
+                                </button>
+                            </div>
+                        </template>
+                        <!-- Social divider -->
+                        <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'social')">
+                            <div class="flex items-center gap-1 px-1 flex-shrink-0">
+                                <div class="w-px h-10 bg-slate-600"></div>
+                                <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">📱 Sociales</span>
+                                <div class="w-px h-10 bg-slate-600"></div>
+                            </div>
+                        </template>
+                        <!-- Social photos -->
+                        <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'social')" :key="'soc-'+idx">
+                            <div class="flex-shrink-0 relative group"
+                                draggable="true"
+                                @dragstart="photoBeingDragged = (invDetail.photos || []).indexOf(photo)"
+                                @dragover.prevent
+                                @drop.prevent="movePhotoTo(photoBeingDragged, (invDetail.photos || []).indexOf(photo))">
+                                <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo); resetPhotoView()"
+                                    :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-pink-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                                    class="w-9 h-14 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
+                                    title="📱 Social · arrastrar para reordenar">
+                                    <img :src="photo.url" class="w-full h-full object-cover">
+                                    <div class="absolute top-0 left-0 right-0 flex justify-center">
+                                        <span class="text-[8px] bg-pink-600/80 text-white px-1 rounded-b leading-4">📱</span>
+                                    </div>
+                                </button>
+                                <button @click.stop="deleteSinglePhoto((invDetail.photos || []).indexOf(photo))"
+                                    class="absolute -top-1.5 -right-1.5 bg-red-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-500"
+                                    title="Eliminar foto">
+                                    <i class="ph ph-x-bold"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
                 </div>
                 <!-- Add Photos Bar — Exterior row -->
                 <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-700/50">
@@ -4821,6 +4923,16 @@
                 invLoading: false,
                 invSaveFlash: false,
                 invAiLoading: false,
+                // Photo editor state
+                photoZoom: 1,
+                photoPanX: 0,
+                photoPanY: 0,
+                photoDragging: false,
+                photoDragStart: { x: 0, y: 0 },
+                photoBrightness: 100,
+                photoContrast: 100,
+                photoSaturate: 100,
+                photoBeingDragged: -1,
                 cameraProModal: false,
                 cameraProUrl: null,
                 cameraProLoading: false,
@@ -4888,6 +5000,7 @@
                     this.invPhotoIdx = 0;
                     this.invTab = 'ficha';
                     this.invMode = 'edit';
+                    this.resetPhotoView();
                     try {
                         const r = await this.authFetch('/api/consignaciones/' + id);
                         const detail = await r.json();
@@ -4974,6 +5087,81 @@
                             }
                         }
                     } catch (_) {}
+                },
+
+                // ─── Photo Editor Functions ─────────────────────────────
+                resetPhotoView() {
+                    this.photoZoom = 1;
+                    this.photoPanX = 0;
+                    this.photoPanY = 0;
+                    this.photoBrightness = 100;
+                    this.photoContrast = 100;
+                    this.photoSaturate = 100;
+                },
+
+                async deleteCurrentPhoto() {
+                    if (!this.invDetail?.photos?.length) return;
+                    await this.deleteSinglePhoto(this.invPhotoIdx);
+                },
+
+                async deleteSinglePhoto(photoIndex) {
+                    if (!this.invDetail?.photos?.[photoIndex]) return;
+                    const photo = this.invDetail.photos[photoIndex];
+                    if (!confirm('¿Eliminar esta foto permanentemente?')) return;
+                    // Delete from Supabase via API
+                    if (photo.id) {
+                        try {
+                            await this.authFetch('/api/vehicle-images/' + photo.id, { method: 'DELETE' });
+                        } catch (e) { console.error('deleteSinglePhoto API', e); }
+                    }
+                    // Remove from local array
+                    this.invDetail.photos.splice(photoIndex, 1);
+                    // Fix index
+                    if (this.invPhotoIdx >= this.invDetail.photos.length) {
+                        this.invPhotoIdx = Math.max(0, this.invDetail.photos.length - 1);
+                    }
+                    this.resetPhotoView();
+                    // Sync listing image_urls
+                    await this.syncListingImages();
+                },
+
+                async movePhotoTo(fromIdx, toIdx) {
+                    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+                    if (!this.invDetail?.photos) return;
+                    const photos = this.invDetail.photos;
+                    const [moved] = photos.splice(fromIdx, 1);
+                    photos.splice(toIdx, 0, moved);
+                    this.invDetail.photos = [...photos];
+                    this.invPhotoIdx = toIdx;
+                    // Persist new order to Supabase
+                    const ids = photos.map(p => p.id).filter(Boolean);
+                    if (ids.length) {
+                        try {
+                            await this.authFetch('/api/vehicle-images/reorder', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ order: ids })
+                            });
+                        } catch (e) { console.warn('reorder API', e); }
+                    }
+                    // Sync listing
+                    await this.syncListingImages();
+                    this.invSaveFlash = true;
+                    setTimeout(() => { this.invSaveFlash = false; }, 1000);
+                },
+
+                async syncListingImages() {
+                    if (!this.invDetail?.listing_id || !this.invDetail?.photos) return;
+                    try {
+                        const listingUrls = (this.invDetail.photos || [])
+                            .filter(p => (p.photo_type || 'exterior') !== 'social')
+                            .map(p => p.url).filter(Boolean);
+                        await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image_urls: listingUrls })
+                        });
+                    } catch (e) { console.warn('syncListingImages', e); }
                 },
 
                 async updateInvField(field, value) {

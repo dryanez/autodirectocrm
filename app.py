@@ -1368,6 +1368,81 @@ def _supa_headers():
     }
 
 
+# ─── API: Single Photo Management ────────────────────────────────────────────
+@app.route("/api/vehicle-images/<image_id>", methods=["DELETE"])
+def delete_single_vehicle_image(image_id):
+    """Delete a single photo from Supabase Storage + vehicle_images table."""
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        # 1. Get the image record to find storage path
+        r = req_lib.get(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"select": "id,url,storage_path", "id": "eq.{}".format(image_id)},
+            headers=headers, timeout=8
+        )
+        rows = r.json() if r.status_code == 200 else []
+        if not rows:
+            return jsonify({"error": "Image not found"}), 404
+        row = rows[0]
+
+        # 2. Delete from storage
+        url = row.get("url", "")
+        if "/vehicle-images/" in url:
+            obj_path = url.split("/vehicle-images/", 1)[1]
+            try:
+                req_lib.delete(
+                    supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
+                    headers=headers, timeout=8
+                )
+            except Exception:
+                pass  # best effort
+
+        # 3. Delete from DB
+        req_lib.delete(
+            supabase_url + "/rest/v1/vehicle_images",
+            params={"id": "eq.{}".format(image_id)},
+            headers=headers, timeout=8
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/vehicle-images/reorder", methods=["POST"])
+def reorder_vehicle_images():
+    """Reorder photos by updating their created_at timestamps.
+    Expects JSON: { "order": ["uuid1", "uuid2", ...] }
+    Sets created_at to sequential timestamps so they sort in the given order."""
+    import requests as req_lib
+    data = request.json or {}
+    order = data.get("order", [])
+    if not order:
+        return jsonify({"error": "order array required"}), 400
+
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+
+    try:
+        # Use Supabase's PATCH to set created_at to sequential values
+        # Start from a base time and increment by 1 second for each photo
+        base = datetime(2020, 1, 1, 0, 0, 0)
+        for i, img_id in enumerate(order):
+            ts = (base + timedelta(seconds=i)).isoformat() + "Z"
+            r = req_lib.patch(
+                supabase_url + "/rest/v1/vehicle_images",
+                params={"id": "eq.{}".format(img_id)},
+                json={"created_at": ts},
+                headers=headers, timeout=8
+            )
+        return jsonify({"ok": True, "count": len(order)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/setup-db", methods=["POST"])
 def setup_db_tables():
     """Create required Supabase tables if they don't exist.
