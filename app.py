@@ -1279,15 +1279,16 @@ def create_inspeccion():
 @app.route("/api/inspecciones/fotos", methods=["POST"])
 def upload_inspeccion_foto():
     """Upload a photo for an appraisal to Supabase Storage.
-    Accepts optional form field 'photo_type': 'exterior' (default) or 'social'.
-    - 'exterior' photos are used on autodirecto.cl listings.
+    Accepts optional form field 'photo_type': 'exterior' (default), 'interior', or 'social'.
+    - 'exterior' photos are landscape shots of the car's outside — published on autodirecto.cl.
+    - 'interior' photos are landscape shots of the car's inside — published on autodirecto.cl.
     - 'social' photos are vertical/portrait shots for socials only — excluded from listings.
     """
     import requests as req_lib
     appraisal_id = request.form.get("appraisal_id")
     file = request.files.get("file")
-    photo_type = request.form.get("photo_type", "exterior")  # 'exterior' or 'social'
-    if photo_type not in ("exterior", "social"):
+    photo_type = request.form.get("photo_type", "exterior")  # 'exterior', 'interior', or 'social'
+    if photo_type not in ("exterior", "interior", "social"):
         photo_type = "exterior"
     if not file or not appraisal_id:
         return jsonify({"error": "file and appraisal_id required"}), 400
@@ -3316,10 +3317,10 @@ def publicar_en_catalogo(cid):
                 headers=headers, timeout=10
             )
             if r.status_code == 200:
-                # Only exterior photos go to autodirecto.cl
+                # Exterior + interior photos go to autodirecto.cl (exclude social/vertical only)
                 image_urls = [
                     row["url"] for row in r.json()
-                    if row.get("url") and (row.get("photo_type") or "exterior") == "exterior"
+                    if row.get("url") and (row.get("photo_type") or "exterior") != "social"
                 ]
         except Exception as e:
             print("[publicar] photos fetch error:", e)

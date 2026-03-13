@@ -488,6 +488,26 @@
                             <img :src="photo.url" class="w-full h-full object-cover">
                         </button>
                     </template>
+                    <!-- Divider if there are interior photos -->
+                    <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'interior')">
+                        <div class="flex items-center gap-1 px-1 flex-shrink-0">
+                            <div class="w-px h-10 bg-slate-600"></div>
+                            <span class="text-[9px] text-slate-500 font-bold rotate-180" style="writing-mode:vertical-lr">🪑 Interior</span>
+                            <div class="w-px h-10 bg-slate-600"></div>
+                        </div>
+                    </template>
+                    <!-- Interior photos (landscape, goes to autodirecto.cl) -->
+                    <template x-for="(photo, idx) in (invDetail?.photos || []).filter(p => p.photo_type === 'interior')" :key="'int-'+idx">
+                        <button @click="invPhotoIdx = (invDetail.photos || []).indexOf(photo)"
+                            :class="invPhotoIdx === (invDetail.photos || []).indexOf(photo) ? 'ring-2 ring-emerald-500 opacity-100' : 'opacity-50 hover:opacity-80'"
+                            class="w-16 h-12 flex-shrink-0 rounded-lg overflow-hidden transition-all relative"
+                            title="Interior · autodirecto.cl">
+                            <img :src="photo.url" class="w-full h-full object-cover">
+                            <div class="absolute top-0 left-0 right-0 flex justify-center">
+                                <span class="text-[8px] bg-emerald-600/80 text-white px-1 rounded-b leading-4">🪑</span>
+                            </div>
+                        </button>
+                    </template>
                     <!-- Divider if there are social photos -->
                     <template x-if="(invDetail?.photos || []).some(p => p.photo_type === 'social')">
                         <div class="flex items-center gap-1 px-1 flex-shrink-0">
@@ -541,6 +561,24 @@
                     </button>
                     <input type="file" accept="image/*" multiple x-ref="invFileInput"
                         class="hidden" @change="uploadInvPhotos($event, 'exterior')">
+                </div>
+                <!-- Add Photos Bar — Interior row -->
+                <div class="flex items-center gap-2 px-4 py-2 bg-slate-900/70 border-b border-slate-700/50">
+                    <span class="text-[10px] text-emerald-400/70 uppercase tracking-wider font-semibold mr-auto">🪑 Fotos interior <span class="normal-case text-slate-500 font-normal">(se publican en autodirecto.cl)</span></span>
+                    <!-- Quick camera interior -->
+                    <button @click="$refs.invInteriorCameraInput.click()"
+                        class="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-camera"></i> Foto Interior
+                    </button>
+                    <input type="file" accept="image/*" capture="environment" multiple x-ref="invInteriorCameraInput"
+                        class="hidden" @change="uploadInvPhotos($event, 'interior')">
+                    <!-- File upload interior -->
+                    <button @click="$refs.invInteriorFileInput.click()"
+                        class="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                        <i class="ph ph-folder-open"></i> Archivos
+                    </button>
+                    <input type="file" accept="image/*" multiple x-ref="invInteriorFileInput"
+                        class="hidden" @change="uploadInvPhotos($event, 'interior')">
                 </div>
                 <!-- Add Photos Bar — Social row -->
                 <div class="flex items-center gap-2 px-4 py-2 bg-slate-900/60 border-b border-slate-800">
@@ -4933,7 +4971,7 @@
                         alert('⚠️ Este vehículo no tiene inspección asociada. Crea una inspección primero.');
                         return;
                     }
-                    const type = photoType || 'exterior'; // 'exterior' or 'social'
+                    const type = photoType || 'exterior'; // 'exterior', 'interior', or 'social'
                     let uploaded = 0;
                     for (const file of files) {
                         try {
@@ -4953,16 +4991,16 @@
                     event.target.value = '';
                     if (uploaded) {
                         this.invPhotoIdx = this.invDetail.photos.length - 1;
-                        // Auto-sync image_urls to the live listing — ONLY exterior photos go to autodirecto.cl
+                        // Auto-sync image_urls to the live listing — exterior + interior go to autodirecto.cl
                         if (this.invDetail.listing_id) {
                             try {
-                                const exteriorUrls = (this.invDetail.photos || [])
-                                    .filter(p => (p.photo_type || 'exterior') === 'exterior')
+                                const listingUrls = (this.invDetail.photos || [])
+                                    .filter(p => (p.photo_type || 'exterior') !== 'social')
                                     .map(p => p.url).filter(Boolean);
                                 await this.authFetch('/api/listings/' + this.invDetail.listing_id, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ image_urls: exteriorUrls })
+                                    body: JSON.stringify({ image_urls: listingUrls })
                                 });
                             } catch (e) { console.warn('auto-sync listing images', e); }
                         }
