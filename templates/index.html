@@ -5463,8 +5463,13 @@
                             const d = await r.json();
                             if (d.url) {
                                 if (!this.invDetail.photos) this.invDetail.photos = [];
-                                this.invDetail.photos.push({ url: d.url, storage_path: d.storage_path || '', photo_type: type });
+                                // Server may auto-reclassify vertical photos as 'social'
+                                const actualType = d.photo_type || type;
+                                this.invDetail.photos.push({ url: d.url, storage_path: d.storage_path || '', photo_type: actualType });
                                 uploaded++;
+                                if (actualType === 'social' && type !== 'social') {
+                                    console.info(`📱 Photo auto-tagged as social (vertical)`);
+                                }
                             }
                         } catch (e) { console.error('uploadInvPhoto', e); }
                     }

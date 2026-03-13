@@ -1304,10 +1304,28 @@ def upload_inspeccion_foto():
     filename = f"{appraisal_id}/{uuid.uuid4()}.{ext}"
     mime = mimetypes.guess_type(file.filename)[0] or "image/jpeg"
 
+    # Read file bytes once (needed for both dimension check and upload)
+    file_bytes = file.read()
+
+    # ── Auto-detect vertical (portrait) photos → tag as 'social' ──
+    # If the user explicitly chose 'exterior' or 'interior' (the default),
+    # check dimensions: height > width means portrait → auto-tag as 'social'.
+    if photo_type in ("exterior", "interior"):
+        try:
+            from io import BytesIO
+            from PIL import Image as PILImage
+            with PILImage.open(BytesIO(file_bytes)) as img:
+                w, h = img.size
+                if h > w:
+                    photo_type = "social"
+                    print(f"[upload_foto] auto-tagged as social (portrait {w}x{h})", flush=True)
+        except Exception as dim_err:
+            print(f"[upload_foto] dimension check failed: {dim_err}", flush=True)
+
     try:
         upload_resp = req_lib.post(
             f"{supabase_url}/storage/v1/object/vehicle-images/{filename}",
-            data=file.read(),
+            data=file_bytes,
             headers={
                 "apikey": supabase_key,
                 "Authorization": "Bearer " + supabase_key,
@@ -3629,7 +3647,7 @@ def publicar_en_catalogo(cid):
         except Exception as e:
             print("[publicar] appraisal fetch error:", e)
 
-    # 2. Fetch photos for this appraisal — exterior only, in capture order
+    # 2. Fetch photos for this appraisal — exterior + interior only, in capture order
     image_urls = []
     image_edits = []   # parallel array of edit objects for each photo
     if appraisal_id:
@@ -3637,7 +3655,7 @@ def publicar_en_catalogo(cid):
             r = req_lib.get(
                 supabase_url + "/rest/v1/vehicle_images",
                 params={
-                    "select": "url,photo_type,created_at,label",
+                    "select": "url,photo_type,created_at,label,edits",
                     "appraisal_id": "eq.{}".format(appraisal_id),
                     "order": "created_at.asc",
                 },
@@ -3650,14 +3668,19 @@ def publicar_en_catalogo(cid):
                     if (row.get("photo_type") or "exterior") == "social":
                         continue
                     image_urls.append(row["url"])
-                    # Parse edits from label fallback (__edits__:{json})
-                    edits = None
-                    lbl = row.get("label") or ""
-                    if "__edits__:" in lbl:
-                        try:
-                            edits = json.loads(lbl.split("__edits__:", 1)[1])
-                        except Exception:
-                            edits = None
+                    # Prefer the edits JSONB column; fall back to label encoding
+                    edits = row.get("edits") or None
+                    if isinstance(edits, dict) and not any(
+                        v not in (None, 0, 1, 100) for v in edits.values()
+                    ):
+                        edits = None          # all-default → treat as no edits
+                    if edits is None:
+                        lbl = row.get("label") or ""
+                        if "__edits__:" in lbl:
+                            try:
+                                edits = json.loads(lbl.split("__edits__:", 1)[1])
+                            except Exception:
+                                edits = None
                     image_edits.append(edits)
         except Exception as e:
             print("[publicar] photos fetch error:", e)
