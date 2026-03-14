@@ -470,11 +470,16 @@ Agente de Ventas | Autodirecto.cl</textarea>
 
             try {
                 const response = await fetch(apiUrl('/api/leads'));
-                allLeads = await response.json();
+                const parsed = await response.json();
+                if (!Array.isArray(parsed)) {
+                    console.error('[funnels] API returned non-array:', parsed);
+                    throw new Error('API returned: ' + JSON.stringify(parsed).slice(0, 200));
+                }
+                allLeads = parsed;
                 populateBrandFilter();
                 renderLeads();
             } catch (err) {
-                console.error(err);
+                console.error('[funnels] loadLeads error:', err);
                 grid.innerHTML = '<div class="col-span-full text-center py-12 text-red-400">Error cargando datos. Revisa la consola.</div>';
             }
         }

@@ -164,37 +164,59 @@ if FUNNELS_DIR.exists():
 
     @funnels_bp.route('/api/leads', methods=['GET'])
     def funnels_api_leads():
+        import requests as _req_lib
         leads = list(funnels_module.get_leads())
-        # If in-memory cache is empty (cold start on Railway), load from Supabase
+        # If in-memory cache is empty (cold start / Vercel), load directly from Supabase REST
         if not leads:
             try:
-                with get_db() as conn:
-                    rows = conn.execute("SELECT * FROM funnel_listings ORDER BY scraped_at DESC LIMIT 5000").fetchall()
-                leads = [row_to_dict(r) for r in rows]
-                # Cache for subsequent requests
-                funnels_module._cached_listings = leads
+                supa_url = os.environ.get("SUPABASE_URL", "")
+                supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                            or os.environ.get("SUPABASE_ANON_KEY", ""))
+                if supa_url and supa_key:
+                    _h = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
+                    r = _req_lib.get(
+                        f"{supa_url}/rest/v1/funnel_listings",
+                        params={"order": "scraped_at.desc", "limit": "5000"},
+                        headers=_h, timeout=15
+                    )
+                    if r.status_code == 200:
+                        leads = r.json() or []
+                        funnels_module._cached_listings = leads
+                        print(f"[funnels] Loaded {len(leads)} leads from Supabase REST")
+                    else:
+                        print(f"[funnels] Supabase funnel_listings error {r.status_code}: {r.text[:200]}")
             except Exception as e:
-                return jsonify({"error": str(e)}), 500
+                print(f"[funnels] leads load error: {e}")
+            # If still empty after Supabase attempt, return empty array (never crash the UI)
+            if not leads:
+                return jsonify([])
         # Overlay status from Supabase (persists across deploys)
         try:
-            with get_db() as conn:
-                rows = conn.execute("SELECT * FROM funnel_lead_status").fetchall()
-            status_map = {row_to_dict(r)["url"]: row_to_dict(r) for r in rows}
-            for lead in leads:
-                url = lead.get("url") or lead.get("id", "")
-                if url in status_map:
-                    s = status_map[url]
-                    lead["status"] = s.get("status", "new")
-                    lead["contacted_at"] = s.get("contacted_at")
-                    lead["valuation"] = s.get("valuation")
-        except Exception:
-            pass  # fall back to file-based status
+            supa_url = os.environ.get("SUPABASE_URL", "")
+            supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+                        or os.environ.get("SUPABASE_ANON_KEY", ""))
+            if supa_url and supa_key:
+                _h = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
+                r = _req_lib.get(
+                    f"{supa_url}/rest/v1/funnel_lead_status",
+                    headers=_h, timeout=10
+                )
+                if r.status_code == 200:
+                    status_map = {row["url"]: row for row in (r.json() or []) if row.get("url")}
+                    for lead in leads:
+                        url = lead.get("url") or lead.get("id", "")
+                        if url in status_map:
+                            s = status_map[url]
+                            lead["status"] = s.get("status", "new")
+                            lead["contacted_at"] = s.get("contacted_at")
+                            lead["valuation"] = s.get("valuation")
+        except Exception as e:
+            print(f"[funnels] status overlay error: {e}")
         # Calculate liquidity score for each lead (price_num → price mapping)
         try:
             from Funnels.dashboard.utils import calculate_liquidity_score
             for lead in leads:
                 if lead.get("score") is None:
-                    # utils.py reads "price" key; our Supabase data uses "price_num"
                     score_input = dict(lead)
                     if score_input.get("price_num") and not score_input.get("price"):
                         score_input["price"] = f"CLP{score_input['price_num']}"
