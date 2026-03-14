@@ -3073,52 +3073,113 @@ def delete_consignacion_photos(cid):
 
 @app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
 def delete_consignacion(cid):
-    """Delete a consignacion and its associated photos from Supabase."""
+    """Delete a consignacion and cascade-remove all linked records:
+    vehicle_images (Storage + table), Supabase listing, Supabase appraisal,
+    local cars (inventario) row, then the consignacion itself.
+    """
     import requests as req_lib
     with get_db() as conn:
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
 
-    # 1. Delete photos from Supabase if appraisal exists
-    appraisal_id = row["appraisal_supabase_id"] if "appraisal_supabase_id" in row.keys() else None
-    if appraisal_id:
-        supabase_url, headers = _supa_headers()
-        if supabase_url:
-            try:
-                r = req_lib.get(
-                    supabase_url + "/rest/v1/vehicle_images",
-                    params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
-                    headers=headers, timeout=8
-                )
-                photos = r.json() if r.status_code == 200 else []
-                for p in photos:
-                    url = p.get("url", "")
-                    if "/vehicle-images/" in url:
-                        obj_path = url.split("/vehicle-images/", 1)[1]
-                        try:
-                            req_lib.delete(
-                                supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
-                                headers=headers, timeout=8
-                            )
-                        except Exception:
-                            pass
-                if photos:
-                    ids_csv = ",".join(str(p["id"]) for p in photos)
-                    req_lib.delete(
-                        supabase_url + "/rest/v1/vehicle_images",
-                        params={"id": "in.({})".format(ids_csv)},
-                        headers=headers, timeout=8
-                    )
-            except Exception as e:
-                print(f"[delete_consignacion] photo cleanup error: {e}")
+    row_keys = row.keys()
+    appraisal_id  = row["appraisal_supabase_id"] if "appraisal_supabase_id" in row_keys else None
+    listing_id    = row["listing_id"]             if "listing_id"            in row_keys else None
+    car_id        = row["car_id"]                 if "car_id"                in row_keys else None
+    plate         = (row["plate"] if "plate" in row_keys else None) or ""
 
-    # 2. Delete the consignacion record
+    supabase_url, supa_headers = _supa_headers()
+
+    # ── 1. Delete vehicle photos (Storage files + vehicle_images rows) ────────
+    if appraisal_id and supabase_url:
+        try:
+            r = req_lib.get(
+                supabase_url + "/rest/v1/vehicle_images",
+                params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
+                headers=supa_headers, timeout=8
+            )
+            photos = r.json() if r.status_code == 200 else []
+            for p in photos:
+                url = p.get("url", "")
+                if "/vehicle-images/" in url:
+                    obj_path = url.split("/vehicle-images/", 1)[1]
+                    try:
+                        req_lib.delete(
+                            supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
+                            headers=supa_headers, timeout=8
+                        )
+                    except Exception:
+                        pass
+            if photos:
+                ids_csv = ",".join(str(p["id"]) for p in photos)
+                req_lib.delete(
+                    supabase_url + "/rest/v1/vehicle_images",
+                    params={"id": "in.({})".format(ids_csv)},
+                    headers=supa_headers, timeout=8
+                )
+        except Exception as e:
+            print(f"[delete_consignacion] photo cleanup error: {e}")
+
+    # ── 2. Delete Supabase listing (catálogo / sección vehículos) ─────────────
+    if supabase_url:
+        try:
+            # Try by listing_id first (most precise), then fall back to consignacion_id
+            if listing_id:
+                req_lib.delete(
+                    supabase_url + "/rest/v1/listings",
+                    params={"id": "eq.{}".format(listing_id)},
+                    headers=supa_headers, timeout=8
+                )
+                print(f"[delete_consignacion] deleted listing id={listing_id}")
+            else:
+                # No cached listing_id — query by consignacion_id column
+                req_lib.delete(
+                    supabase_url + "/rest/v1/listings",
+                    params={"consignacion_id": "eq.{}".format(cid)},
+                    headers=supa_headers, timeout=8
+                )
+                print(f"[delete_consignacion] deleted listing(s) for consignacion_id={cid}")
+        except Exception as e:
+            print(f"[delete_consignacion] listing delete error: {e}")
+
+    # ── 3. Delete Supabase appraisal row ──────────────────────────────────────
+    if appraisal_id and supabase_url:
+        try:
+            req_lib.delete(
+                supabase_url + "/rest/v1/appraisals",
+                params={"id": "eq.{}".format(appraisal_id)},
+                headers=supa_headers, timeout=8
+            )
+            print(f"[delete_consignacion] deleted appraisal id={appraisal_id}")
+        except Exception as e:
+            print(f"[delete_consignacion] appraisal delete error: {e}")
+
+    # ── 4. Delete local inventario (cars) row ─────────────────────────────────
+    with get_conn() as conn:
+        try:
+            if car_id:
+                conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
+                print(f"[delete_consignacion] deleted car id={car_id}")
+            elif plate:
+                conn.execute("DELETE FROM cars WHERE patente=?", (plate.upper(),))
+                print(f"[delete_consignacion] deleted car patente={plate.upper()}")
+            conn.commit()
+        except Exception as e:
+            print(f"[delete_consignacion] cars delete error: {e}")
+
+    # ── 5. Delete the consignacion record itself ──────────────────────────────
     with get_db() as conn:
         conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
         conn.commit()
 
-    return jsonify({"ok": True})
+    print(f"[delete_consignacion] consignacion {cid} fully deleted (listing, appraisal, cars, photos)")
+    return jsonify({"ok": True, "deleted": {
+        "consignacion_id": cid,
+        "listing_id": listing_id,
+        "appraisal_id": appraisal_id,
+        "car_id": car_id,
+    }})
 
 
 @app.route("/api/consignaciones/<int:cid>/fotos", methods=["POST"])
