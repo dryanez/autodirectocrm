@@ -3095,6 +3095,159 @@ def get_consignacion_photos(cid):
         return jsonify({"photos": [], "error": str(e)})
 
 
+# ─── Shared Cascade-Delete Helper ────────────────────────────────────────────
+def _cascade_delete_vehicle(plate=None, consignacion_id=None, crm_lead_id=None):
+    """
+    Nuclear delete: given ANY identifier (plate, consignacion_id, or crm_lead_id),
+    resolves all linked records and deletes them everywhere:
+      • vehicle_images  (Supabase Storage files + table rows)
+      • listings        (Supabase catalog)
+      • appraisals      (Supabase)
+      • cars            (local inventario)
+      • crm_activities  (local CRM)
+      • crm_leads       (local CRM)
+      • consignaciones  (local)
+    Returns a dict summarising what was deleted.
+    """
+    import requests as req_lib
+    import traceback
+    deleted = {}
+
+    # ── Step 0: Resolve all identifiers ──────────────────────────────────────
+    consig = None
+    crm_lead = None
+
+    if consignacion_id:
+        with get_db() as conn:
+            row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (consignacion_id,)).fetchone()
+            if row:
+                consig = row_to_dict(row)
+                plate = plate or (consig.get("plate") or "").upper().strip() or None
+
+    if crm_lead_id:
+        with get_crm_conn() as conn:
+            row = conn.execute("SELECT * FROM crm_leads WHERE id=?", (crm_lead_id,)).fetchone()
+            if row:
+                crm_lead = row_to_dict(row)
+                plate = plate or (crm_lead.get("plate") or "").upper().strip() or None
+
+    # If we only have plate, resolve from DB
+    if plate and not consig:
+        with get_db() as conn:
+            row = conn.execute("SELECT * FROM consignaciones WHERE plate=? ORDER BY id DESC LIMIT 1", (plate,)).fetchone()
+            if row:
+                consig = row_to_dict(row)
+                consignacion_id = consig["id"]
+
+    if plate and not crm_lead:
+        with get_crm_conn() as conn:
+            row = conn.execute("SELECT * FROM crm_leads WHERE plate=? LIMIT 1", (plate.upper(),)).fetchone()
+            if row:
+                crm_lead = row_to_dict(row)
+                crm_lead_id = crm_lead["id"]
+
+    if consig:
+        consignacion_id = consig["id"]
+    if crm_lead:
+        crm_lead_id = crm_lead["id"]
+
+    appraisal_id = (consig or {}).get("appraisal_supabase_id")
+    listing_id   = (consig or {}).get("listing_id")
+    car_id       = (consig or {}).get("car_id")
+
+    supabase_url, supa_headers = _supa_headers()
+
+    # ── Step 1: Delete vehicle photos (Storage + table) ──────────────────────
+    if appraisal_id and supabase_url:
+        try:
+            r = req_lib.get(
+                supabase_url + "/rest/v1/vehicle_images",
+                params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
+                headers=supa_headers, timeout=8
+            )
+            photos = r.json() if r.status_code == 200 else []
+            for p in photos:
+                url = p.get("url", "")
+                if "/vehicle-images/" in url:
+                    obj_path = url.split("/vehicle-images/", 1)[1]
+                    try:
+                        req_lib.delete(supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
+                                       headers=supa_headers, timeout=8)
+                    except Exception:
+                        pass
+            if photos:
+                ids_csv = ",".join(str(p["id"]) for p in photos)
+                req_lib.delete(supabase_url + "/rest/v1/vehicle_images",
+                               params={"id": "in.({})".format(ids_csv)},
+                               headers=supa_headers, timeout=8)
+                deleted["photos"] = len(photos)
+        except Exception as e:
+            print(f"[cascade_delete] photo error: {e}")
+
+    # ── Step 2: Delete Supabase listing ──────────────────────────────────────
+    if supabase_url:
+        try:
+            if listing_id:
+                req_lib.delete(supabase_url + "/rest/v1/listings",
+                               params={"id": "eq.{}".format(listing_id)},
+                               headers=supa_headers, timeout=8)
+                deleted["listing_id"] = listing_id
+            elif consignacion_id:
+                req_lib.delete(supabase_url + "/rest/v1/listings",
+                               params={"consignacion_id": "eq.{}".format(consignacion_id)},
+                               headers=supa_headers, timeout=8)
+                deleted["listing_consignacion_id"] = consignacion_id
+        except Exception as e:
+            print(f"[cascade_delete] listing error: {e}")
+
+    # ── Step 3: Delete Supabase appraisal ────────────────────────────────────
+    if appraisal_id and supabase_url:
+        try:
+            req_lib.delete(supabase_url + "/rest/v1/appraisals",
+                           params={"id": "eq.{}".format(appraisal_id)},
+                           headers=supa_headers, timeout=8)
+            deleted["appraisal_id"] = appraisal_id
+        except Exception as e:
+            print(f"[cascade_delete] appraisal error: {e}")
+
+    # ── Step 4: Delete local inventario (cars) ────────────────────────────────
+    try:
+        with get_conn() as conn:
+            if car_id:
+                conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
+                deleted["car_id"] = car_id
+            elif plate:
+                conn.execute("DELETE FROM cars WHERE patente=?", (plate.upper(),))
+                deleted["car_plate"] = plate.upper()
+            conn.commit()
+    except Exception as e:
+        print(f"[cascade_delete] cars error: {e}")
+
+    # ── Step 5: Delete CRM activities + lead ─────────────────────────────────
+    if crm_lead_id:
+        try:
+            with get_crm_conn() as conn:
+                conn.execute("DELETE FROM crm_activities WHERE lead_id=?", (crm_lead_id,))
+                conn.execute("DELETE FROM crm_leads WHERE id=?", (crm_lead_id,))
+                conn.commit()
+                deleted["crm_lead_id"] = crm_lead_id
+        except Exception as e:
+            print(f"[cascade_delete] crm_lead error: {e}")
+
+    # ── Step 6: Delete consignacion ───────────────────────────────────────────
+    if consignacion_id:
+        try:
+            with get_db() as conn:
+                conn.execute("DELETE FROM consignaciones WHERE id=?", (consignacion_id,))
+                conn.commit()
+                deleted["consignacion_id"] = consignacion_id
+        except Exception as e:
+            print(f"[cascade_delete] consignacion error: {e}")
+
+    print(f"[cascade_delete] done — {deleted}")
+    return deleted
+
+
 @app.route("/api/consignaciones/<int:cid>/photos", methods=["DELETE"])
 def delete_consignacion_photos(cid):
     """Delete ALL vehicle_images for a consignacion (used by camera 'start fresh')."""
@@ -3148,130 +3301,13 @@ def delete_consignacion_photos(cid):
 
 @app.route("/api/consignaciones/<int:cid>", methods=["DELETE"])
 def delete_consignacion(cid):
-    """Delete a consignacion and cascade-remove all linked records:
-    vehicle_images (Storage + table), Supabase listing, Supabase appraisal,
-    local cars (inventario) row, then the consignacion itself.
-    """
-    import requests as req_lib
+    """Cascade-delete everything linked to this consignacion."""
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+        row = conn.execute("SELECT id FROM consignaciones WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
-
-    row_keys = row.keys()
-    appraisal_id  = row["appraisal_supabase_id"] if "appraisal_supabase_id" in row_keys else None
-    listing_id    = row["listing_id"]             if "listing_id"            in row_keys else None
-    car_id        = row["car_id"]                 if "car_id"                in row_keys else None
-    plate         = (row["plate"] if "plate" in row_keys else None) or ""
-
-    supabase_url, supa_headers = _supa_headers()
-
-    # ── 1. Delete vehicle photos (Storage files + vehicle_images rows) ────────
-    if appraisal_id and supabase_url:
-        try:
-            r = req_lib.get(
-                supabase_url + "/rest/v1/vehicle_images",
-                params={"select": "id,url", "appraisal_id": "eq.{}".format(appraisal_id)},
-                headers=supa_headers, timeout=8
-            )
-            photos = r.json() if r.status_code == 200 else []
-            for p in photos:
-                url = p.get("url", "")
-                if "/vehicle-images/" in url:
-                    obj_path = url.split("/vehicle-images/", 1)[1]
-                    try:
-                        req_lib.delete(
-                            supabase_url + "/storage/v1/object/vehicle-images/" + obj_path,
-                            headers=supa_headers, timeout=8
-                        )
-                    except Exception:
-                        pass
-            if photos:
-                ids_csv = ",".join(str(p["id"]) for p in photos)
-                req_lib.delete(
-                    supabase_url + "/rest/v1/vehicle_images",
-                    params={"id": "in.({})".format(ids_csv)},
-                    headers=supa_headers, timeout=8
-                )
-        except Exception as e:
-            print(f"[delete_consignacion] photo cleanup error: {e}")
-
-    # ── 2. Delete Supabase listing (catálogo / sección vehículos) ─────────────
-    if supabase_url:
-        try:
-            # Try by listing_id first (most precise), then fall back to consignacion_id
-            if listing_id:
-                req_lib.delete(
-                    supabase_url + "/rest/v1/listings",
-                    params={"id": "eq.{}".format(listing_id)},
-                    headers=supa_headers, timeout=8
-                )
-                print(f"[delete_consignacion] deleted listing id={listing_id}")
-            else:
-                # No cached listing_id — query by consignacion_id column
-                req_lib.delete(
-                    supabase_url + "/rest/v1/listings",
-                    params={"consignacion_id": "eq.{}".format(cid)},
-                    headers=supa_headers, timeout=8
-                )
-                print(f"[delete_consignacion] deleted listing(s) for consignacion_id={cid}")
-        except Exception as e:
-            print(f"[delete_consignacion] listing delete error: {e}")
-
-    # ── 3. Delete Supabase appraisal row ──────────────────────────────────────
-    if appraisal_id and supabase_url:
-        try:
-            req_lib.delete(
-                supabase_url + "/rest/v1/appraisals",
-                params={"id": "eq.{}".format(appraisal_id)},
-                headers=supa_headers, timeout=8
-            )
-            print(f"[delete_consignacion] deleted appraisal id={appraisal_id}")
-        except Exception as e:
-            print(f"[delete_consignacion] appraisal delete error: {e}")
-
-    # ── 4. Delete local inventario (cars) row ─────────────────────────────────
-    with get_conn() as conn:
-        try:
-            if car_id:
-                conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
-                print(f"[delete_consignacion] deleted car id={car_id}")
-            elif plate:
-                conn.execute("DELETE FROM cars WHERE patente=?", (plate.upper(),))
-                print(f"[delete_consignacion] deleted car patente={plate.upper()}")
-            conn.commit()
-        except Exception as e:
-            print(f"[delete_consignacion] cars delete error: {e}")
-
-    # ── 5. Delete linked CRM lead (matched by plate) ──────────────────────────
-    crm_lead_deleted_id = None
-    if plate:
-        try:
-            with get_crm_conn() as crm:
-                lead_row = crm.execute(
-                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate.upper(),)
-                ).fetchone()
-                if lead_row:
-                    crm_lead_deleted_id = lead_row["id"]
-                    crm.execute("DELETE FROM crm_leads WHERE id=?", (crm_lead_deleted_id,))
-                    crm.commit()
-                    print(f"[delete_consignacion] deleted crm_lead id={crm_lead_deleted_id} plate={plate.upper()}")
-        except Exception as e:
-            print(f"[delete_consignacion] crm_lead delete error: {e}")
-
-    # ── 6. Delete the consignacion record itself ──────────────────────────────
-    with get_db() as conn:
-        conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
-        conn.commit()
-
-    print(f"[delete_consignacion] consignacion {cid} fully deleted (listing, appraisal, cars, photos, crm_lead)")
-    return jsonify({"ok": True, "deleted": {
-        "consignacion_id": cid,
-        "listing_id": listing_id,
-        "appraisal_id": appraisal_id,
-        "car_id": car_id,
-        "crm_lead_id": crm_lead_deleted_id,
-    }})
+    deleted = _cascade_delete_vehicle(consignacion_id=cid)
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 @app.route("/api/consignaciones/<int:cid>/fotos", methods=["POST"])
@@ -5881,9 +5917,49 @@ def crm_create_lead():
             )
             conn.commit()
             row = conn.execute("SELECT * FROM crm_leads WHERE id=?", (lead_id,)).fetchone()
-            return jsonify(row_to_dict(row)), 201
+
         except Exception as e:
             return jsonify({"error": str(e)}), 409
+
+    # ── Auto-create consignacion if plate not already in consignaciones ───────
+    plate = record.get('plate', '').upper().strip()
+    if plate:
+        try:
+            with get_db() as db_conn:
+                existing_consig = db_conn.execute(
+                    "SELECT id FROM consignaciones WHERE plate=? LIMIT 1", (plate,)
+                ).fetchone()
+            if not existing_consig:
+                now2 = datetime.now().isoformat()
+                first = record.get('first_name', '')
+                last  = record.get('last_name', '')
+                with get_db() as db_conn:
+                    db_conn.execute("""
+                        INSERT INTO consignaciones (
+                            owner_first_name, owner_last_name, owner_full_name,
+                            owner_rut, owner_phone, owner_country_code, owner_email,
+                            owner_region, owner_commune, owner_address,
+                            plate, car_make, car_model, car_year, mileage, version,
+                            appointment_date, appointment_time,
+                            status, created_at, updated_at
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (
+                        first, last, record.get('full_name', ''),
+                        record.get('rut'), record.get('phone'),
+                        record.get('country_code', '+56'), record.get('email'),
+                        record.get('region'), record.get('commune'), record.get('address'),
+                        plate,
+                        record.get('car_make', ''), record.get('car_model', ''),
+                        record.get('car_year'), record.get('mileage'), record.get('version'),
+                        record.get('appointment_date'), record.get('appointment_time'),
+                        'parte1_completa', now2, now2
+                    ))
+                    db_conn.commit()
+                    print(f"[crm_create_lead] auto-created consignacion for plate={plate}")
+        except Exception as e:
+            print(f"[crm_create_lead] consignacion auto-create error: {e}")
+
+    return jsonify(row_to_dict(row)), 201
 
 
 @app.route("/api/crm/leads/<int:lead_id>", methods=["GET"])
@@ -5963,14 +6039,13 @@ def crm_update_lead(lead_id):
 
 @app.route("/api/crm/leads/<int:lead_id>", methods=["DELETE"])
 def crm_delete_lead(lead_id):
+    """Cascade-delete everything linked to this CRM lead."""
     with get_crm_conn() as conn:
         row = conn.execute("SELECT id FROM crm_leads WHERE id=?", (lead_id,)).fetchone()
-        if not row:
-            return jsonify({"error": "Lead no encontrado"}), 404
-        conn.execute("DELETE FROM crm_activities WHERE lead_id=?", (lead_id,))
-        conn.execute("DELETE FROM crm_leads WHERE id=?", (lead_id,))
-        conn.commit()
-    return jsonify({"ok": True})
+    if not row:
+        return jsonify({"error": "Lead no encontrado"}), 404
+    deleted = _cascade_delete_vehicle(crm_lead_id=lead_id)
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 # ─── CRM API: Activities ──────────────────────────────────────────────────────
