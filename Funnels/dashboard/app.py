@@ -18,6 +18,10 @@ from datetime import datetime
 _THIS_DIR = str(Path(__file__).resolve().parent)
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
+# Also make sure it's first — another module named "utils" could shadow ours
+elif sys.path[0] != _THIS_DIR:
+    sys.path.remove(_THIS_DIR)
+    sys.path.insert(0, _THIS_DIR)
 
 app = Flask(__name__)
 
@@ -52,7 +56,16 @@ DATA_WRITE_DIR = _resolve_data_write_dir()
 _cached_listings = []
 
 
-from utils import calculate_liquidity_score, get_region_data
+# Import utils — use importlib as fallback in case sys.path shadowing occurs on Vercel
+try:
+    from utils import calculate_liquidity_score, get_region_data
+except ImportError:
+    import importlib.util as _ilu
+    _utils_spec = _ilu.spec_from_file_location("funnels_utils", Path(_THIS_DIR) / "utils.py")
+    _utils_mod = _ilu.module_from_spec(_utils_spec)
+    _utils_spec.loader.exec_module(_utils_mod)
+    calculate_liquidity_score = _utils_mod.calculate_liquidity_score
+    get_region_data = _utils_mod.get_region_data
 
 
 def normalize_apify_item(item):

@@ -165,7 +165,12 @@ if FUNNELS_DIR.exists():
     @funnels_bp.route('/api/leads', methods=['GET'])
     def funnels_api_leads():
         import requests as _req_lib
-        leads = list(funnels_module.get_leads())
+        import traceback
+        try:
+            leads = list(funnels_module.get_leads())
+        except Exception as e:
+            print(f"[funnels] get_leads() error: {e}\n{traceback.format_exc()}")
+            leads = []
         # If in-memory cache is empty (cold start / Vercel), load directly from Supabase REST
         if not leads:
             try:
