@@ -63,10 +63,76 @@
         }
         .insp-input:focus { border-color: #f59e0b; }
         .insp-input option { background: #1e293b; }
+
+        /* ── Custom Modal & Toast ───────────────────────────────── */
+        .modal-backdrop {
+            position: fixed; inset: 0; z-index: 9998;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+            animation: fadeIn 0.15s ease;
+        }
+        .modal-box {
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 28px 32px;
+            min-width: 340px; max-width: 480px; width: 90%;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+            animation: slideUp 0.2s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .modal-icon { font-size: 2.2rem; margin-bottom: 10px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+        .modal-msg { font-size: 0.875rem; color: #94a3b8; line-height: 1.5; margin-bottom: 22px; white-space: pre-line; }
+        .modal-btn-row { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-btn { padding: 9px 22px; border-radius: 9px; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; }
+        .modal-btn:hover { opacity: 0.85; }
+        .modal-btn-primary { background: #3b82f6; color: #fff; }
+        .modal-btn-danger  { background: #ef4444; color: #fff; }
+        .modal-btn-success { background: #22c55e; color: #fff; }
+        .modal-btn-cancel  { background: #334155; color: #cbd5e1; }
+
+        /* Toast */
+        #toast-container {
+            position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            background: #1e293b; border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px; padding: 13px 22px;
+            color: #f1f5f9; font-size: 0.875rem; font-weight: 500;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+            display: flex; align-items: center; gap: 10px;
+            animation: slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+            pointer-events: auto;
+        }
+        .toast.success { border-left: 4px solid #22c55e; }
+        .toast.error   { border-left: 4px solid #ef4444; }
+        .toast.info    { border-left: 4px solid #3b82f6; }
+        .toast.warning { border-left: 4px solid #f59e0b; }
+        .toast.fade-out { animation: fadeOut 0.3s ease forwards; }
+
+        @keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
+        @keyframes fadeOut { from { opacity:1 } to { opacity:0 } }
+        @keyframes slideUp { from { opacity:0; transform:translateY(18px) scale(0.97) } to { opacity:1; transform:translateY(0) scale(1) } }
     </style>
 </head>
 
 <body x-data="appData()" x-init="init()" class="h-screen flex overflow-hidden">
+
+<!-- ── Toast Container ─────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Custom Modal ────────────────────────────────────────────── -->
+<div id="custom-modal" style="display:none" class="modal-backdrop" onclick="if(event.target===this&&window._modalCanResolve)window._modalResolve(false)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div id="modal-icon" class="modal-icon text-center"></div>
+        <div id="modal-title" class="modal-title"></div>
+        <div id="modal-msg" class="modal-msg"></div>
+        <div class="modal-btn-row" id="modal-btns"></div>
+    </div>
+</div>
 
     <!-- Sidebar -->
     <aside class="w-64 glass flex flex-col border-r border-slate-700">
@@ -4009,7 +4075,7 @@
 
                         <!-- Delete -->
                         <button
-                            @click="if(confirm('¿Eliminar este comprador?')) { deleteComprador(compradorDetail.id) }"
+                            @click="if(await $modal({icon:'🗑️',title:'Eliminar comprador',msg:'¿Eliminar este comprador permanentemente?',type:'confirm',confirmLabel:'Eliminar',confirmClass:'modal-btn-danger'})) { deleteComprador(compradorDetail.id) }"
                             class="w-full bg-red-600/20 hover:bg-red-600/40 text-red-400 py-2 rounded-lg text-xs font-bold transition-colors">
                             <i class="ph ph-trash"></i> Eliminar Comprador
                         </button>
@@ -4451,7 +4517,7 @@
                 <p class="text-xs text-slate-400 mb-2">Cuando alguien consulta por tus vehículos en ChileAutos, recibirás el lead automáticamente como Comprador en el CRM.</p>
                 <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-cyan-400 flex items-center justify-between">
                     <span x-text="window.location.origin + '/api/webhooks/chileautos-lead'"></span>
-                    <button @click="navigator.clipboard.writeText(window.location.origin + '/api/webhooks/chileautos-lead').then(() => alert('✅ URL copiada'))"
+                    <button @click="navigator.clipboard.writeText(window.location.origin + '/api/webhooks/chileautos-lead').then(() => $toast('✅ URL copiada', 'success', 2000))"
                         class="text-slate-400 hover:text-white ml-3 flex-shrink-0">
                         <i class="ph ph-copy"></i>
                     </button>
@@ -4555,6 +4621,67 @@
     </div>
 
     <script>
+        /* ── Global modal & toast helpers ─────────────────────────────────── */
+        window._modalResolve = null;
+        window._modalCanResolve = false;
+
+        /**
+         * $modal({ icon, title, msg, type, buttons })
+         * type: 'alert' | 'confirm' | 'republish'
+         * Returns Promise<boolean>  (true = OK/Yes, false = Cancel)
+         */
+        function $modal({ icon='', title='', msg='', type='alert', confirmLabel='Aceptar', cancelLabel='Cancelar', confirmClass='modal-btn-primary' } = {}) {
+            const el    = document.getElementById('custom-modal');
+            const icoEl = document.getElementById('modal-icon');
+            const titEl = document.getElementById('modal-title');
+            const msgEl = document.getElementById('modal-msg');
+            const btns  = document.getElementById('modal-btns');
+
+            icoEl.textContent = icon;
+            titEl.textContent = title;
+            msgEl.textContent = msg;
+            btns.innerHTML    = '';
+
+            el.style.display = 'flex';
+            window._modalCanResolve = (type !== 'alert');
+
+            return new Promise(resolve => {
+                window._modalResolve = (val) => {
+                    el.style.display = 'none';
+                    resolve(val);
+                };
+
+                if (type !== 'alert') {
+                    const cancel = document.createElement('button');
+                    cancel.className = 'modal-btn modal-btn-cancel';
+                    cancel.textContent = cancelLabel;
+                    cancel.onclick = () => window._modalResolve(false);
+                    btns.appendChild(cancel);
+                }
+
+                const ok = document.createElement('button');
+                ok.className = `modal-btn ${confirmClass}`;
+                ok.textContent = confirmLabel;
+                ok.onclick = () => window._modalResolve(true);
+                btns.appendChild(ok);
+                ok.focus();
+            });
+        }
+
+        /** $toast(msg, type='success', duration=3500) */
+        function $toast(msg, type='success', duration=3500) {
+            const icons = { success:'✅', error:'❌', info:'ℹ️', warning:'⚠️' };
+            const c = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = `toast ${type}`;
+            t.innerHTML = `<span>${icons[type]||''}</span><span>${msg}</span>`;
+            c.appendChild(t);
+            setTimeout(() => {
+                t.classList.add('fade-out');
+                setTimeout(() => t.remove(), 320);
+            }, duration);
+        }
+
         function appData() {
             return {
                 currentView: 'dashboard',
@@ -4772,12 +4899,12 @@
                         await this.loadUsuarios();
                     } else {
                         const e = await r.json();
-                        alert('Error: ' + (e.error || 'Unknown'));
+                        $toast('Error: ' + (e.error || 'Unknown'), 'error');
                     }
                 },
 
                 async deleteUsuario(id) {
-                    if (!confirm('¿Desactivar este usuario?')) return;
+                    if (!await $modal({icon:'⚠️',title:'Desactivar usuario',msg:'¿Desactivar este usuario?',type:'confirm',confirmLabel:'Desactivar',confirmClass:'modal-btn-danger'})) return;
                     await this.authFetch('/api/users/' + id, { method: 'DELETE' });
                     await this.loadUsuarios();
                 },
@@ -4831,7 +4958,7 @@
                         this.refresh();
                     } else {
                         const err = await res.json();
-                        alert('Error: ' + err.error);
+                        $toast('Error: ' + err.error, 'error');
                     }
                 },
 
@@ -4852,11 +4979,11 @@
                         const step2 = await this.authFetch(`/api/dte/simulate_send/${this.activeCar.id}`, { method: 'POST' });
                         const data2 = await step2.json();
 
-                        alert(data2.message);
+                        $toast(data2.message, 'success');
                         this.closeModal('dte');
                         this.refresh();
                     } catch (e) {
-                        alert(e.message);
+                        $toast(e.message, 'error');
                     } finally {
                         this.dteLoading = false;
                     }
@@ -5215,7 +5342,7 @@
                     if (idx === undefined) idx = this.invPhotoIdx;
                     const photos = this.invDetail?.photos || [];
                     if (photos.length === 0) {
-                        alert('No hay fotos para editar. Sube fotos primero.');
+                        $toast('No hay fotos para editar. Sube fotos primero.', 'warning');
                         return;
                     }
                     if (idx >= photos.length) idx = 0;
@@ -5252,7 +5379,7 @@
                     console.log('[edSaveEdits] photos count:', photos.length);
                     const photo = photos[this.photoEditorIdx];
                     if (!photo || !photo.id) {
-                        alert('⚠️ No hay foto seleccionada para guardar (idx=' + this.photoEditorIdx + ', total=' + photos.length + ')');
+                        $toast('⚠️ No hay foto seleccionada para guardar', 'warning');
                         return;
                     }
                     console.log('[edSaveEdits] saving photo.id=', photo.id);
@@ -5279,7 +5406,7 @@
                         const result = await resp.json().catch(() => ({}));
                         console.log('[edSaveEdits] response body:', result);
                         if (!resp.ok || result.error) {
-                            alert('❌ Error al guardar: ' + (result.error || resp.status + ' ' + resp.statusText));
+                            $toast('❌ Error al guardar foto: ' + (result.error || resp.status + ' ' + resp.statusText), 'error');
                             this.edSaving = false;
                             return;
                         }
@@ -5295,7 +5422,7 @@
                         console.log('[edSaveEdits] ✅ saved successfully', result.fallback ? '(label fallback)' : '');
                     } catch (e) {
                         console.error('[edSaveEdits] network error:', e);
-                        alert('❌ Error de red al guardar ediciones: ' + e.message);
+                        $toast('❌ Error de red al guardar ediciones: ' + e.message, 'error');
                     }
                     this.edSaving = false;
                 },
@@ -5325,7 +5452,7 @@
                 async deleteSinglePhoto(photoIndex) {
                     if (!this.invDetail?.photos?.[photoIndex]) return;
                     const photo = this.invDetail.photos[photoIndex];
-                    if (!confirm('¿Eliminar esta foto permanentemente?')) return;
+                    if (!await $modal({icon:'🗑️',title:'Eliminar foto',msg:'¿Eliminar esta foto permanentemente? Esta acción no se puede deshacer.',type:'confirm',confirmLabel:'Eliminar',confirmClass:'modal-btn-danger'})) return;
                     // Delete from Supabase via API
                     if (photo.id) {
                         try {
@@ -5467,7 +5594,7 @@
                         // Show brief save indicator
                         this.invSaveFlash = true;
                         setTimeout(() => { this.invSaveFlash = false; }, 1500);
-                    } catch (e) { console.error('updateInvField', e); alert('❌ Error guardando: ' + e.message); }
+                    } catch (e) { console.error('updateInvField', e); $toast('❌ Error guardando: ' + e.message, 'error'); }
                 },
 
                 async uploadInvPhotos(event, photoType) {
@@ -5476,7 +5603,7 @@
                     if (!files.length) return;
                     const appraisalId = this.invDetail.appraisal_supabase_id;
                     if (!appraisalId) {
-                        alert('⚠️ Este vehículo no tiene inspección asociada. Crea una inspección primero.');
+                        $toast('⚠️ Este vehículo no tiene inspección asociada. Crea una inspección primero.', 'warning');
                         return;
                     }
                     const type = photoType || 'exterior'; // 'exterior', 'interior', or 'social'
@@ -5593,10 +5720,10 @@
                             this.$refs.invDescription.value = d.description;
                             await this.updateInvField('description', d.description);
                         } else {
-                            alert('❌ ' + (d.error || 'Error generando descripción'));
+                            $toast('❌ ' + (d.error || 'Error generando descripción'), 'error');
                         }
                     } catch (e) {
-                        alert('❌ Error: ' + e.message);
+                        $toast('❌ Error: ' + e.message, 'error');
                     } finally {
                         this.invAiLoading = false;
                     }
@@ -5736,11 +5863,11 @@
                         });
                         const data = await r.json();
                         if (data.ok) {
-                            alert('✅ Ajustes guardados correctamente');
+                            $toast('✅ Ajustes guardados correctamente', 'success');
                         } else {
-                            alert('❌ Error: ' + (data.error || 'Error desconocido'));
+                            $toast('❌ Error: ' + (data.error || 'Error desconocido'), 'error');
                         }
-                    } catch (e) { alert('❌ Error: ' + e.message); }
+                    } catch (e) { $toast('❌ Error: ' + e.message, 'error'); }
                 },
 
                 async testChileAutosConnection() {
@@ -5764,12 +5891,12 @@
                                 this.invDetail.chileautos_id = data.chileautos_id;
                             }
                             await this.loadInventario();
-                            alert('✅ ¡Publicado en ChileAutos!\n\nID: ' + data.chileautos_id + '\nEstado: En Stock');
+                            $toast('✅ Publicado en ChileAutos — ID: ' + data.chileautos_id, 'success', 4000);
                         } else {
-                            alert('❌ Error ChileAutos: ' + (data.error || 'Error desconocido') + (data.detail ? '\n\nDetalle: ' + data.detail : ''));
+                            $toast('❌ Error ChileAutos: ' + (data.error || 'Error desconocido'), 'error');
                         }
                     } catch (e) {
-                        alert('❌ Error de conexión: ' + e.message);
+                        $toast('❌ Error de conexión: ' + e.message, 'error');
                     }
                     this.chileautosPublishing = false;
                 },
@@ -5785,7 +5912,7 @@
                 cavDebugShowAll: false,
 
                 async obtenerCAVStream(car) {
-                    if (!car?.plate) { alert('⚠️ Ingrese la patente primero.'); return; }
+                    if (!car?.plate) { $toast('⚠️ Ingrese la patente primero', 'warning'); return; }
                     const plate = car.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
                     // Reset state — show live view inline immediately
@@ -5864,13 +5991,13 @@
 
                 async saveNewComprador() {
                     if (!this.newComprador.first_name.trim() || !this.newComprador.last_name.trim()) {
-                        alert('⚠️ Ingresa nombre y apellido'); return;
+                        $toast('⚠️ Ingresa nombre y apellido', 'warning'); return;
                     }
                     if (this.newComprador.rut && !this.validateRut(this.newComprador.rut)) {
-                        alert('⚠️ El RUT ingresado no es válido (ej: 12.345.678-9)'); return;
+                        $toast('⚠️ El RUT ingresado no es válido (ej: 12.345.678-9)', 'warning'); return;
                     }
                     if (this.newComprador.phone && !this.validatePhone(this.newComprador.phone)) {
-                        alert('⚠️ El teléfono ingresado no es válido'); return;
+                        $toast('⚠️ El teléfono ingresado no es válido', 'warning'); return;
                     }
                     try {
                         const r = await this.authFetch('/api/compradores', {
@@ -5894,7 +6021,7 @@
                             await this.loadConsignaciones();
                             await this.refresh();
                         }
-                    } catch (e) { alert('Error: ' + e.message); }
+                    } catch (e) { $toast('Error: ' + e.message, 'error'); }
                 },
 
                 async updateCompradorField(field, value) {
@@ -5935,11 +6062,11 @@
                             await this.loadCompradores();
                             await this.loadConsignaciones();
                             await this.refresh();
-                            alert('✅ Auto vinculado: ' + d.car_description + ' (' + d.car_plate + ')');
+                            $toast('✅ Auto vinculado: ' + d.car_description + ' (' + d.car_plate + ')', 'success');
                         } else {
-                            alert('❌ ' + (d.error || 'Error'));
+                            $toast('❌ ' + (d.error || 'Error'), 'error');
                         }
-                    } catch (e) { alert('❌ Error: ' + e.message); }
+                    } catch (e) { $toast('❌ Error: ' + e.message, 'error'); }
                 },
 
                 async openCarPicker(context = 'detail') {
@@ -6002,7 +6129,7 @@
                     this.creditSimSaved = false;
                     const financed = this.creditSim.car_price - this.creditSim.down_payment;
                     if (financed <= 0 || this.creditSim.months <= 0) {
-                        alert('El monto financiado debe ser mayor a 0');
+                        $toast('El monto financiado debe ser mayor a 0', 'warning');
                         return;
                     }
                     const monthlyRate = (this.creditSim.annual_rate_pct / 100) / 12;
@@ -6052,9 +6179,9 @@
                             this.compradorDetail.credit_rate = this.creditSim.annual_rate_pct / 100;
                             await this.loadCompradores();
                         } else {
-                            alert('❌ ' + (d.error || 'Error'));
+                            $toast('❌ ' + (d.error || 'Error'), 'error');
                         }
-                    } catch (e) { alert('❌ Error: ' + e.message); }
+                    } catch (e) { $toast('❌ Error: ' + e.message, 'error'); }
                 },
 
                 openNotaVenta(buyerId) {
@@ -6070,7 +6197,7 @@
                         await this.loadCompradores();
                         await this.loadConsignaciones();
                         await this.refresh();
-                    } catch (e) { alert('Error: ' + e.message); }
+                    } catch (e) { $toast('Error: ' + e.message, 'error'); }
                 },
 
                 openContract(consigId) {
@@ -6173,12 +6300,12 @@
                             if (this.consigDetail?.id) {
                                 await this.openConsignacion(this.consigDetail.id);
                             }
-                            alert('✅ Contrato firmado exitosamente.\n\nEl contrato ha sido firmado digitalmente y guardado.');
+                            $toast('✅ Contrato firmado digitalmente y guardado', 'success', 4000);
                         } else {
-                            alert('❌ Error: ' + (data.error || 'Error firmando'));
+                            $toast('❌ Error al firmar: ' + (data.error || 'Error firmando'), 'error');
                         }
                     } catch (e) {
-                        alert('❌ Error: ' + e.message);
+                        $toast('❌ Error: ' + e.message, 'error');
                     }
                     this.contractSigning = false;
                 },
@@ -6214,12 +6341,12 @@
                         const data = await res.json();
                         if (data.ok) {
                             this.inspEmailOpen = false;
-                            alert('✅ Email enviado correctamente a ' + this.inspEmailTo);
+                            $toast('✅ Email enviado correctamente a ' + this.inspEmailTo, 'success');
                         } else {
-                            alert('❌ Error: ' + (data.error || 'No se pudo enviar'));
+                            $toast('❌ No se pudo enviar: ' + (data.error || ''), 'error');
                         }
                     } catch (e) {
-                        alert('❌ Error de conexión: ' + e.message);
+                        $toast('❌ Error de conexión: ' + e.message, 'error');
                     }
                     this.inspEmailSending = false;
                 },
@@ -6401,14 +6528,14 @@
                         // Open contract for signing
                         const consigId = this.insp._consignacionId;
                         if (consigId) {
-                            const signNow = confirm('✅ Inspección guardada correctamente.\n\n¿Generar y firmar el contrato de consignación ahora?');
+                            const signNow = await $modal({icon:'📋',title:'Inspección guardada',msg:'¿Generar y firmar el contrato de consignación ahora?',type:'confirm',confirmLabel:'Sí, firmar contrato',cancelLabel:'Después',confirmClass:'modal-btn-success'});
                             if (signNow) {
                                 this.openContract(consigId);
                             } else {
                                 // Auto-send email if client has email
                                 const clientEmail = this.insp.clientEmail;
                                 if (clientEmail && data.appraisal_id) {
-                                    const sendNow = confirm('¿Enviar informe por email a ' + clientEmail + '?');
+                                    const sendNow = await $modal({icon:'📧',title:'Enviar informe',msg:'¿Enviar informe por email a ' + clientEmail + '?',type:'confirm',confirmLabel:'Enviar',confirmClass:'modal-btn-primary'});
                                     if (sendNow) {
                                         try {
                                             const emailRes = await this.authFetch('/api/inspecciones/' + data.appraisal_id + '/email', {
@@ -6418,21 +6545,21 @@
                                             });
                                             const emailData = await emailRes.json();
                                             if (emailData.ok) {
-                                                alert('📧 Email enviado a ' + clientEmail);
+                                                $toast('📧 Email enviado a ' + clientEmail, 'success');
                                             } else {
-                                                alert('⚠️ El email falló: ' + (emailData.error || 'Error'));
+                                                $toast('⚠️ El email falló: ' + (emailData.error || 'Error'), 'warning');
                                             }
                                         } catch (emailErr) {
-                                            alert('⚠️ El email falló: ' + emailErr.message);
+                                            $toast('⚠️ El email falló: ' + emailErr.message, 'warning');
                                         }
                                     }
                                 }
                             }
                         } else {
-                            alert('✅ Inspección guardada correctamente');
+                            $toast('✅ Inspección guardada correctamente', 'success');
                         }
                     } catch (e) {
-                        alert('❌ Error: ' + e.message);
+                        $toast('❌ Error: ' + e.message, 'error');
                     }
                     this.inspSaving = false;
                 },
@@ -6451,7 +6578,7 @@
                         if (!i.vehicleAno) missing.push('Año');
                         if (!i.vehicleKm && i.vehicleKm !== 0) missing.push('Kilometraje');
                         if (missing.length) {
-                            alert('⚠️ Campos obligatorios:\n• ' + missing.join('\n• '));
+                            await $modal({icon:'⚠️',title:'Campos obligatorios',msg:'Por favor completa:\n• ' + missing.join('\n• '),type:'alert',confirmLabel:'Entendido',confirmClass:'modal-btn-primary'});
                             return false;
                         }
                     }
@@ -6475,8 +6602,7 @@
                 },
 
                 async saveConsignacion(id, data) {
-                    console.log(`[SimplyAPI] Saving Consignacion #${id}...`);
-                    console.log(`[SimplyAPI] Payload:`, data);
+                    console.log(`[SimplyAPI] Saving Consignacion #${id}...`, data);
 
                     const res = await this.authFetch(`/api/consignaciones/${id}`, {
                         method: 'PATCH',
@@ -6487,23 +6613,54 @@
                     const result = await res.json();
                     console.log(`[SimplyAPI] Server Response:`, result);
 
-                    if (res.ok) {
-                        this.consigEdits = {};
-                        await this.openConsignacion(id);
-                        await this.loadConsignaciones();
-                        // Always refresh CRM + inventory in case names/prices changed
-                        await this.loadCRM();
-                        await this.refresh();
+                    if (!res.ok) {
+                        await $modal({ icon:'❌', title:'Error al guardar', msg: result.error || 'Error desconocido', type:'alert', confirmLabel:'Cerrar', confirmClass:'modal-btn-danger' });
+                        return;
+                    }
 
-                        // Visual confirmation
-                        alert('✅ Cambios guardados y sincronizados con el CRM correctamente.');
+                    this.consigEdits = {};
+                    await this.openConsignacion(id);
+                    await this.loadConsignaciones();
+                    await this.loadCRM();
+                    await this.refresh();
+
+                    // Check if car is already published on the web
+                    const detail = this.consigDetail || {};
+                    const isPublished = !!(detail.listing_id);
+
+                    if (isPublished) {
+                        // Ask to republish with the new data
+                        const shouldRepub = await $modal({
+                            icon: '🌐',
+                            title: 'Actualizar publicación web',
+                            msg: 'Este vehículo ya está publicado en autodirecto.cl.\n¿Quieres republicar ahora con los cambios que acabas de guardar?',
+                            type: 'confirm',
+                            confirmLabel: 'Sí, republicar',
+                            cancelLabel: 'No por ahora',
+                            confirmClass: 'modal-btn-success'
+                        });
+                        if (shouldRepub) {
+                            try {
+                                const rr = await this.authFetch(`/api/consignaciones/${id}/publicar`, { method: 'POST' });
+                                const rd = await rr.json().catch(() => ({}));
+                                if (rd.ok) {
+                                    $toast('✅ Cambios guardados y publicación actualizada en autodirecto.cl', 'success', 4000);
+                                } else {
+                                    $toast('Cambios guardados, pero hubo un error al republicar: ' + (rd.error || ''), 'warning', 5000);
+                                }
+                            } catch(e) {
+                                $toast('Cambios guardados. Error al republicar: ' + e.message, 'warning', 5000);
+                            }
+                        } else {
+                            $toast('Cambios guardados. La publicación web no fue actualizada.', 'info');
+                        }
                     } else {
-                        alert(`❌ error: ${result.error || 'Error desconocido'}`);
+                        $toast('Cambios guardados correctamente ✓', 'success');
                     }
                 },
 
                 async promoteToInventory(id) {
-                    if (!confirm('¿Promover esta consignación al inventario? Se creará un auto en el inventario y un lead en el CRM.')) return;
+                    if (!await $modal({icon:'⬆️',title:'Promover a Inventario',msg:'¿Promover esta consignación al inventario? Se creará un auto en el inventario y un lead en el CRM.',type:'confirm',confirmLabel:'Promover',confirmClass:'modal-btn-success'})) return;
                     const res = await this.authFetch(`/api/consignaciones/${id}/promote`, { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
@@ -6512,14 +6669,14 @@
                         await this.loadInventario();
                         await this.loadCRM();
                         await this.refresh();
-                        alert('✅ Vehículo promovido al inventario (ID #' + data.car_id + ') y agregado al CRM como En Venta');
+                        $toast('✅ Vehículo promovido al inventario (ID #' + data.car_id + ') y agregado al CRM como En Venta', 'success', 4000);
                     } else {
-                        alert('Error: ' + (data.error || 'No se pudo promover'));
+                        $toast('Error: ' + (data.error || 'No se pudo promover'), 'error');
                     }
                 },
 
                 async deleteConsignacion(id) {
-                    if (!confirm('¿Eliminar esta consignación permanentemente?\nSe borrarán también las fotos asociadas.')) return;
+                    if (!await $modal({icon:'🗑️',title:'Eliminar consignación',msg:'¿Eliminar esta consignación permanentemente?\nSe borrarán también las fotos asociadas.',type:'confirm',confirmLabel:'Eliminar',confirmClass:'modal-btn-danger'})) return;
                     const res = await this.authFetch(`/api/consignaciones/${id}`, { method: 'DELETE' });
                     if (res.ok) {
                         this.consigDetailOpen = false;
@@ -6528,12 +6685,12 @@
                         await this.loadCRM();
                         await this.refresh();
                     } else {
-                        alert('Error al eliminar consignación');
+                        $toast('Error al eliminar consignación', 'error');
                     }
                 },
 
                 async deleteInventarioCar(id) {
-                    if (!confirm('¿Eliminar este vehículo permanentemente?\nSe borrarán las fotos, publicaciones, CRM y todos los registros asociados.')) return;
+                    if (!await $modal({icon:'🗑️',title:'Eliminar vehículo',msg:'¿Eliminar este vehículo permanentemente?\nSe borrarán las fotos, publicaciones, CRM y todos los registros asociados.',type:'confirm',confirmLabel:'Eliminar',confirmClass:'modal-btn-danger'})) return;
                     const res = await this.authFetch(`/api/consignaciones/${id}`, { method: 'DELETE' });
                     if (res.ok) {
                         this.invDetail = null;
@@ -6541,12 +6698,12 @@
                         await this.loadCRM();
                         await this.refresh();
                     } else {
-                        alert('Error al eliminar vehículo');
+                        $toast('Error al eliminar vehículo', 'error');
                     }
                 },
 
                 async publishToWebsite(id) {
-                    if (!confirm('¿Publicar este vehículo en el catálogo de autodirecto.cl?\n\nSe publicará en el sitio web y el auto pasará a "En Venta" en el CRM e Inventario.')) return;
+                    if (!await $modal({icon:'🌐',title:'Publicar en autodirecto.cl',msg:'¿Publicar este vehículo en el catálogo de autodirecto.cl?\n\nSe publicará en el sitio web y el auto pasará a "En Venta" en el CRM e Inventario.',type:'confirm',confirmLabel:'Publicar',confirmClass:'modal-btn-success'})) return;
                     this.publishingId = id;
                     try {
                         const res = await this.authFetch(`/api/consignaciones/${id}/publicar`, { method: 'POST' });
@@ -6564,21 +6721,21 @@
                             await this.loadCRM();
                             await this.refresh();
                             const photoMsg = data.image_count > 0 ? ` con ${data.image_count} foto(s)` : '';
-                            alert(`✅ Vehículo publicado en el catálogo${photoMsg}.\n\n• Publicado en autodirecto.cl/catalogo\n• Movido a "En Venta"\n• Agregado al inventario`);
+                            $toast('✅ Vehículo publicado en el catálogo' + photoMsg + ' — Ya está en autodirecto.cl', 'success', 5000);
 
                             // Ask to publish on ChileAutos too
                             const alreadyOnCA = this.invDetail?.chileautos_id;
                             if (!alreadyOnCA) {
-                                const wantCA = confirm('🚗 ¿Publicar también en ChileAutos?\n\nSe publicará automáticamente en www.chileautos.cl para mayor exposición.');
+                                const wantCA = await $modal({icon:'🚗',title:'Publicar en ChileAutos',msg:'¿Publicar también en ChileAutos?\n\nSe publicará automáticamente en www.chileautos.cl para mayor exposición.',type:'confirm',confirmLabel:'Sí, publicar',confirmClass:'modal-btn-success'});
                                 if (wantCA) {
                                     await this.publishToChileAutos(id);
                                 }
                             }
                         } else {
-                            alert('❌ Error al publicar: ' + (data.error || 'Error desconocido'));
+                            $toast('❌ Error al publicar: ' + (data.error || 'Error desconocido'), 'error');
                         }
                     } catch (e) {
-                        alert('❌ Error de conexión: ' + e.message);
+                        $toast('❌ Error de conexión: ' + e.message, 'error');
                     }
                     this.publishingId = null;
                 },
@@ -6667,7 +6824,7 @@
                 },
 
                 async deleteCRMLead(leadId) {
-                    if (!confirm('¿Eliminar este lead permanentemente?')) return;
+                    if (!await $modal({icon:'🗑️',title:'Eliminar lead',msg:'¿Eliminar este lead permanentemente? Se eliminarán todos los registros asociados.',type:'confirm',confirmLabel:'Eliminar',confirmClass:'modal-btn-danger'})) return;
                     await this.authFetch('/api/crm/leads/' + leadId, { method: 'DELETE' });
                     this.crmDetailOpen = false;
                     this.crmDetail = null;
@@ -6694,7 +6851,7 @@
                         await this.refresh();
                     } else {
                         const err = await res.json();
-                        alert('Error: ' + (err.error || 'Unknown'));
+                        $toast('Error: ' + (err.error || 'Unknown'), 'error');
                     }
                 },
 
@@ -6702,10 +6859,10 @@
                     const res = await this.authFetch('/api/crm/sync', { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
-                        alert('✅ Sync completado: ' + data.imported + ' importados, ' + data.skipped + ' ya existían');
+                        $toast('✅ Sync: ' + data.imported + ' importados, ' + data.skipped + ' ya existían', 'success', 4000);
                         await this.loadCRM();
                     } else {
-                        alert('Error: ' + (data.error || 'Unknown'));
+                        $toast('Error: ' + (data.error || 'Unknown'), 'error');
                     }
                 },
 
@@ -6713,10 +6870,10 @@
                     const res = await this.authFetch('/api/crm/import-funnels', { method: 'POST' });
                     const data = await res.json();
                     if (data.ok) {
-                        alert('✅ Funnels importado: ' + data.imported + ' nuevos, ' + data.skipped + ' ya existían');
+                        $toast('✅ Funnels: ' + data.imported + ' nuevos, ' + data.skipped + ' ya existían', 'success', 4000);
                         await this.loadCRM();
                     } else {
-                        alert('Error: ' + (data.error || 'Unknown'));
+                        $toast('Error: ' + (data.error || 'Unknown'), 'error');
                     }
                 },
 
@@ -6762,7 +6919,7 @@
                             this.sendPhotoLinkModal = true;
                         }
                     } catch (e) {
-                        alert('Error al generar link: ' + e.message);
+                        $toast('Error al generar link: ' + e.message, 'error');
                     }
                     this.sendPhotoLinkLoading = false;
                 },
