@@ -90,6 +90,12 @@ except ImportError:
 # ─── CORS fallback — always send headers for /api/camera-job/* ───────────────
 # The camera PWA (cameracar.vercel.app) calls these endpoints cross-origin.
 # This runs even if flask-cors is not installed or misconfigured.
+@app.route("/health")
+def health():
+    """Lightweight healthcheck — no DB calls, responds instantly for Railway."""
+    return jsonify({"ok": True}), 200
+
+
 @app.after_request
 def add_camera_cors(response):
     origin = request.headers.get("Origin", "")
