@@ -253,7 +253,7 @@ if FUNNELS_DIR.exists():
         try:
             import requests as _req
             supa_url  = os.environ.get("SUPABASE_URL", "")
-            supa_key  = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+            supa_key  = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
             headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}",
                        "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
             payload = {"key": "fb_playwright_cookies", "value": json.dumps(cookies),
@@ -7486,7 +7486,7 @@ def wa_get_conversations():
         return jsonify({"error": "Unauthorized"}), 401
     import requests as _req
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
-    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
     if not supa_url or not supa_key:
         return jsonify({"error": "Supabase not configured"}), 500
     try:
@@ -7509,7 +7509,7 @@ def wa_get_messages(conv_id):
         return jsonify({"error": "Unauthorized"}), 401
     import requests as _req
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
-    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
     if not supa_url or not supa_key:
         return jsonify({"error": "Supabase not configured"}), 500
     try:
@@ -7532,7 +7532,7 @@ def wa_mark_read(conv_id):
         return jsonify({"error": "Unauthorized"}), 401
     import requests as _req
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
-    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
     if not supa_url or not supa_key:
         return jsonify({"error": "Supabase not configured"}), 500
     try:
@@ -7548,6 +7548,169 @@ def wa_mark_read(conv_id):
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WhatsApp AI Agent — Webhook (Meta calls this)
+# ═══════════════════════════════════════════════════════════════════
+
+@app.route("/api/wa/webhook", methods=["GET"])
+def wa_webhook_verify():
+    """Meta webhook verification handshake."""
+    mode      = request.args.get("hub.mode")
+    token     = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    verify_token = os.environ.get("WHATSAPP_VERIFY_TOKEN", "autodirecto2026")
+    if mode == "subscribe" and token == verify_token:
+        print("[wa_webhook] Verified ✅")
+        return challenge, 200
+    print(f"[wa_webhook] Verification failed — token={token}")
+    return "Forbidden", 403
+
+
+@app.route("/api/wa/webhook", methods=["POST"])
+def wa_webhook_receive():
+    """Receive incoming WhatsApp messages from Meta."""
+    import threading
+    import requests as _req
+
+    # Always return 200 immediately so Meta doesn't retry
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return "OK", 200
+
+    def process(body):
+        try:
+            # ── Extract message ──────────────────────────────────
+            entry   = (body.get("entry") or [{}])[0]
+            change  = (entry.get("changes") or [{}])[0]
+            value   = change.get("value") or {}
+            messages = value.get("messages") or []
+            if not messages:
+                return  # status update, ignore
+
+            msg = messages[0]
+            phone       = msg.get("from")
+            wa_msg_id   = msg.get("id")
+            text = (
+                (msg.get("text") or {}).get("body") or
+                (msg.get("button") or {}).get("text") or
+                ((msg.get("interactive") or {}).get("button_reply") or {}).get("title")
+            )
+            if not phone or not text:
+                return
+
+            print(f"[wa_webhook] Message from {phone}: {text[:80]}")
+
+            supa_url = os.environ.get("SUPABASE_URL", "").strip()
+            supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+            wa_token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
+            wa_phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            headers_supa = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"}
+
+            # ── Upsert conversation ──────────────────────────────
+            r = _req.post(
+                f"{supa_url}/rest/v1/wa_conversations",
+                json={"phone_number": phone},
+                headers={**headers_supa, "Prefer": "resolution=merge-duplicates,return=representation"},
+                timeout=10,
+            )
+            conv = (r.json() or [{}])[0] if r.ok else {}
+            conv_id = conv.get("id")
+            if not conv_id:
+                print(f"[wa_webhook] upsert conversation failed: {r.text}")
+                return
+
+            # ── Save user message ────────────────────────────────
+            msg_payload = {"conversation_id": conv_id, "role": "user", "content": text}
+            if wa_msg_id:
+                msg_payload["wa_message_id"] = wa_msg_id
+            _req.post(f"{supa_url}/rest/v1/wa_messages", json=msg_payload, headers=headers_supa, timeout=10)
+
+            # ── Update conversation meta ─────────────────────────
+            _req.patch(
+                f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}",
+                json={"last_message": text[:120], "last_message_at": __import__('datetime').datetime.utcnow().isoformat() + "Z",
+                      "unread_count": (conv.get("unread_count") or 0) + 1,
+                      "status": "open" if conv.get("status") == "resolved" else conv.get("status", "open")},
+                headers={**headers_supa, "Prefer": "return=minimal"},
+                timeout=10,
+            )
+
+            # ── Fetch history for Gemini context ──────────────────
+            r2 = _req.get(
+                f"{supa_url}/rest/v1/wa_messages",
+                params={"conversation_id": f"eq.{conv_id}", "order": "created_at.desc", "limit": 10, "select": "role,content"},
+                headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+                timeout=10,
+            )
+            history = list(reversed(r2.json() if r2.ok else []))
+
+            # ── Load system prompt ────────────────────────────────
+            prompt_path = os.path.join(os.path.dirname(__file__), "..", "AGENT_PROMPT.md")
+            try:
+                with open(prompt_path, "r") as f:
+                    system_prompt = f.read()
+            except Exception:
+                system_prompt = "Eres un asistente de ventas de autos de Auto Directo, una consignataria en Chile. Responde en español de forma amable y profesional."
+
+            # ── Call Gemini ───────────────────────────────────────
+            gemini_key = os.environ.get("GOOGLE_API_KEY", "").strip()
+            # Build contents array: system prompt injected as first user turn
+            gemini_contents = []
+            for m in history:
+                gemini_role = "model" if m.get("role") == "assistant" else "user"
+                gemini_contents.append({"role": gemini_role, "parts": [{"text": m.get("content", "")}]})
+            # If history starts with model turn, prepend a dummy user turn (Gemini requires user first)
+            if not gemini_contents or gemini_contents[0]["role"] != "user":
+                gemini_contents.insert(0, {"role": "user", "parts": [{"text": text}]})
+
+            gemini_res = _req.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+                json={
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "contents": gemini_contents,
+                    "generationConfig": {"maxOutputTokens": 500, "temperature": 0.65},
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            if not gemini_res.ok:
+                print(f"[wa_webhook] Gemini error: {gemini_res.status_code} {gemini_res.text}")
+                return
+            ai_reply = (((gemini_res.json().get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])[0].get("text", "").strip()
+            if not ai_reply:
+                return
+
+            # ── Send WhatsApp reply ───────────────────────────────
+            wa_res = _req.post(
+                f"https://graph.facebook.com/v19.0/{wa_phone_id}/messages",
+                json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": ai_reply, "preview_url": False}},
+                headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+                timeout=15,
+            )
+            if not wa_res.ok:
+                print(f"[wa_webhook] WhatsApp send error: {wa_res.status_code} {wa_res.text}")
+
+            # ── Save assistant message ────────────────────────────
+            _req.post(f"{supa_url}/rest/v1/wa_messages",
+                json={"conversation_id": conv_id, "role": "assistant", "content": ai_reply},
+                headers=headers_supa, timeout=10)
+
+            # ── Update last message ───────────────────────────────
+            _req.patch(
+                f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}",
+                json={"last_message": ai_reply[:120], "last_message_at": __import__('datetime').datetime.utcnow().isoformat() + "Z"},
+                headers={**headers_supa, "Prefer": "return=minimal"}, timeout=10,
+            )
+            print(f"[wa_webhook] Replied to {phone} ✅")
+
+        except Exception as e:
+            print(f"[wa_webhook] Processing error: {e}")
+
+    threading.Thread(target=process, args=(body,), daemon=True).start()
+    return "OK", 200
 
 
 if __name__ == "__main__":
