@@ -7204,10 +7204,11 @@ def notifications_recent():
                 is_new = r["created_at"] and r["created_at"] > (
                     __import__("datetime").datetime.now() - __import__("datetime").timedelta(hours=24)
                 ).isoformat()
+                lead_label = r["full_name"] or f"Lead #{r['id']}"
                 items.append({
                     "type": "crm_lead",
                     "id": r["id"],
-                    "title": f"{'🆕 ' if is_new else ''}{r['full_name'] or f'Lead #{r[\"id\"]}'}",
+                    "title": f"{'🆕 ' if is_new else ''}{lead_label}",
                     "subtitle": f"{r['source'] or ''} · {car or ''} · {r['stage'] or ''}".strip(" ·"),
                     "status": r["stage"],
                     "created_at": r["created_at"],
