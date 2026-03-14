@@ -3904,11 +3904,13 @@ def publicar_en_catalogo(cid):
         image_edits = []
 
     # 3. Build listing payload — maps inspection data to catalog fields
-    brand  = (appraisal.get("vehicle_marca") or c.get("car_make") or "").strip()
-    model  = (appraisal.get("vehicle_modelo") or c.get("car_model") or "").strip()
-    year   = appraisal.get("vehicle_año") or c.get("car_year")
-    color  = (appraisal.get("vehicle_color") or c.get("color") or "").strip()
-    km     = appraisal.get("vehicle_km") or c.get("mileage")
+    # car_make/car_model from consignaciones take priority (user may have corrected them).
+    # Appraisal fields are the fallback (original inspection data).
+    brand  = (c.get("car_make") or appraisal.get("vehicle_marca") or "").strip()
+    model  = (c.get("car_model") or appraisal.get("vehicle_modelo") or "").strip()
+    year   = c.get("car_year") or appraisal.get("vehicle_año")
+    color  = (c.get("color") or appraisal.get("vehicle_color") or "").strip()
+    km     = c.get("mileage") or appraisal.get("vehicle_km")
     plate  = (appraisal.get("vehicle_patente") or c.get("plate") or "").upper()
     # Price: prefer selling_price from consignacion (set in Inventario), then inspection fields
     price  = c.get("selling_price") or appraisal.get("precio_publicado") or appraisal.get("tasacion")
@@ -3994,7 +3996,9 @@ def publicar_en_catalogo(cid):
                     "image_urls":   cur_payload["image_urls"],
                     "status":       "disponible",
                     "updated_at":   datetime.now().isoformat(),
-                    "price":        existing.get("price") or cur_payload["price"],
+                    # Always use the freshly-computed price so price edits in the CRM propagate.
+                    # Only fall back to the existing listing price if no price is available at all.
+                    "price":        cur_payload["price"] or existing.get("price"),
                     "description":  existing.get("description") or cur_payload["description"],
                     "features":     existing.get("features") or cur_payload["features"],
                 }
@@ -4122,7 +4126,7 @@ def update_listing(listing_id):
     import requests as req_lib
     data = request.json or {}
     allowed = {"description", "features", "price", "fuel_type", "transmission", "motor",
-               "color", "mileage_km", "brand", "model", "year", "status", "featured", "image_urls"}
+               "color", "mileage_km", "brand", "model", "year", "status", "featured", "image_urls", "image_edits"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields"}), 400

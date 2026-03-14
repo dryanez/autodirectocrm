@@ -5517,6 +5517,15 @@
                     try {
                         // Fields that live ONLY on the Supabase listing (not in consignaciones table)
                         const listingOnlyFields = ['description','fuel_type','transmission','motor'];
+                        // Fields on consignaciones that need a direct listing PATCH too (not just republish)
+                        const directListingSync = {
+                            'selling_price': 'price',
+                            'car_make':      'brand',
+                            'car_model':     'model',
+                            'car_year':      'year',
+                            'color':         'color',
+                            'mileage':       'mileage_km',
+                        };
                         // Fields on consignaciones that should trigger a silent re-publish to sync the listing
                         const republishFields = ['car_make','car_model','car_year','color','mileage','selling_price','plate','version'];
 
@@ -5579,6 +5588,19 @@
                             }
                             const saveD = await saveR.json().catch(() => ({}));
                             if (saveD.error) throw new Error(saveD.error);
+                            // If it's a listing-relevant field and published, directly patch the
+                            // listing first (instant update) then also trigger a republish for
+                            // fields like brand/model that need the full publish pipeline.
+                            if (this.invDetail.listing_id && directListingSync[field]) {
+                                const listingField = directListingSync[field];
+                                const listingBody = {};
+                                listingBody[listingField] = value;
+                                this.authFetch('/api/listings/' + this.invDetail.listing_id, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(listingBody)
+                                }).catch(e => console.warn('direct listing sync', e));
+                            }
                             // If it's a listing-relevant field and published, auto-republish
                             if (this.invDetail.listing_id && republishFields.includes(field)) {
                                 this.authFetch('/api/consignaciones/' + this.invDetail.id + '/publicar', { method: 'POST' })
