@@ -3159,7 +3159,7 @@
                 <span x-text="inspStep===1 ? 'Cancelar' : 'Anterior'"></span>
             </button>
             <span class="text-xs text-slate-500" x-text="'Paso ' + inspStep + ' de ' + inspSteps.length"></span>
-            <button x-show="inspStep < inspSteps.length" @click="if(inspValidate(inspStep)) inspStep++"
+            <button x-show="inspStep < inspSteps.length" @click="if(await inspValidate(inspStep)) inspStep++"
                 class="flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-medium transition-colors">
                 Siguiente <i class="ph ph-arrow-right"></i>
             </button>
@@ -6564,7 +6564,7 @@
                     this.inspSaving = false;
                 },
 
-                inspValidate(step) {
+                async inspValidate(step) {
                     const i = this.insp;
                     if (step === 1) {
                         const missing = [];
