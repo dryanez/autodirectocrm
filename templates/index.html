@@ -212,6 +212,18 @@
                 <span class="font-medium">Compradores</span>
             </a>
 
+            <a href="#" @click.prevent="currentView='whatsapp'; loadWhatsapp()"
+                :class="currentView==='whatsapp' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
+                <i class="ph ph-whatsapp-logo text-xl mr-3"
+                    :class="currentView==='whatsapp' ? 'text-green-400' : ''"></i>
+                <span class="font-medium">WhatsApp AI</span>
+                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                    x-show="waUnread > 0" x-text="waUnread > 99 ? '99+' : waUnread"></span>
+                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                    x-show="waUnread === 0">AI</span>
+            </a>
+
             <div class="border-t border-slate-700 mt-4 pt-4">
                 <a href="#" @click.prevent="currentView='modulos'; loadModules()"
                     :class="currentView==='modulos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
@@ -4620,6 +4632,185 @@
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════
+         WHATSAPP AI AGENT VIEW
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="currentView==='whatsapp'" class="flex-1 flex overflow-hidden" style="display:none;">
+
+        <!-- LEFT: Conversation list -->
+        <div class="w-72 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/60">
+
+            <!-- Header -->
+            <div class="flex-shrink-0 px-4 py-3 border-b border-slate-800 bg-green-900/10">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white text-sm font-bold">
+                        <i class="ph ph-whatsapp-logo"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-white">WhatsApp AI</div>
+                        <div class="text-xs text-slate-500">Auto Directo Agent</div>
+                    </div>
+                    <button @click="loadWhatsapp()" class="ml-auto text-slate-500 hover:text-white transition-colors" title="Recargar">
+                        <i class="ph ph-arrows-clockwise" :class="waLoading ? 'animate-spin' : ''"></i>
+                    </button>
+                </div>
+                <!-- Stats row -->
+                <div class="grid grid-cols-3 gap-1.5">
+                    <div class="bg-slate-800/60 rounded-lg p-2 text-center">
+                        <div class="text-base font-bold text-blue-400" x-text="waConversations.length"></div>
+                        <div class="text-xs text-slate-500 uppercase tracking-wide">Total</div>
+                    </div>
+                    <div class="bg-slate-800/60 rounded-lg p-2 text-center">
+                        <div class="text-base font-bold text-green-400" x-text="waConversations.filter(c=>c.status==='open').length"></div>
+                        <div class="text-xs text-slate-500 uppercase tracking-wide">Activos</div>
+                    </div>
+                    <div class="bg-slate-800/60 rounded-lg p-2 text-center">
+                        <div class="text-base font-bold text-amber-400" x-text="waUnread"></div>
+                        <div class="text-xs text-slate-500 uppercase tracking-wide">Sin leer</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="flex-shrink-0 px-3 py-2 border-b border-slate-800">
+                <div class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                    <input type="text" x-model="waSearch" placeholder="Buscar…"
+                        class="w-full bg-slate-800/60 border border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-green-500">
+                </div>
+            </div>
+
+            <!-- Filter pills -->
+            <div class="flex-shrink-0 flex gap-1.5 px-3 py-2 border-b border-slate-800">
+                <template x-for="f in [{v:'all',l:'Todos'},{v:'open',l:'Activos'},{v:'resolved',l:'Resueltos'},{v:'spam',l:'Spam'}]" :key="f.v">
+                    <button @click="waFilter=f.v"
+                        :class="waFilter===f.v ? 'bg-green-600/30 border-green-500 text-green-400' : 'border-slate-700 text-slate-500 hover:text-slate-300'"
+                        class="px-2 py-0.5 rounded-full border text-xs font-semibold transition-colors"
+                        x-text="f.l"></button>
+                </template>
+            </div>
+
+            <!-- Conversation list -->
+            <div class="flex-1 overflow-y-auto">
+                <template x-if="waLoading">
+                    <div class="p-6 text-center text-slate-500 text-sm">Cargando…</div>
+                </template>
+                <template x-if="!waLoading && waFilteredConversations.length === 0">
+                    <div class="p-6 text-center text-slate-500 text-sm">
+                        <i class="ph ph-chat-centered text-2xl block mb-2"></i>
+                        Sin conversaciones aún
+                    </div>
+                </template>
+                <template x-for="conv in waFilteredConversations" :key="conv.id">
+                    <button @click="waSelectConversation(conv)"
+                        :class="waActiveConv?.id === conv.id ? 'bg-slate-800 border-l-2 border-green-500' : 'border-l-2 border-transparent hover:bg-slate-800/50'"
+                        class="w-full text-left px-3 py-2.5 border-b border-slate-800/50 flex gap-2.5 items-start transition-colors">
+                        <!-- Avatar -->
+                        <div class="relative flex-shrink-0">
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center text-white text-sm font-bold"
+                                x-text="(conv.display_name || conv.phone_number || '?')[0].toUpperCase()"></div>
+                            <span x-show="conv.unread_count > 0"
+                                class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white rounded-full text-xs flex items-center justify-center font-bold"
+                                x-text="conv.unread_count > 9 ? '9+' : conv.unread_count"></span>
+                        </div>
+                        <!-- Info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-center mb-0.5">
+                                <span class="text-xs font-semibold text-slate-200 truncate max-w-[110px]"
+                                    x-text="conv.display_name || waFormatPhone(conv.phone_number)"></span>
+                                <span class="text-xs text-slate-500 flex-shrink-0 ml-1" x-text="waTimeAgo(conv.last_message_at)"></span>
+                            </div>
+                            <div class="text-xs text-slate-500 truncate" x-text="conv.last_message || 'Sin mensajes'"></div>
+                        </div>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- RIGHT: Chat area -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+
+            <!-- Empty state -->
+            <template x-if="!waActiveConv">
+                <div class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-600">
+                    <i class="ph ph-chats text-5xl"></i>
+                    <div class="text-base font-semibold text-slate-500">Selecciona una conversación</div>
+                    <div class="text-sm text-slate-600 text-center max-w-xs leading-relaxed">
+                        Los mensajes de WhatsApp aparecen aquí en tiempo real, respondidos automáticamente por GPT-4o.
+                    </div>
+                    <div class="flex items-center gap-2 mt-2 px-4 py-2 bg-green-900/20 border border-green-800/40 rounded-xl text-xs text-green-400">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                        Webhook activo — escuchando mensajes
+                    </div>
+                </div>
+            </template>
+
+            <!-- Active conversation -->
+            <template x-if="waActiveConv">
+                <div class="flex-1 flex flex-col overflow-hidden">
+
+                    <!-- Chat header -->
+                    <div class="flex-shrink-0 h-13 px-5 py-2.5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center text-white text-sm font-bold"
+                                x-text="(waActiveConv.display_name || waActiveConv.phone_number || '?')[0].toUpperCase()"></div>
+                            <div>
+                                <div class="text-sm font-bold text-white"
+                                    x-text="waActiveConv.display_name || waFormatPhone(waActiveConv.phone_number)"></div>
+                                <div class="text-xs text-slate-500" x-text="waFormatPhone(waActiveConv.phone_number)"></div>
+                            </div>
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-full"
+                                :class="{
+                                    'bg-blue-500/15 text-blue-400': waActiveConv.status==='open',
+                                    'bg-green-500/15 text-green-400': waActiveConv.status==='resolved',
+                                    'bg-red-500/15 text-red-400': waActiveConv.status==='spam'
+                                }"
+                                x-text="waActiveConv.status==='open'?'Activo':waActiveConv.status==='resolved'?'Resuelto':'Spam'"></span>
+                        </div>
+                        <a :href="'https://wa.me/'+waActiveConv.phone_number" target="_blank"
+                            class="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/15 border border-green-600/30 text-green-400 rounded-lg text-xs font-semibold hover:bg-green-600/25 transition-colors">
+                            <i class="ph ph-whatsapp-logo"></i> Abrir
+                        </a>
+                    </div>
+
+                    <!-- Messages -->
+                    <div class="flex-1 overflow-y-auto px-4 py-4 space-y-2" id="wa-messages-scroll">
+                        <template x-if="waMsgsLoading">
+                            <div class="text-center text-slate-500 text-sm py-4">Cargando mensajes…</div>
+                        </template>
+                        <template x-for="msg in waMessages" :key="msg.id">
+                            <div :class="msg.role==='user' ? 'flex justify-start' : 'flex justify-end'">
+                                <div :class="msg.role==='user'
+                                        ? 'bg-slate-700/80 rounded-tl rounded-br-xl rounded-tr-xl rounded-bl'
+                                        : 'bg-gradient-to-br from-blue-700 to-blue-500 rounded-tr rounded-bl-xl rounded-tl-xl rounded-br'"
+                                    class="max-w-[70%] px-3.5 py-2.5 shadow">
+                                    <p class="text-sm text-white leading-relaxed whitespace-pre-wrap break-words" x-text="msg.content"></p>
+                                    <div class="flex items-center justify-end gap-1 mt-1">
+                                        <span class="text-xs opacity-50" x-text="waFormatTime(msg.created_at)"></span>
+                                        <span x-show="msg.role==='assistant'" class="text-xs opacity-50">🤖</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div id="wa-msgs-end"></div>
+                    </div>
+
+                    <!-- Info bar -->
+                    <div class="flex-shrink-0 px-4 py-2 border-t border-slate-800 bg-slate-900/40 flex items-center gap-2 text-xs text-slate-600">
+                        <i class="ph ph-robot text-slate-600"></i>
+                        Respuestas automáticas por GPT-4o
+                        <span class="ml-auto flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                            Realtime activo
+                        </span>
+                    </div>
+                </div>
+            </template>
+
+        </div>
+    </div>
+    <!-- END WhatsApp View -->
+
     <script>
         /* ── Global modal & toast helpers ─────────────────────────────────── */
         window._modalResolve = null;
@@ -4691,6 +4882,18 @@
                 newCar: { commission_pct: 0.10 },
                 activeCar: null,
                 dteLoading: false,
+
+                // ─── WhatsApp AI Agent ───
+                waConversations: [],
+                waMessages: [],
+                waActiveConv: null,
+                waLoading: false,
+                waMsgsLoading: false,
+                waUnread: 0,
+                waSearch: '',
+                waFilter: 'all',
+                waRealtimeChannel: null,
+                waRealtimeMsgChannel: null,
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -4852,6 +5055,94 @@
                     localStorage.removeItem('crm_token');
                     await fetch('/api/auth/logout', { method: 'POST' });
                     this.currentUser = null;
+                },
+
+                // ─── WhatsApp AI Agent ───
+                get waFilteredConversations() {
+                    return this.waConversations.filter(c => {
+                        const s = this.waSearch.toLowerCase();
+                        const matchSearch = !s ||
+                            (c.phone_number || '').includes(s) ||
+                            (c.display_name || '').toLowerCase().includes(s) ||
+                            (c.last_message || '').toLowerCase().includes(s);
+                        const matchFilter = this.waFilter === 'all' || c.status === this.waFilter;
+                        return matchSearch && matchFilter;
+                    });
+                },
+
+                async loadWhatsapp() {
+                    this.waLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/wa/conversations');
+                        const data = await r.json();
+                        this.waConversations = Array.isArray(data) ? data : [];
+                        this.waUnread = this.waConversations.reduce((s, c) => s + (c.unread_count || 0), 0);
+                        // Refresh active conversation messages if one is open
+                        if (this.waActiveConv) {
+                            const updated = this.waConversations.find(c => c.id === this.waActiveConv.id);
+                            if (updated) this.waActiveConv = updated;
+                        }
+                    } catch(e) {
+                        console.error('[wa] loadWhatsapp error', e);
+                    } finally {
+                        this.waLoading = false;
+                    }
+                    // Start polling for new messages every 10 seconds
+                    if (!this._waPollInterval) {
+                        this._waPollInterval = setInterval(() => {
+                            if (this.currentView === 'whatsapp') this.loadWhatsapp();
+                        }, 10000);
+                    }
+                },
+
+                async waSelectConversation(conv) {
+                    this.waActiveConv = conv;
+                    this.waMsgsLoading = true;
+                    this.waMessages = [];
+                    try {
+                        const r = await this.authFetch(`/api/wa/conversations/${conv.id}/messages`);
+                        this.waMessages = await r.json();
+                        // Scroll to bottom
+                        this.$nextTick(() => {
+                            const el = document.getElementById('wa-msgs-end');
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        });
+                        // Mark as read
+                        if (conv.unread_count > 0) {
+                            await this.authFetch(`/api/wa/conversations/${conv.id}/mark-read`, { method: 'POST' });
+                            this.waConversations = this.waConversations.map(c =>
+                                c.id === conv.id ? { ...c, unread_count: 0 } : c
+                            );
+                            this.waActiveConv = { ...conv, unread_count: 0 };
+                            this.waUnread = this.waConversations.reduce((s, c) => s + (c.unread_count || 0), 0);
+                        }
+                    } catch(e) {
+                        console.error('[wa] waSelectConversation error', e);
+                    } finally {
+                        this.waMsgsLoading = false;
+                    }
+                },
+
+                waFormatPhone(phone) {
+                    if (!phone) return '';
+                    const p = String(phone).replace(/\D/g, '');
+                    if (p.startsWith('56') && p.length === 11)
+                        return `+56 ${p[2]} ${p.slice(3,7)} ${p.slice(7)}`;
+                    return `+${p}`;
+                },
+
+                waTimeAgo(ts) {
+                    if (!ts) return '';
+                    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+                    if (diff < 60) return 'Ahora';
+                    if (diff < 3600) return `${Math.floor(diff/60)}m`;
+                    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
+                    return new Date(ts).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+                },
+
+                waFormatTime(ts) {
+                    if (!ts) return '';
+                    return new Date(ts).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
                 },
 
                 // ─── Modules (SaaS) ───

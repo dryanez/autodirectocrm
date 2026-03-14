@@ -7475,6 +7475,81 @@ def notifications_recent():
         return jsonify({"items": [], "error": str(e)})
 
 
+# ═══════════════════════════════════════════════════════════════════
+# WhatsApp AI Agent — CRM API routes
+# ═══════════════════════════════════════════════════════════════════
+
+@app.route("/api/wa/conversations", methods=["GET"])
+def wa_get_conversations():
+    """Return all WhatsApp conversations ordered by last message."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    if not supa_url or not supa_key:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = _req.get(
+            f"{supa_url}/rest/v1/wa_conversations",
+            params={"select": "*", "order": "last_message_at.desc.nullslast"},
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=10,
+        )
+        return jsonify(r.json() if r.ok else [])
+    except Exception as e:
+        print(f"[wa] get_conversations error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/wa/conversations/<conv_id>/messages", methods=["GET"])
+def wa_get_messages(conv_id):
+    """Return all messages for a conversation."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    if not supa_url or not supa_key:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = _req.get(
+            f"{supa_url}/rest/v1/wa_messages",
+            params={"conversation_id": f"eq.{conv_id}", "order": "created_at.asc", "select": "*"},
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=10,
+        )
+        return jsonify(r.json() if r.ok else [])
+    except Exception as e:
+        print(f"[wa] get_messages error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/wa/conversations/<conv_id>/mark-read", methods=["POST"])
+def wa_mark_read(conv_id):
+    """Mark a conversation as read (reset unread_count)."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    if not supa_url or not supa_key:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        _req.patch(
+            f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}",
+            json={"unread_count": 0},
+            headers={
+                "apikey": supa_key, "Authorization": f"Bearer {supa_key}",
+                "Content-Type": "application/json", "Prefer": "return=minimal",
+            },
+            timeout=10,
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     print("\n🚀 Autodirecto CRM")
     print("   http://127.0.0.1:8080\n")
