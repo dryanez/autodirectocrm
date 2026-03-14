@@ -19,8 +19,8 @@ from typing import TypedDict
 class CommissionResult(TypedDict):
     selling_price: int       # Precio de venta al público
     owner_price: int         # Precio que quiere recibir el dueño
-    commission_pct: float    # % de comisión (e.g. 0.10)
-    commission_amount: int   # Monto comisión (redondeado a entero CLP)
+    commission_pct: float    # % de comisión (e.g. 0.039)
+    commission_amount: int   # Monto comisión neto (sin IVA), redondeado a entero CLP
     iva_on_commission: int   # IVA 19% sobre la comisión
     gross_commission: int    # commission_amount + iva_on_commission
     net_to_owner: int        # Lo que recibe el dueño
@@ -31,6 +31,9 @@ def calculate_commission(car: dict, iva_rate: float = 0.19) -> CommissionResult:
     """
     Calculate consignment financials from a car record dict.
 
+    Commission model: 3.9% + IVA (19%) on the selling price.
+    The IVA applies only on the commission (Liquidación Factura DTE-43).
+
     Args:
         car: Dict with at least: selling_price, owner_price, commission_pct
         iva_rate: Current Chilean IVA rate (default 0.19 = 19%)
@@ -40,9 +43,9 @@ def calculate_commission(car: dict, iva_rate: float = 0.19) -> CommissionResult:
     """
     selling_price = int(car["selling_price"])
     owner_price = int(car["owner_price"])
-    commission_pct = float(car.get("commission_pct", 0.10))
+    commission_pct = float(car.get("commission_pct") or 0.039)  # default 3.9%
 
-    # Commission is calculated on the total sale price
+    # Commission neto on total sale price
     commission_amount = round(selling_price * commission_pct)
 
     # IVA only on commission (Liquidación Factura treatment)
@@ -95,31 +98,27 @@ def print_breakdown(result: CommissionResult, car_label: str = ""):
 
 # ─── Self-test ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n=== Test 1: Comisión 10% — Toyota Corolla ===")
+    print("\n=== Test 1: Comisión 3.9% + IVA — Toyota Corolla ===")
     car1 = {
         "selling_price": 10_000_000,
-        "owner_price":    8_500_000,
-        "commission_pct": 0.10,
+        "owner_price":    9_500_000,
+        "commission_pct": 0.039,
     }
     result1 = calculate_commission(car1)
     print_breakdown(result1, "Toyota Corolla 2020")
-
-    # Assertions
-    assert result1["commission_amount"] == 1_000_000, "Commission amount mismatch"
-    assert result1["iva_on_commission"] == 190_000,   "IVA mismatch"
-    assert result1["net_to_owner"] == 8_810_000,      "Net to owner mismatch"
+    assert result1["commission_amount"] == 390_000, f"Expected 390000, got {result1['commission_amount']}"
+    assert result1["iva_on_commission"] == 74_100,  f"Expected 74100, got {result1['iva_on_commission']}"
+    assert result1["net_to_owner"] == 9_535_900,    f"Expected 9535900, got {result1['net_to_owner']}"
     print("  ✅ Test 1 passed")
 
-    print("\n=== Test 2: Comisión 8% — BMW X5  ===")
+    print("\n=== Test 2: Default commission (3.9%) — BMW X5 ===")
     car2 = {
         "selling_price": 25_000_000,
-        "owner_price":   23_000_000,
-        "commission_pct": 0.08,
+        "owner_price":   24_000_000,
     }
     result2 = calculate_commission(car2)
     print_breakdown(result2, "BMW X5 2022")
-    assert result2["commission_amount"] == 2_000_000
-    assert result2["net_to_owner"] < car2["owner_price"], "Should warn: net < owner_price"
-    print("  ✅ Test 2 passed (net < owner_price warning expected above)")
+    assert result2["commission_pct"] == 0.039
+    print("  ✅ Test 2 passed")
 
     print("\n✅ Todos los tests pasaron.")

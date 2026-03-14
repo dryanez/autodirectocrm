@@ -395,7 +395,7 @@
                                 <td class="px-6 py-4 text-right text-white" x-text="formatCLP(car.selling_price)"></td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="text-green-400" x-text="formatCLP(car.commission_amount)"></div>
-                                    <div class="text-xs" x-text="Math.round(car.commission_pct * 100) + '%'"></div>
+                                    <div class="text-xs text-slate-400">3,9% + IVA</div>
                                 </td>
                                 <td class="px-6 py-4 text-center">
                                     <span :class="`badge badge-${car.status}`" x-text="formatStatus(car.status)"></span>

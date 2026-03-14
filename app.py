@@ -4076,7 +4076,7 @@ def publicar_en_catalogo(cid):
                             c.get("owner_rut"),
                             c.get("owner_email"), c.get("owner_phone"),
                             int(c.get("owner_price") or 0), int(c.get("selling_price") or 0),
-                            float(c.get("commission_pct") or 0.10),
+                            float(c.get("commission_pct") or 0.039),
                             c.get("condition_notes") or c.get("notes")
                         ))
                         car_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -4641,7 +4641,7 @@ def promote_to_inventory(cid):
             c["owner_full_name"], c["owner_rut"],
             c.get("owner_email"), c.get("owner_phone"),
             int(c["owner_price"]), int(c["selling_price"]),
-            float(c.get("commission_pct") or 0.10),
+            float(c.get("commission_pct") or 0.039),
             c.get("condition_notes") or c.get("notes")
         ))
         car_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -4792,7 +4792,7 @@ def _build_contract_pdf(consig, appraisal=None):
         precio_pub = round(precio_cli * 1.04641)
     comision_calc = precio_pub - precio_cli if precio_pub > precio_cli else 0
     observaciones = a.get("observaciones","") or c.get("condition_notes","") or "No se registran observaciones."
-    comision    = a.get("comision") or c.get("commission_pct") or 0.10
+    comision    = a.get("comision") or c.get("commission_pct") or 0.039
     consignado_por = a.get("quien_tomo_fotos","") or signer_name
 
     def fmt_clp(val):
@@ -6317,7 +6317,7 @@ def stats():
     draft_dte    = sum(1 for r in rows if r["status"] == "draft_dte")
     sold_rows    = [r for r in rows if r["status"] in ("vendida", "sent_dte")]
     total_ventas     = sum(r["selling_price"] or 0 for r in sold_rows)
-    total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0.10)) for r in sold_rows)
+    total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0.039)) for r in sold_rows)
 
     return jsonify({
         "total": total,
@@ -6407,7 +6407,7 @@ def get_cars():
         cal = calculate_commission({
             "selling_price":  d.get("selling_price") or 0,
             "owner_price":    d.get("owner_price") or 0,
-            "commission_pct": d.get("commission_pct") or 0.10,
+            "commission_pct": d.get("commission_pct") or 0.039,
         })
         cars.append({
             "id":                d.get("id"),
@@ -6422,7 +6422,7 @@ def get_cars():
             "owner_phone":       d.get("owner_phone") or "",
             "owner_price":       d.get("owner_price") or 0,
             "selling_price":     d.get("selling_price") or 0,
-            "commission_pct":    d.get("commission_pct") or 0.10,
+            "commission_pct":    d.get("commission_pct") or 0.039,
             "commission_amount": cal["commission_amount"],
             "net_to_owner":      cal["net_to_owner"],
             "iva_on_commission": cal["iva_on_commission"],
@@ -6458,7 +6458,7 @@ def add_car():
                 data.get("year"), data.get("color"), data["owner_name"], rut,
                 data.get("owner_email"), data.get("owner_phone"),
                 int(data["owner_price"]), int(data["selling_price"]),
-                float(data.get("commission_pct", 0.10)), data.get("notes"),
+                float(data.get("commission_pct", 0.039)), data.get("notes"),
             ))
             conn.commit()
             car_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -6518,7 +6518,7 @@ def calculate():
         result = calculate_commission({
             "selling_price": int(data["selling_price"]),
             "owner_price": int(data["owner_price"]),
-            "commission_pct": float(data.get("commission_pct", 0.10)),
+            "commission_pct": float(data.get("commission_pct", 0.039)),
         })
         return jsonify(result)
     except Exception as e:
