@@ -3234,7 +3234,19 @@ def _cascade_delete_vehicle(plate=None, consignacion_id=None, crm_lead_id=None):
         except Exception as e:
             print(f"[cascade_delete] crm_lead error: {e}")
 
-    # ── Step 6: Delete consignacion ───────────────────────────────────────────
+    # ── Step 6: Delete compradores linked to consignacion ────────────────────
+    if consignacion_id and supabase_url:
+        try:
+            req_lib.delete(
+                supabase_url + "/rest/v1/compradores",
+                params={"consignacion_id": "eq.{}".format(consignacion_id)},
+                headers=supa_headers, timeout=8
+            )
+            deleted["compradores_consignacion_id"] = consignacion_id
+        except Exception as e:
+            print(f"[cascade_delete] compradores error: {e}")
+
+    # ── Step 7: Delete consignacion ───────────────────────────────────────────
     if consignacion_id:
         try:
             with get_db() as conn:
@@ -6294,19 +6306,18 @@ def debug_cookies():
 
 @app.route("/api/stats")
 def stats():
-    with get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM cars").fetchone()[0]
-        available = conn.execute("SELECT COUNT(*) FROM cars WHERE status='available'").fetchone()[0]
-        sold = conn.execute("SELECT COUNT(*) FROM cars WHERE status='sold'").fetchone()[0]
-        sent_dte = conn.execute("SELECT COUNT(*) FROM cars WHERE status='sent_dte'").fetchone()[0]
-        draft_dte = conn.execute("SELECT COUNT(*) FROM cars WHERE status='draft_dte'").fetchone()[0]
+    """Stats powered by consignaciones (single source of truth)."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT status, selling_price, commission_pct FROM consignaciones").fetchall()
 
-        # Commission sums (sold + sent_dte cars)
-        rows = conn.execute(
-            "SELECT selling_price, commission_pct FROM cars WHERE status IN ('sold','sent_dte')"
-        ).fetchall()
-        total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0)) for r in rows)
-        total_ventas = sum(r["selling_price"] or 0 for r in rows)
+    total        = len(rows)
+    available    = sum(1 for r in rows if r["status"] in ("en_venta", "parte2_completa", "inspeccionado"))
+    sold         = sum(1 for r in rows if r["status"] == "vendida")
+    sent_dte     = sum(1 for r in rows if r["status"] == "sent_dte")
+    draft_dte    = sum(1 for r in rows if r["status"] == "draft_dte")
+    sold_rows    = [r for r in rows if r["status"] in ("vendida", "sent_dte")]
+    total_ventas     = sum(r["selling_price"] or 0 for r in sold_rows)
+    total_commission = sum(round((r["selling_price"] or 0) * (r["commission_pct"] or 0.10)) for r in sold_rows)
 
     return jsonify({
         "total": total,
@@ -6352,29 +6363,74 @@ def debug_env():
 # ─── API: Cars (inventory) ────────────────────────────────────────────────────
 @app.route("/api/cars", methods=["GET"])
 def get_cars():
-    status = request.args.get("status")
+    """Return consignaciones mapped to the dashboard car format (single source of truth)."""
+    status_filter = request.args.get("status")
     search = request.args.get("search", "")
-    with get_conn() as conn:
-        query = "SELECT * FROM cars WHERE 1=1"
+
+    # Map consignacion status → dashboard status for badge display
+    STATUS_MAP = {
+        "en_venta":         "available",
+        "parte2_completa":  "available",
+        "inspeccionado":    "available",
+        "parte1_completa":  "available",
+        "fotos_pendientes": "available",
+        "vendida":          "sold",
+        "sent_dte":         "sent_dte",
+        "draft_dte":        "draft_dte",
+    }
+
+    with get_db() as conn:
+        query = "SELECT * FROM consignaciones WHERE 1=1"
         params = []
-        if status:
-            query += " AND status=?"
-            params.append(status)
         if search:
-            query += " AND (patente LIKE ? OR brand LIKE ? OR model LIKE ? OR owner_name LIKE ?)"
+            query += " AND (plate LIKE ? OR car_make LIKE ? OR car_model LIKE ? OR owner_full_name LIKE ?)"
             s = f"%{search}%"
             params.extend([s, s, s, s])
         query += " ORDER BY id DESC"
         rows = conn.execute(query, params).fetchall()
 
     cars = []
+    seen_plates = set()
     for r in rows:
         d = row_to_dict(r)
-        cal = calculate_commission(d)
-        d["commission_amount"] = cal["commission_amount"]
-        d["net_to_owner"] = cal["net_to_owner"]
-        d["iva_on_commission"] = cal["iva_on_commission"]
-        cars.append(d)
+        plate = (d.get("plate") or "").upper().strip()
+        # De-duplicate: skip older consignacion if same plate already added
+        if plate and plate in seen_plates:
+            continue
+        if plate:
+            seen_plates.add(plate)
+
+        mapped_status = STATUS_MAP.get(d.get("status", ""), d.get("status", "available"))
+        if status_filter and mapped_status != status_filter:
+            continue
+
+        cal = calculate_commission({
+            "selling_price":  d.get("selling_price") or 0,
+            "owner_price":    d.get("owner_price") or 0,
+            "commission_pct": d.get("commission_pct") or 0.10,
+        })
+        cars.append({
+            "id":                d.get("id"),
+            "patente":           plate,
+            "brand":             d.get("car_make") or "",
+            "model":             d.get("car_model") or "",
+            "year":              d.get("car_year"),
+            "color":             d.get("color") or "",
+            "owner_name":        d.get("owner_full_name") or "",
+            "owner_rut":         d.get("owner_rut") or "",
+            "owner_email":       d.get("owner_email") or "",
+            "owner_phone":       d.get("owner_phone") or "",
+            "owner_price":       d.get("owner_price") or 0,
+            "selling_price":     d.get("selling_price") or 0,
+            "commission_pct":    d.get("commission_pct") or 0.10,
+            "commission_amount": cal["commission_amount"],
+            "net_to_owner":      cal["net_to_owner"],
+            "iva_on_commission": cal["iva_on_commission"],
+            "status":            mapped_status,
+            "consignacion_status": d.get("status"),
+            "listing_id":        d.get("listing_id"),
+            "notes":             d.get("notes") or "",
+        })
     return jsonify(cars)
 
 
