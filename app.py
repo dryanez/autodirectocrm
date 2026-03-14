@@ -7075,15 +7075,21 @@ def chileautos_lead_webhook():
 def notifications_unread_count():
     """Return the count of recent activity items (last 24h) as unread notifications."""
     try:
+        new_consig = 0
+        new_leads = 0
         with get_db() as conn:
             # Count recent consignaciones created in the last 24h
             new_consig = conn.execute(
                 "SELECT COUNT(*) as c FROM consignaciones WHERE created_at > datetime('now', '-1 day')"
             ).fetchone()["c"]
-            # Count recent CRM leads created in the last 24h
-            new_leads = conn.execute(
-                "SELECT COUNT(*) as c FROM crm_leads WHERE created_at > datetime('now', '-1 day')"
-            ).fetchone()["c"]
+        try:
+            with get_crm_conn() as crm:
+                # Count recent CRM leads (web bookings) created in the last 24h
+                new_leads = crm.execute(
+                    "SELECT COUNT(*) as c FROM crm_leads WHERE created_at > datetime('now', '-1 day')"
+                ).fetchone()["c"]
+        except Exception:
+            pass
         return jsonify({"count": new_consig + new_leads})
     except Exception:
         return jsonify({"count": 0})
@@ -7095,37 +7101,53 @@ def notifications_recent():
     items = []
     try:
         with get_db() as conn:
-            # Recent consignaciones
+            # Recent consignaciones — highlight web wizard submissions
             rows = conn.execute(
-                "SELECT id, owner_first_name, owner_last_name, plate, car_make, car_model, status, created_at "
-                "FROM consignaciones ORDER BY created_at DESC LIMIT 10"
+                "SELECT id, owner_first_name, owner_last_name, plate, car_make, car_model, "
+                "car_year, appointment_date, appointment_time, status, created_at "
+                "FROM consignaciones ORDER BY created_at DESC LIMIT 15"
             ).fetchall()
             for r in rows:
+                name = " ".join(filter(None, [r["owner_first_name"], r["owner_last_name"]])) or f"#{r['id']}"
+                car = " ".join(filter(None, [r["car_make"], r["car_model"], str(r["car_year"] or "")])).strip()
+                appt = ""
+                if r["appointment_date"]:
+                    appt = r["appointment_date"]
+                    if r["appointment_time"]:
+                        appt += f" {r['appointment_time']}"
+                is_new = r["created_at"] and r["created_at"] > (
+                    __import__("datetime").datetime.now() - __import__("datetime").timedelta(hours=24)
+                ).isoformat()
                 items.append({
                     "type": "consignacion",
                     "id": r["id"],
-                    "title": f"Consignación #{r['id']}",
-                    "subtitle": " ".join(filter(None, [r["car_make"], r["car_model"], r["plate"]])),
+                    "title": f"{'🆕 ' if is_new else ''}Nueva Cita: {name}",
+                    "subtitle": f"{car or r['plate'] or ''}{' · ' + appt if appt else ''}",
                     "status": r["status"],
                     "created_at": r["created_at"],
                 })
+        with get_crm_conn() as crm:
             # Recent CRM leads
-            rows = conn.execute(
-                "SELECT id, full_name, stage, source, created_at "
+            rows = crm.execute(
+                "SELECT id, full_name, stage, source, car_make, car_model, appointment_date, created_at "
                 "FROM crm_leads ORDER BY created_at DESC LIMIT 10"
             ).fetchall()
             for r in rows:
+                car = " ".join(filter(None, [r["car_make"] or "", r["car_model"] or ""])).strip()
+                is_new = r["created_at"] and r["created_at"] > (
+                    __import__("datetime").datetime.now() - __import__("datetime").timedelta(hours=24)
+                ).isoformat()
                 items.append({
                     "type": "crm_lead",
                     "id": r["id"],
-                    "title": r["full_name"] or f"Lead #{r['id']}",
-                    "subtitle": f"{r['source'] or ''} → {r['stage'] or ''}",
+                    "title": f"{'🆕 ' if is_new else ''}{r['full_name'] or f'Lead #{r[\"id\"]}'}",
+                    "subtitle": f"{r['source'] or ''} · {car or ''} · {r['stage'] or ''}".strip(" ·"),
                     "status": r["stage"],
                     "created_at": r["created_at"],
                 })
         # Sort by created_at descending
         items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-        return jsonify({"items": items[:15]})
+        return jsonify({"items": items[:20]})
     except Exception as e:
         return jsonify({"items": [], "error": str(e)})
 
