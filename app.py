@@ -2415,6 +2415,81 @@ def calendar_assign():
             consig_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.commit()
         row = conn.execute("SELECT * FROM consignaciones WHERE id=?", (consig_id,)).fetchone()
+
+    # ── Create/update CRM lead so it appears in the Pipeline ──────────────────
+    try:
+        now2 = datetime.now().isoformat()
+        plate = (appt.get("plate") or "").upper().strip()
+        first_name = (appt.get("first_name") or "").strip()
+        last_name  = (appt.get("last_name")  or "").strip()
+        full_name  = (appt.get("full_name") or f"{first_name} {last_name}").strip()
+        car_make   = (appt.get("car_make") or "").strip().upper()
+        car_model  = (appt.get("car_model") or "").strip().upper()
+        with get_crm_conn() as crm:
+            existing_lead = None
+            if plate:
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate,)
+                ).fetchone()
+            if not existing_lead and appt.get("rut"):
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE rut=? LIMIT 1", (appt.get("rut"),)
+                ).fetchone()
+            if not existing_lead and appt.get("phone"):
+                existing_lead = crm.execute(
+                    "SELECT id FROM crm_leads WHERE phone=? LIMIT 1", (appt.get("phone"),)
+                ).fetchone()
+
+            if existing_lead:
+                crm.execute("""
+                    UPDATE crm_leads SET
+                        stage='agendado', first_name=?, last_name=?, full_name=?,
+                        rut=?, phone=?, email=?, region=?, commune=?, address=?,
+                        plate=?, car_make=?, car_model=?, car_year=?,
+                        mileage=?, appointment_date=?, appointment_time=?,
+                        supabase_id=?, source='web_wizard', updated_at=?
+                    WHERE id=?
+                """, (
+                    first_name, last_name, full_name,
+                    appt.get("rut"), appt.get("phone"), appt.get("email"),
+                    appt.get("region"), appt.get("commune"), appt.get("address"),
+                    plate, car_make, car_model, appt.get("car_year"),
+                    appt.get("mileage"), appt.get("appointment_date"), appt.get("appointment_time"),
+                    supabase_id, now2, existing_lead["id"]
+                ))
+                crm.commit()
+                print(f"[calendar_assign] updated crm_lead #{existing_lead['id']} → agendado")
+            else:
+                crm.execute("""
+                    INSERT INTO crm_leads (
+                        first_name, last_name, full_name, rut, phone, country_code, email,
+                        region, commune, address, plate, car_make, car_model, car_year,
+                        mileage, version, appointment_date, appointment_time,
+                        stage, source, supabase_id, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    first_name, last_name, full_name,
+                    appt.get("rut"), appt.get("phone"), appt.get("country_code", "+56"), appt.get("email"),
+                    appt.get("region"), appt.get("commune"), appt.get("address"),
+                    plate, car_make, car_model, appt.get("car_year"),
+                    appt.get("mileage"), appt.get("version"),
+                    appt.get("appointment_date"), appt.get("appointment_time"),
+                    "agendado", "web_wizard", supabase_id, now2, now2
+                ))
+                crm.commit()
+                new_lead_id = crm.execute("SELECT last_insert_rowid()").fetchone()[0]
+                crm.execute(
+                    "INSERT INTO crm_activities (lead_id, type, title, description) VALUES (?, ?, ?, ?)",
+                    (new_lead_id, "created", "Lead creado desde calendar assign",
+                     f"Cita agendada: {appt.get('appointment_date')} {appt.get('appointment_time')}")
+                )
+                crm.commit()
+                print(f"[calendar_assign] created crm_lead #{new_lead_id} for plate={plate}")
+    except Exception as e:
+        import traceback
+        print(f"[calendar_assign] CRM lead sync error: {e}")
+        traceback.print_exc()
+
     return jsonify({"ok": True, "consignacion": row_to_dict(row)})
 
 
