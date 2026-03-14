@@ -3168,17 +3168,34 @@ def delete_consignacion(cid):
         except Exception as e:
             print(f"[delete_consignacion] cars delete error: {e}")
 
-    # ── 5. Delete the consignacion record itself ──────────────────────────────
+    # ── 5. Delete linked CRM lead (matched by plate) ──────────────────────────
+    crm_lead_deleted_id = None
+    if plate:
+        try:
+            with get_crm_conn() as crm:
+                lead_row = crm.execute(
+                    "SELECT id FROM crm_leads WHERE plate=? LIMIT 1", (plate.upper(),)
+                ).fetchone()
+                if lead_row:
+                    crm_lead_deleted_id = lead_row["id"]
+                    crm.execute("DELETE FROM crm_leads WHERE id=?", (crm_lead_deleted_id,))
+                    crm.commit()
+                    print(f"[delete_consignacion] deleted crm_lead id={crm_lead_deleted_id} plate={plate.upper()}")
+        except Exception as e:
+            print(f"[delete_consignacion] crm_lead delete error: {e}")
+
+    # ── 6. Delete the consignacion record itself ──────────────────────────────
     with get_db() as conn:
         conn.execute("DELETE FROM consignaciones WHERE id=?", (cid,))
         conn.commit()
 
-    print(f"[delete_consignacion] consignacion {cid} fully deleted (listing, appraisal, cars, photos)")
+    print(f"[delete_consignacion] consignacion {cid} fully deleted (listing, appraisal, cars, photos, crm_lead)")
     return jsonify({"ok": True, "deleted": {
         "consignacion_id": cid,
         "listing_id": listing_id,
         "appraisal_id": appraisal_id,
         "car_id": car_id,
+        "crm_lead_id": crm_lead_deleted_id,
     }})
 
 
