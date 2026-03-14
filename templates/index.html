@@ -6533,8 +6533,8 @@
                 },
 
                 async deleteInventarioCar(id) {
-                    if (!confirm('¿Eliminar este vehículo del inventario permanentemente?')) return;
-                    const res = await this.authFetch(`/api/cars/${id}`, { method: 'DELETE' });
+                    if (!confirm('¿Eliminar este vehículo permanentemente?\nSe borrarán las fotos, publicaciones, CRM y todos los registros asociados.')) return;
+                    const res = await this.authFetch(`/api/consignaciones/${id}`, { method: 'DELETE' });
                     if (res.ok) {
                         this.invDetail = null;
                         await this.loadInventario();

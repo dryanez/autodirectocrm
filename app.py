@@ -6444,13 +6444,14 @@ def update_car(car_id):
 
 @app.route("/api/cars/<int:car_id>", methods=["DELETE"])
 def delete_car(car_id):
+    """Cascade-delete everything linked to this inventario car."""
     with get_conn() as conn:
         row = conn.execute("SELECT patente FROM cars WHERE id=?", (car_id,)).fetchone()
-        if not row:
-            return jsonify({"error": "Not found"}), 404
-        conn.execute("DELETE FROM cars WHERE id=?", (car_id,))
-        conn.commit()
-    return jsonify({"ok": True})
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    plate = row["patente"] if row["patente"] else None
+    deleted = _cascade_delete_vehicle(plate=plate)
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 # ─── API: Commission Calculator ───────────────────────────────────────────────
