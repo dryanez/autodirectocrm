@@ -103,6 +103,10 @@ CREATE INDEX IF NOT EXISTS idx_social_posts_company ON social_posts(company_id);
 ALTER TABLE camera_jobs ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
 CREATE INDEX IF NOT EXISTS idx_camera_jobs_company ON camera_jobs(company_id);
 
+-- compradores (buyer leads)
+ALTER TABLE compradores ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+CREATE INDEX IF NOT EXISTS idx_compradores_company ON compradores(company_id);
+
 
 -- ═══ 3. Back-fill existing data to default company ═══
 UPDATE crm_users SET company_id = 'a0000000-0000-0000-0000-000000000001' WHERE company_id IS NULL;
@@ -115,6 +119,7 @@ UPDATE wa_conversations SET company_id = 'a0000000-0000-0000-0000-000000000001' 
 UPDATE wa_messages SET company_id = 'a0000000-0000-0000-0000-000000000001' WHERE company_id IS NULL;
 UPDATE social_posts SET company_id = 'a0000000-0000-0000-0000-000000000001' WHERE company_id IS NULL;
 UPDATE camera_jobs SET company_id = 'a0000000-0000-0000-0000-000000000001' WHERE company_id IS NULL;
+UPDATE compradores SET company_id = 'a0000000-0000-0000-0000-000000000001' WHERE company_id IS NULL;
 
 -- ═══ 4. Seed default company settings (from env vars — user will update in UI) ═══
 INSERT INTO company_settings (company_id, company_name, contact_email)

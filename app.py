@@ -2727,6 +2727,8 @@ def create_consignacion():
     last_name  = (g("lastName",  "last_name")  or "").strip()
     full_name  = f"{first_name} {last_name}".strip() or data.get("full_name", "")
 
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
         result = conn.execute("""
             INSERT INTO consignaciones (
@@ -2736,8 +2738,8 @@ def create_consignacion():
                 owner_region, owner_commune, owner_address,
                 plate, car_make, car_model, car_year, mileage, version,
                 appointment_date, appointment_time,
-                status, part1_completed_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                status, part1_completed_at, created_at, updated_at, company_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             supa_id,
             first_name, last_name, full_name,
@@ -2749,7 +2751,7 @@ def create_consignacion():
             car.get("year") or g("carYear", "car_year"),
             g("mileage"), g("version"),
             appointment_date, appointment_time,
-            "parte1_completa", now, now, now
+            "parte1_completa", now, now, now, cid
         ))
         conn.commit()
         # The Supabase adapter returns the inserted row directly
@@ -3064,19 +3066,21 @@ def create_quick_consignacion():
     first = owner_name.split(" ")[0] if owner_name else ""
     last = " ".join(owner_name.split(" ")[1:]) if owner_name else ""
 
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
         conn.execute("""
             INSERT INTO consignaciones (
                 owner_first_name, owner_last_name, owner_full_name,
                 owner_phone, owner_rut, owner_email, plate,
                 car_make, car_model, car_year, mileage,
-                status, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                status, created_at, updated_at, company_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             first, last, owner_name,
             owner_phone, owner_rut, owner_email, plate,
             car_make, car_model, car_year, mileage,
-            "fotos_pendientes", now, now
+            "fotos_pendientes", now, now, cid
         ))
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -3214,9 +3218,11 @@ def get_inventario_covers():
 @app.route("/api/consignaciones", methods=["GET"])
 def get_consignaciones():
     status = request.args.get("status")
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
-        q = "SELECT * FROM consignaciones WHERE 1=1"
-        params = []
+        q = "SELECT * FROM consignaciones WHERE company_id=?"
+        params = [cid]
         if status:
             q += " AND status=?"
             params.append(status)
@@ -5577,12 +5583,16 @@ COMPRADOR_STAGE_LABELS = {
 
 @app.route("/api/compradores", methods=["GET"])
 def get_compradores():
-    """List all buyer leads."""
+    """List all buyer leads for current company."""
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
         rows = conn.execute(
             "SELECT b.*, u.name as assigned_user_name, u.color as assigned_user_color "
             "FROM compradores b LEFT JOIN crm_users u ON b.assigned_user_id = u.id "
-            "ORDER BY b.id DESC"
+            "WHERE b.company_id=? "
+            "ORDER BY b.id DESC",
+            (cid,)
         ).fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
@@ -5592,6 +5602,8 @@ def create_comprador():
     """Create a new buyer lead."""
     data = request.json or {}
     now = datetime.now().isoformat()
+    user = _get_current_user()
+    cid = _get_company_id(user)
 
     first_name = data.get("first_name", "")
     last_name = data.get("last_name", "")
@@ -5602,15 +5614,15 @@ def create_comprador():
             """INSERT INTO compradores
                (first_name, last_name, full_name, rut, phone, email,
                 region, commune, address, car_description, car_plate,
-                car_price, consignacion_id, status, assigned_user_id, notes, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                car_price, consignacion_id, status, assigned_user_id, notes, created_at, updated_at, company_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (first_name, last_name, full_name,
              data.get("rut"), data.get("phone"), data.get("email"),
              data.get("region"), data.get("commune"), data.get("address"),
              data.get("car_description"), data.get("car_plate"),
              data.get("car_price"), data.get("consignacion_id"),
              data.get("status", "interesado"), data.get("assigned_user_id"),
-             data.get("notes"), now, now)
+             data.get("notes"), now, now, cid)
         )
         conn.commit()
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -6092,9 +6104,11 @@ def crm_get_leads():
     stage = request.args.get("stage")
     source = request.args.get("source")
     search = request.args.get("search", "")
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_crm_conn() as conn:
-        query = "SELECT * FROM crm_leads WHERE 1=1"
-        params = []
+        query = "SELECT * FROM crm_leads WHERE company_id=?"
+        params = [cid]
         if stage:
             query += " AND stage=?"
             params.append(stage)
@@ -6113,6 +6127,8 @@ def crm_get_leads():
 @app.route("/api/crm/leads", methods=["POST"])
 def crm_create_lead():
     data = request.json
+    user = _get_current_user()
+    cid = _get_company_id(user)
     fields = [
         'first_name', 'last_name', 'full_name', 'rut', 'email', 'phone', 'country_code',
         'region', 'commune', 'address', 'plate', 'car_make', 'car_model', 'car_year',
@@ -6129,6 +6145,7 @@ def crm_create_lead():
         record['full_name'] = (record.get('first_name', '') + ' ' + record.get('last_name', '')).strip()
     record['created_at'] = datetime.now().isoformat()
     record['updated_at'] = record['created_at']
+    record['company_id'] = cid
     if isinstance(record.get('tags'), list):
         record['tags'] = json.dumps(record['tags'])
 
@@ -6313,25 +6330,29 @@ def crm_add_activity(lead_id):
 # ─── CRM API: Pipeline Stats ──────────────────────────────────────────────────
 @app.route("/api/crm/stats")
 def crm_stats():
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_crm_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM crm_leads").fetchone()[0]
+        total = conn.execute("SELECT COUNT(*) FROM crm_leads WHERE company_id=?", (cid,)).fetchone()[0]
         pipeline = {}
         for stage in CRM_STAGES:
-            count = conn.execute("SELECT COUNT(*) FROM crm_leads WHERE stage=?", (stage,)).fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM crm_leads WHERE company_id=? AND stage=?", (cid, stage)).fetchone()[0]
             pipeline[stage] = count
         # Source breakdown
-        all_leads = conn.execute("SELECT source FROM crm_leads").fetchall()
+        all_leads = conn.execute("SELECT source FROM crm_leads WHERE company_id=?", (cid,)).fetchall()
         source_map = {}
         for r in all_leads:
             src = r.get("source") or "unknown"
             source_map[src] = source_map.get(src, 0) + 1
         # Recent leads (last 7 days)
         recent = conn.execute(
-            "SELECT COUNT(*) FROM crm_leads WHERE created_at >= datetime('now', '-7 days')"
+            "SELECT COUNT(*) FROM crm_leads WHERE company_id=? AND created_at >= datetime('now', '-7 days')",
+            (cid,)
         ).fetchone()[0]
         # Leads needing follow-up
         needs_followup = conn.execute(
-            "SELECT COUNT(*) FROM crm_leads WHERE next_followup_at <= datetime('now') AND stage NOT IN ('vendido', 'descartado')"
+            "SELECT COUNT(*) FROM crm_leads WHERE company_id=? AND next_followup_at <= datetime('now') AND stage NOT IN ('vendido', 'descartado')",
+            (cid,)
         ).fetchone()[0]
     return jsonify({
         "total": total,
@@ -7730,9 +7751,11 @@ def notifications_recent():
 
 @app.route("/api/wa/conversations", methods=["GET"])
 def wa_get_conversations():
-    """Return all WhatsApp conversations ordered by last message."""
-    if not _get_current_user():
+    """Return all WhatsApp conversations for the current company."""
+    user = _get_current_user()
+    if not user:
         return jsonify({"error": "Unauthorized"}), 401
+    cid = _get_company_id(user)
     import requests as _req
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
     supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
@@ -7741,7 +7764,7 @@ def wa_get_conversations():
     try:
         r = _req.get(
             f"{supa_url}/rest/v1/wa_conversations",
-            params={"select": "*", "order": "last_message_at.desc.nullslast"},
+            params={"select": "*", "order": "last_message_at.desc.nullslast", "company_id": f"eq.{cid}"},
             headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
             timeout=10,
         )

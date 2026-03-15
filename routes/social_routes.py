@@ -48,6 +48,15 @@ def _tenant_settings():
     except Exception:
         return {}
 
+def _tenant_company_id():
+    """Get the company_id for the current request user."""
+    try:
+        from app import _get_current_user, _get_company_id
+        user = _get_current_user()
+        return _get_company_id(user)
+    except Exception:
+        return os.environ.get('COMPANY_ID', 'a0000000-0000-0000-0000-000000000001')
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -616,8 +625,9 @@ def upload_media():
 
 @social_bp.route('/posts', methods=['GET'])
 def list_posts():
-    """List social posts. Filters: ?status=, ?month=, &year="""
-    params = {'select': '*'}
+    """List social posts for current company. Filters: ?status=, ?month=, &year="""
+    cid = _tenant_company_id()
+    params = {'select': '*', 'company_id': f'eq.{cid}'}
     status = request.args.get('status')
     if status:
         params['status'] = f'eq.{status}'
@@ -644,6 +654,7 @@ def list_posts():
 def create_post():
     """Create a new social post (draft or scheduled)."""
     data = request.json or {}
+    cid = _tenant_company_id()
     record = {
         'caption': data.get('caption', ''),
         'hashtags': data.get('hashtags', ''),
@@ -652,6 +663,7 @@ def create_post():
         'publish_instagram': data.get('publish_instagram', True),
         'publish_facebook': data.get('publish_facebook', True),
         'status': data.get('status', 'draft'),
+        'company_id': cid,
     }
     if data.get('consignacion_id'):
         record['consignacion_id'] = data['consignacion_id']
