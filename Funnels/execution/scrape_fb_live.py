@@ -42,9 +42,9 @@ SCROLL_PX            = 1200
 SCROLL_DELAY_MIN     = 2.0
 SCROLL_DELAY_MAX     = 4.0
 
-# Credentials - REDACTED_EMAIL account (cookies are from this account)
-FB_EMAIL    = os.environ.get("FB_EMAIL", "REDACTED_EMAIL")
-FB_PASSWORD = os.environ.get("FB_PASSWORD", "REDACTED_PASSWORD")
+# Credentials - dr.felipeyanez@gmail.com account (cookies are from this account)
+FB_EMAIL    = os.environ.get("FB_EMAIL", "dr.felipeyanez@gmail.com")
+FB_PASSWORD = os.environ.get("FB_PASSWORD", "Chile202601@")
 
 COOKIES_FILE = Path(__file__).resolve().parent.parent / "fb_cookies.json"
 

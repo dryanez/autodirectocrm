@@ -2,3 +2,66 @@
 [sync_crm_owner] No identifiers found for consig None, skipping sync.
 [sync_crm_owner] Triggered for consig ID 2 (plate: 'BCDF12', appt_id: 'None', rut: '18.842.443-0', phone: '912345678')
 [sync_crm_owner] Triggered for consig ID 1 (plate: 'BXKM72', appt_id: '63036bc8-606b-4e51-8aa1-65438c614d70', rut: '12345678-9', phone: '912345678')
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'TYRY56', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 4
+[sync_crm_stage] Syncing stage for lead ID 4
+[sync_crm_stage] Triggered (plate: 'TYRY56', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 4
+[sync_crm_stage] Syncing stage for lead ID 4
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'BRKZ27', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 274
+[sync_crm_stage] Syncing stage for lead ID 274
+[sync_crm_stage] Triggered (plate: 'HKBL17', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'BRKZ27', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 274
+[sync_crm_stage] Syncing stage for lead ID 274
+[sync_crm_stage] Triggered (plate: 'TYRY56', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 4
+[sync_crm_stage] Syncing stage for lead ID 4
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'HKBL17', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'BRKZ27', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 274
+[sync_crm_stage] Syncing stage for lead ID 274
+[sync_crm_stage] Triggered (plate: 'TYRY56', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 4
+[sync_crm_stage] Syncing stage for lead ID 4
+[sync_crm_stage] Triggered (plate: 'WH5900', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] Matched by Plate: 5
+[sync_crm_stage] Syncing stage for lead ID 5
+[sync_crm_stage] Triggered (plate: 'HKBL17', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found
+[sync_crm_stage] Triggered (plate: 'WG9755', appt_id: 'None', rut: 'None', phone: 'None') -> en_venta
+[sync_crm_stage] No matching CRM lead found

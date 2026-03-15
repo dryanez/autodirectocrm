@@ -7556,6 +7556,196 @@ def wa_mark_read(conv_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# WhatsApp AI Agent — Manual reply, status toggle, FAQ CRUD
+# ═══════════════════════════════════════════════════════════════════
+
+@app.route("/api/wa/conversations/<conv_id>/send", methods=["POST"])
+def wa_send_manual(conv_id):
+    """Send a manual message to a WhatsApp conversation."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    data = request.get_json(force=True, silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "No message provided"}), 400
+
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    wa_token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
+    wa_phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+    headers_supa = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"}
+
+    try:
+        # Get conversation phone number
+        r = _req.get(
+            f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}&select=phone_number",
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=10,
+        )
+        convs = r.json() if r.ok else []
+        if not convs:
+            return jsonify({"error": "Conversation not found"}), 404
+        phone = convs[0].get("phone_number")
+        if not phone:
+            return jsonify({"error": "No phone number"}), 400
+
+        # Send via WhatsApp API
+        if wa_token and wa_phone_id:
+            wa_res = _req.post(
+                f"https://graph.facebook.com/v19.0/{wa_phone_id}/messages",
+                json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": message, "preview_url": False}},
+                headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+                timeout=15,
+            )
+            if not wa_res.ok:
+                print(f"[wa_manual] WhatsApp send error: {wa_res.status_code} {wa_res.text}")
+                return jsonify({"error": f"WhatsApp API error: {wa_res.status_code}"}), 500
+
+        # Save message to DB
+        _req.post(f"{supa_url}/rest/v1/wa_messages",
+            json={"conversation_id": conv_id, "role": "assistant", "content": message},
+            headers=headers_supa, timeout=10)
+
+        # Update conversation last_message
+        import datetime
+        _req.patch(
+            f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}",
+            json={"last_message": message[:120], "last_message_at": datetime.datetime.utcnow().isoformat() + "Z"},
+            headers={**headers_supa, "Prefer": "return=minimal"}, timeout=10,
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[wa_manual] error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wa/conversations/<conv_id>/status", methods=["PATCH"])
+def wa_update_status(conv_id):
+    """Update conversation status (open/resolved/spam)."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    data = request.get_json(force=True, silent=True) or {}
+    status = data.get("status", "open")
+    if status not in ("open", "resolved", "spam"):
+        return jsonify({"error": "Invalid status"}), 400
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    try:
+        _req.patch(
+            f"{supa_url}/rest/v1/wa_conversations?id=eq.{conv_id}",
+            json={"status": status},
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=minimal"},
+            timeout=10,
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── FAQ / Knowledge Base CRUD ───────────────────────────────────
+
+@app.route("/api/wa/faq", methods=["GET"])
+def wa_get_faq():
+    """Return all FAQ entries."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    try:
+        r = _req.get(
+            f"{supa_url}/rest/v1/wa_faq",
+            params={"select": "*", "order": "category.asc,created_at.desc"},
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=10,
+        )
+        return jsonify(r.json() if r.ok else [])
+    except Exception as e:
+        print(f"[wa_faq] get error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/wa/faq", methods=["POST"])
+def wa_create_faq():
+    """Create a new FAQ entry."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    data = request.get_json(force=True, silent=True) or {}
+    question = (data.get("question") or "").strip()
+    answer = (data.get("answer") or "").strip()
+    category = data.get("category", "general")
+    if not question or not answer:
+        return jsonify({"error": "Question and answer required"}), 400
+
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    try:
+        r = _req.post(
+            f"{supa_url}/rest/v1/wa_faq",
+            json={"question": question, "answer": answer, "category": category},
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"},
+            timeout=10,
+        )
+        if r.ok:
+            return jsonify({"ok": True, "faq": (r.json() or [{}])[0]})
+        return jsonify({"error": r.text}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wa/faq/<faq_id>", methods=["PUT"])
+def wa_update_faq(faq_id):
+    """Update an existing FAQ entry."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    data = request.get_json(force=True, silent=True) or {}
+    updates = {}
+    if "question" in data: updates["question"] = (data["question"] or "").strip()
+    if "answer" in data: updates["answer"] = (data["answer"] or "").strip()
+    if "category" in data: updates["category"] = data["category"]
+    if "enabled" in data: updates["enabled"] = bool(data["enabled"])
+    if not updates:
+        return jsonify({"error": "No fields to update"}), 400
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    try:
+        r = _req.patch(
+            f"{supa_url}/rest/v1/wa_faq?id=eq.{faq_id}",
+            json=updates,
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"},
+            timeout=10,
+        )
+        if r.ok:
+            return jsonify({"ok": True, "faq": (r.json() or [{}])[0]})
+        return jsonify({"error": r.text}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wa/faq/<faq_id>", methods=["DELETE"])
+def wa_delete_faq(faq_id):
+    """Delete a FAQ entry."""
+    if not _get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    try:
+        _req.delete(
+            f"{supa_url}/rest/v1/wa_faq?id=eq.{faq_id}",
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=10,
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════
 # WhatsApp AI Agent — Webhook (Meta calls this)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -7720,6 +7910,23 @@ def wa_webhook_receive():
                     system_prompt = f.read()
             except Exception:
                 system_prompt = "Eres un asistente de ventas de autos de Auto Directo, una consignataria en Chile. Responde en español de forma amable y profesional."
+
+            # ── Load FAQ knowledge base & inject into prompt ─────
+            try:
+                faq_r = _req.get(
+                    f"{supa_url}/rest/v1/wa_faq",
+                    params={"select": "question,answer,category", "order": "category.asc"},
+                    headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+                    timeout=8,
+                )
+                faq_items = faq_r.json() if faq_r.ok else []
+                if faq_items:
+                    faq_block = "\n\nFREQUENTLY ASKED QUESTIONS (use these to answer accurately):\n"
+                    for faq in faq_items:
+                        faq_block += f"\nQ: {faq.get('question','')}\nA: {faq.get('answer','')}\n"
+                    system_prompt += faq_block
+            except Exception as _faq_err:
+                print(f"[wa_webhook] FAQ load error (non-fatal): {_faq_err}")
 
             # ── Call Gemini ───────────────────────────────────────
             gemini_key = os.environ.get("GOOGLE_API_KEY", "").strip()

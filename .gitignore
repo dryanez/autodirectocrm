@@ -36,3 +36,5 @@ Funnels/fb_cookies.json
 Funnels/.tmp/
 Funnels/dashboard/server*.log
 Funnels/dashboard/templates/index.html.bak
+.vercel
+.env*.local
