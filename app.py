@@ -1075,25 +1075,34 @@ def delete_user(user_id):
 # ─── API: Auth login (for SimplyAPI CRM itself) ───────────────────────────────
 import hmac as _hmac, hashlib as _hashlib, base64 as _base64
 
-def _make_token(user_id, email):
-    """Create a simple HMAC token: base64(user_id:email:hmac)"""
+def _make_token(user_id, email, company_id=None):
+    """Create a simple HMAC token: base64(user_id:email:company_id:hmac)"""
+    cid = company_id or _DEFAULT_COMPANY_ID
     secret = app.secret_key.encode()
-    msg = f"{user_id}:{email}".encode()
+    msg = f"{user_id}:{email}:{cid}".encode()
     sig = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
-    raw = f"{user_id}:{email}:{sig}"
+    raw = f"{user_id}:{email}:{cid}:{sig}"
     return _base64.b64encode(raw.encode()).decode()
 
 def _verify_token(token):
-    """Verify token and return user dict or None."""
+    """Verify token and return user dict or None (with company_id)."""
     try:
         raw = _base64.b64decode(token.encode()).decode()
-        parts = raw.split(":", 2)
-        if len(parts) != 3:
+        parts = raw.split(":")
+        # Support legacy 3-part tokens (user_id:email:sig) and new 4-part
+        if len(parts) == 3:
+            user_id, email, sig = parts
+            cid = _DEFAULT_COMPANY_ID
+            secret = app.secret_key.encode()
+            msg = f"{user_id}:{email}".encode()
+            expected = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
+        elif len(parts) == 4:
+            user_id, email, cid, sig = parts
+            secret = app.secret_key.encode()
+            msg = f"{user_id}:{email}:{cid}".encode()
+            expected = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
+        else:
             return None
-        user_id, email, sig = parts
-        secret = app.secret_key.encode()
-        msg = f"{user_id}:{email}".encode()
-        expected = _hmac.new(secret, msg, _hashlib.sha256).hexdigest()
         if not _hmac.compare_digest(sig, expected):
             return None
         with get_db() as conn:
@@ -1101,7 +1110,13 @@ def _verify_token(token):
                 "SELECT * FROM crm_users WHERE id=? AND email=? AND active=1",
                 (int(user_id), email)
             ).fetchone()
-        return row_to_dict(row) if row else None
+        if not row:
+            return None
+        user = row_to_dict(row)
+        # Always attach company_id from token
+        if not user.get("company_id"):
+            user["company_id"] = cid
+        return user
     except Exception:
         return None
 
@@ -1113,6 +1128,82 @@ def _get_current_user():
         return _verify_token(auth[7:])
     # Fallback: Flask session (local dev)
     return session.get("user")
+
+
+# ─── SaaS Multi-Tenancy Helpers ───────────────────────────────────────────────
+
+_DEFAULT_COMPANY_ID = "a0000000-0000-0000-0000-000000000001"
+
+def _get_company_id(user=None):
+    """Get the company_id for the current request. Falls back to default."""
+    if user is None:
+        user = _get_current_user()
+    if user and user.get("company_id"):
+        return user["company_id"]
+    return os.environ.get("COMPANY_ID", _DEFAULT_COMPANY_ID)
+
+# In-memory cache for company settings (TTL 60s per company)
+_company_settings_cache = {}
+
+def _get_company_settings(company_id=None):
+    """Load per-company settings from company_settings table.
+    Falls back to env vars for backwards compatibility."""
+    import time
+    if company_id is None:
+        company_id = _get_company_id()
+    # Check cache (60s TTL)
+    cached = _company_settings_cache.get(company_id)
+    if cached and time.time() - cached["_ts"] < 60:
+        return cached
+    # Fetch from Supabase
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    settings = {}
+    try:
+        r = _req.get(
+            f"{supa_url}/rest/v1/company_settings?company_id=eq.{company_id}&select=*",
+            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+            timeout=8,
+        )
+        if r.ok and r.json():
+            settings = r.json()[0] if isinstance(r.json(), list) else r.json()
+    except Exception as e:
+        print(f"[tenant] settings load error: {e}")
+    # Fall back to env vars for any missing keys
+    env_map = {
+        "whatsapp_access_token": "WHATSAPP_ACCESS_TOKEN",
+        "whatsapp_phone_number_id": "WHATSAPP_PHONE_NUMBER_ID",
+        "whatsapp_verify_token": "WHATSAPP_VERIFY_TOKEN",
+        "whatsapp_number": None,
+        "meta_fb_page_id": "META_FB_PAGE_ID",
+        "meta_fb_page_access_token": "META_FB_PAGE_ACCESS_TOKEN",
+        "meta_ig_user_id": "META_IG_USER_ID",
+        "meta_system_user_token": "META_SYSTEM_USER_TOKEN",
+        "meta_app_id": "META_APP_ID",
+        "meta_app_secret": "META_APP_SECRET",
+        "resend_api_key": "RESEND_API_KEY",
+        "google_api_key": "GOOGLE_API_KEY",
+        "chileautos_client_id": None,
+        "chileautos_client_secret": None,
+        "chileautos_seller_id": None,
+        "chileautos_env": None,
+    }
+    for db_key, env_key in env_map.items():
+        if not settings.get(db_key) and env_key:
+            val = os.environ.get(env_key, "").strip()
+            if val:
+                settings[db_key] = val
+    import time as _t
+    settings["_ts"] = _t.time()
+    _company_settings_cache[company_id] = settings
+    return settings
+
+def _tenant_filter(company_id=None):
+    """Return Supabase query param for tenant filtering."""
+    cid = company_id or _get_company_id()
+    return f"eq.{cid}"
+
 
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
@@ -1131,11 +1222,14 @@ def auth_login():
     stored_pw = user.get("password") or "admin1234"
     if password != stored_pw:
         return jsonify({"error": "Credenciales inválidas"}), 401
-    user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal"] if k in user}
+    user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal","company_id"] if k in user}
+    # Ensure company_id is always present (backcompat)
+    if "company_id" not in user_out or not user_out["company_id"]:
+        user_out["company_id"] = os.environ.get("COMPANY_ID", _DEFAULT_COMPANY_ID)
     # Set session for local dev fallback
     session["user"] = user_out
     # Return a stateless token for Vercel (serverless-safe)
-    token = _make_token(user_out["id"], user_out["email"])
+    token = _make_token(user_out["id"], user_out["email"], user_out.get("company_id"))
     return jsonify({"ok": True, "user": user_out, "token": token})
 
 
@@ -1150,8 +1244,85 @@ def auth_me():
     user = _get_current_user()
     if not user:
         return jsonify({"error": "Not logged in"}), 401
-    user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal"] if k in user}
+    user_out = {k: user[k] for k in ["id","name","email","role","color","sucursal","company_id"] if k in user}
+    if "company_id" not in user_out or not user_out["company_id"]:
+        user_out["company_id"] = os.environ.get("COMPANY_ID", _DEFAULT_COMPANY_ID)
     return jsonify(user_out)
+
+
+# ─── API: Company Settings (per-tenant) ───────────────────────────────────────
+
+@app.route("/api/company-settings", methods=["GET"])
+def get_company_settings_api():
+    """Return settings for the current user's company."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    cid = _get_company_id(user)
+    settings = _get_company_settings(cid)
+    # Strip out any raw tokens from the response for non-admin users
+    safe = dict(settings)
+    if user.get("role") != "admin":
+        for k in list(safe.keys()):
+            if "token" in k or "secret" in k or "key" in k or "password" in k:
+                safe[k] = "••••••••" if safe.get(k) else ""
+    return jsonify(safe)
+
+
+@app.route("/api/company-settings", methods=["PATCH"])
+def patch_company_settings_api():
+    """Update settings for the current user's company (admin only)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if user.get("role") != "admin":
+        return jsonify({"error": "Solo administradores pueden cambiar configuraciones"}), 403
+    cid = _get_company_id(user)
+    data = request.json or {}
+    if not data:
+        return jsonify({"error": "No data"}), 400
+    # Allowed fields that can be updated
+    ALLOWED = {
+        "whatsapp_access_token", "whatsapp_phone_number_id", "whatsapp_verify_token",
+        "meta_fb_page_id", "meta_fb_page_access_token", "meta_ig_user_id",
+        "meta_system_user_token", "meta_app_id", "meta_app_secret",
+        "resend_api_key", "resend_from_email", "google_api_key",
+        "chileautos_client_id", "chileautos_client_secret", "chileautos_seller_id",
+        "company_name", "company_logo_url", "company_website",
+    }
+    updates = {k: v for k, v in data.items() if k in ALLOWED}
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+    updates["updated_at"] = datetime.now().isoformat()
+    # Upsert: try PATCH first, if 404 do POST
+    import requests as req_lib
+    sb_url = os.environ.get("SUPABASE_URL", "")
+    sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    headers = {
+        "apikey": sb_key,
+        "Authorization": f"Bearer {sb_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+    # Try update existing row
+    resp = req_lib.patch(
+        f"{sb_url}/rest/v1/company_settings?company_id=eq.{cid}",
+        json=updates, headers=headers
+    )
+    if resp.status_code == 200 and resp.json():
+        # Bust cache
+        _company_settings_cache.pop(cid, None)
+        return jsonify(resp.json()[0])
+    # Row doesn't exist yet → insert
+    updates["company_id"] = cid
+    resp2 = req_lib.post(
+        f"{sb_url}/rest/v1/company_settings",
+        json=updates, headers=headers
+    )
+    _company_settings_cache.pop(cid, None)
+    if resp2.status_code in (200, 201) and resp2.json():
+        return jsonify(resp2.json()[0])
+    return jsonify({"error": "Failed to save settings", "detail": resp2.text}), 500
 
 
 # ─── API: Consignación → appraisal callback (called by mrcar-consignaciones) ──
@@ -2080,9 +2251,12 @@ def send_inspeccion_email(appraisal_id):
     if not to_email:
         return jsonify({"error": "Destinatario (to) requerido"}), 400
 
-    resend_key = os.environ.get("RESEND_API_KEY", "")
+    user = _get_current_user()
+    cid = _get_company_id(user)
+    cs = _get_company_settings(cid)
+    resend_key = cs.get("resend_api_key", "")
     if not resend_key:
-        return jsonify({"error": "RESEND_API_KEY no configurada en .env"}), 500
+        return jsonify({"error": "RESEND_API_KEY no configurada en Ajustes"}), 500
 
     # Fetch the HTML report
     supabase_url, headers = _supa_headers()
@@ -4349,7 +4523,8 @@ def delete_camera_job(token):
 
 # ─── API: Modules (SaaS feature toggles) ──────────────────────────────────────
 
-COMPANY_ID = os.environ.get("COMPANY_ID", "a0000000-0000-0000-0000-000000000001")
+# Legacy COMPANY_ID kept as alias for backwards compat; new code uses _get_company_id()
+COMPANY_ID = os.environ.get("COMPANY_ID", _DEFAULT_COMPANY_ID)
 
 @app.route("/api/modules", methods=["GET"])
 def get_modules():
@@ -4358,6 +4533,8 @@ def get_modules():
     supabase_url, headers = _supa_headers()
     if not supabase_url:
         return jsonify({"error": "Supabase not configured"}), 500
+    user = _get_current_user()
+    cid = _get_company_id(user)
     try:
         # Fetch master module list
         r_mods = req_lib.get(
@@ -4370,7 +4547,7 @@ def get_modules():
         # Fetch this company's enabled modules
         r_cm = req_lib.get(
             supabase_url + "/rest/v1/company_modules",
-            params={"select": "module_id,enabled,config", "company_id": "eq.{}".format(COMPANY_ID)},
+            params={"select": "module_id,enabled,config", "company_id": "eq.{}".format(cid)},
             headers=headers, timeout=10
         )
         company_mods = {row["module_id"]: row for row in (r_cm.json() if r_cm.status_code == 200 else [])}
@@ -4392,7 +4569,7 @@ def get_modules():
         return jsonify({"modules": result, "company_id": COMPANY_ID})
     except Exception as e:
         # Tables may not exist yet — return empty list so frontend falls back to "all enabled"
-        return jsonify({"modules": [], "company_id": COMPANY_ID})
+        return jsonify({"modules": [], "company_id": cid})
 
 
 @app.route("/api/modules/<module_id>", methods=["PATCH"])
@@ -4403,8 +4580,10 @@ def toggle_module(module_id):
     supabase_url, headers = _supa_headers()
     if not supabase_url:
         return jsonify({"error": "Supabase not configured"}), 500
+    user = _get_current_user()
+    cid = _get_company_id(user)
 
-    payload = {"company_id": COMPANY_ID, "module_id": module_id}
+    payload = {"company_id": cid, "module_id": module_id}
     if "enabled" in data:
         payload["enabled"] = data["enabled"]
     if "config" in data:
@@ -4572,9 +4751,12 @@ def ai_generate_description():
     Generate a short, professional car listing description using Google Gemini.
     Body: { brand, model, year, color, mileage, fuel_type, transmission, motor, features }
     """
-    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    user = _get_current_user()
+    cid = _get_company_id(user)
+    cs = _get_company_settings(cid)
+    api_key = cs.get("google_api_key", "")
     if not api_key:
-        return jsonify({"error": "GOOGLE_API_KEY no configurada"}), 500
+        return jsonify({"error": "GOOGLE_API_KEY no configurada en Ajustes"}), 500
 
     data = request.json or {}
     brand = data.get("brand", "")
@@ -6689,45 +6871,107 @@ def simulate_send(car_id):
 
 @app.route("/api/settings", methods=["GET"])
 def get_settings():
-    """Return all CRM settings as a flat dict."""
+    """Return all CRM settings merged with company_settings."""
+    user = _get_current_user()
+    cid = _get_company_id(user)
+    cs = _get_company_settings(cid)
     try:
         with get_db() as conn:
             rows = conn.execute("SELECT key, value FROM crm_settings").fetchall()
-        return jsonify({row_to_dict(r)["key"]: row_to_dict(r)["value"] for r in rows})
-    except Exception as e:
-        # Table might not exist yet — return defaults
-        print(f"[settings] Error reading: {e}")
-        return jsonify({
-            "whatsapp_number": "+56976654569",
-            "chileautos_client_id": "464f4235-8052-4832-a5ea-6738021263fe",
-            "chileautos_client_secret": "Cen/5ic8fYtGbHMD4lU8VYHZ5/sJsU/N4qrl9V2DIzU=",
-            "chileautos_seller_id": "4AA0C7A3-DE66-4F21-91E8-84CA5CD8C6F4",
-            "chileautos_env": "staging",
-        })
+        legacy = {row_to_dict(r)["key"]: row_to_dict(r)["value"] for r in rows}
+    except Exception:
+        legacy = {}
+    # Merge: company_settings take priority, then crm_settings, then defaults
+    merged = {
+        "whatsapp_number": cs.get("whatsapp_phone_number_id") or legacy.get("whatsapp_number", "+56976654569"),
+        "chileautos_client_id": cs.get("chileautos_client_id") or legacy.get("chileautos_client_id", ""),
+        "chileautos_client_secret": cs.get("chileautos_client_secret") or legacy.get("chileautos_client_secret", ""),
+        "chileautos_seller_id": cs.get("chileautos_seller_id") or legacy.get("chileautos_seller_id", ""),
+        "chileautos_env": legacy.get("chileautos_env", "staging"),
+        # Integration credentials from company_settings (for Ajustes page)
+        "whatsapp_access_token": cs.get("whatsapp_access_token", ""),
+        "whatsapp_phone_number_id": cs.get("whatsapp_phone_number_id", ""),
+        "whatsapp_verify_token": cs.get("whatsapp_verify_token", ""),
+        "meta_fb_page_id": cs.get("meta_fb_page_id", ""),
+        "meta_fb_page_access_token": cs.get("meta_fb_page_access_token", ""),
+        "meta_ig_user_id": cs.get("meta_ig_user_id", ""),
+        "meta_system_user_token": cs.get("meta_system_user_token", ""),
+        "meta_app_id": cs.get("meta_app_id", ""),
+        "meta_app_secret": cs.get("meta_app_secret", ""),
+        "resend_api_key": cs.get("resend_api_key", ""),
+        "resend_from_email": cs.get("resend_from_email", ""),
+        "google_api_key": cs.get("google_api_key", ""),
+        "company_name": cs.get("company_name", ""),
+        "company_logo_url": cs.get("company_logo_url", ""),
+        "company_website": cs.get("company_website", ""),
+    }
+    # Mask secrets for non-admin
+    if not user or user.get("role") != "admin":
+        for k in list(merged.keys()):
+            if any(s in k for s in ("token", "secret", "key", "password")) and merged.get(k):
+                merged[k] = "••••" + merged[k][-4:] if len(merged[k]) > 4 else "••••"
+    return jsonify(merged)
 
 
 @app.route("/api/settings", methods=["POST"])
 def save_settings():
-    """Upsert CRM settings. Body: { "key": "value", ... }"""
+    """Upsert CRM settings. Saves integration credentials to company_settings."""
+    user = _get_current_user()
+    if not user or user.get("role") != "admin":
+        return jsonify({"error": "Solo administradores"}), 403
     data = request.json or {}
-    allowed_keys = {
+    # Keys that go to legacy crm_settings (ChileAutos etc.)
+    legacy_keys = {
         "whatsapp_number", "chileautos_client_id", "chileautos_client_secret",
         "chileautos_seller_id", "chileautos_env",
     }
-    try:
-        with get_db() as conn:
-            for k, v in data.items():
-                if k not in allowed_keys:
-                    continue
-                existing = conn.execute("SELECT key FROM crm_settings WHERE key=?", (k,)).fetchone()
-                if existing:
-                    conn.execute("UPDATE crm_settings SET value=? WHERE key=?", (str(v), k))
-                else:
-                    conn.execute("INSERT INTO crm_settings (key, value) VALUES (?, ?)", (k, str(v)))
-            conn.commit()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # Keys that go to company_settings
+    company_keys = {
+        "whatsapp_access_token", "whatsapp_phone_number_id", "whatsapp_verify_token",
+        "meta_fb_page_id", "meta_fb_page_access_token", "meta_ig_user_id",
+        "meta_system_user_token", "meta_app_id", "meta_app_secret",
+        "resend_api_key", "resend_from_email", "google_api_key",
+        "chileautos_client_id", "chileautos_client_secret", "chileautos_seller_id",
+        "company_name", "company_logo_url", "company_website",
+    }
+    # Save legacy keys
+    legacy_data = {k: v for k, v in data.items() if k in legacy_keys}
+    if legacy_data:
+        try:
+            with get_db() as conn:
+                for k, v in legacy_data.items():
+                    existing = conn.execute("SELECT key FROM crm_settings WHERE key=?", (k,)).fetchone()
+                    if existing:
+                        conn.execute("UPDATE crm_settings SET value=? WHERE key=?", (str(v), k))
+                    else:
+                        conn.execute("INSERT INTO crm_settings (key, value) VALUES (?, ?)", (k, str(v)))
+                conn.commit()
+        except Exception as e:
+            print(f"[settings] crm_settings save error: {e}")
+    # Save company_settings keys (skip masked values)
+    company_data = {}
+    for k, v in data.items():
+        if k in company_keys and v and not str(v).startswith("••••"):
+            company_data[k] = v
+    if company_data:
+        cid = _get_company_id(user)
+        import requests as req_lib
+        sb_url = os.environ.get("SUPABASE_URL", "")
+        sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        headers = {
+            "apikey": sb_key, "Authorization": f"Bearer {sb_key}",
+            "Content-Type": "application/json", "Prefer": "return=representation",
+        }
+        company_data["updated_at"] = datetime.now().isoformat()
+        resp = req_lib.patch(
+            f"{sb_url}/rest/v1/company_settings?company_id=eq.{cid}",
+            json=company_data, headers=headers
+        )
+        if not (resp.status_code == 200 and resp.json()):
+            company_data["company_id"] = cid
+            req_lib.post(f"{sb_url}/rest/v1/company_settings", json=company_data, headers=headers)
+        _company_settings_cache.pop(cid, None)
+    return jsonify({"ok": True})
 
 
 def _get_setting(key, default=""):
@@ -7572,8 +7816,11 @@ def wa_send_manual(conv_id):
 
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
     supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
-    wa_token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
-    wa_phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+    user = _get_current_user()
+    cid = _get_company_id(user)
+    cs = _get_company_settings(cid)
+    wa_token = cs.get("whatsapp_access_token", "").strip()
+    wa_phone_id = cs.get("whatsapp_phone_number_id", "").strip()
     headers_supa = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"}
 
     try:
@@ -7755,7 +8002,9 @@ def wa_webhook_verify():
     mode      = request.args.get("hub.mode")
     token     = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
-    verify_token = os.environ.get("WHATSAPP_VERIFY_TOKEN", "autodirecto2026")
+    # Webhook verify is global — use default company (Meta sends to a single URL)
+    cs = _get_company_settings(_DEFAULT_COMPANY_ID)
+    verify_token = cs.get("whatsapp_verify_token", "autodirecto2026")
     if mode == "subscribe" and token == verify_token:
         print("[wa_webhook] Verified ✅")
         return challenge, 200
@@ -7861,8 +8110,12 @@ def wa_webhook_receive():
 
             supa_url = os.environ.get("SUPABASE_URL", "").strip()
             supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
-            wa_token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
-            wa_phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            # Webhook is global — resolve company via phone_number_id or fall back to default
+            waba_id = (entry.get("changes", [{}])[0].get("value", {}).get("metadata", {}).get("phone_number_id") or "")
+            _webhook_cid = _DEFAULT_COMPANY_ID  # TODO: lookup company by waba_id once multi-tenant
+            cs = _get_company_settings(_webhook_cid)
+            wa_token = cs.get("whatsapp_access_token", "").strip()
+            wa_phone_id = cs.get("whatsapp_phone_number_id", "").strip()
             headers_supa = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"}
 
             # ── Upsert conversation ──────────────────────────────
@@ -7929,7 +8182,7 @@ def wa_webhook_receive():
                 print(f"[wa_webhook] FAQ load error (non-fatal): {_faq_err}")
 
             # ── Call Gemini ───────────────────────────────────────
-            gemini_key = os.environ.get("GOOGLE_API_KEY", "").strip()
+            gemini_key = cs.get("google_api_key", "").strip()
             # Build contents array: system prompt injected as first user turn
             gemini_contents = []
             for m in history:

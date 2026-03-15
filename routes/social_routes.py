@@ -28,7 +28,7 @@ from flask import Blueprint, jsonify, request
 # ─── Blueprint ───────────────────────────────────────────────────────────────
 social_bp = Blueprint('social', __name__, url_prefix='/api/social')
 
-# ─── Config (from .env) ─────────────────────────────────────────────────────
+# ─── Config (per-tenant via company_settings, env fallback) ──────────────────
 def _cfg(key, default=''):
     return os.environ.get(key, default)
 
@@ -38,17 +38,31 @@ GRAPH_API = 'https://graph.facebook.com/v25.0'
 WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'autodirecto_social_2026')
 
 
+def _tenant_settings():
+    """Load per-company settings for the current request user."""
+    try:
+        from app import _get_current_user, _get_company_id, _get_company_settings
+        user = _get_current_user()
+        cid = _get_company_id(user)
+        return _get_company_settings(cid)
+    except Exception:
+        return {}
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _meta_token():
-    """Return the best available Meta token. Prefers system user token."""
-    return _cfg('META_SYSTEM_USER_TOKEN') or _cfg('META_FB_PAGE_ACCESS_TOKEN')
+    """Return the best available Meta token — per-tenant first, env fallback."""
+    cs = _tenant_settings()
+    return cs.get('meta_system_user_token') or cs.get('meta_fb_page_access_token') or _cfg('META_SYSTEM_USER_TOKEN') or _cfg('META_FB_PAGE_ACCESS_TOKEN')
 
 def _ig_user_id():
-    return _cfg('META_IG_USER_ID')
+    cs = _tenant_settings()
+    return cs.get('meta_ig_user_id') or _cfg('META_IG_USER_ID')
 
 def _fb_page_id():
-    return _cfg('META_FB_PAGE_ID')
+    cs = _tenant_settings()
+    return cs.get('meta_fb_page_id') or _cfg('META_FB_PAGE_ID')
 
 def _graph_get(endpoint, params=None, token=None):
     """GET request to Meta Graph API. Token as access_token param."""

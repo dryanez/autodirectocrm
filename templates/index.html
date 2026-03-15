@@ -140,7 +140,8 @@
     <!-- Sidebar -->
     <aside class="w-64 glass flex flex-col border-r border-slate-700">
         <div class="h-16 flex items-center justify-center border-b border-slate-700">
-            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500"
+                x-text="crmSettings.company_name || 'Autodirecto CRM'">
                 Autodirecto CRM
             </h1>
         </div>
@@ -4442,121 +4443,280 @@
         <div class="flex-shrink-0 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <div>
                 <h2 class="text-lg font-semibold text-white"><i class="ph ph-gear text-orange-400 mr-2"></i>Ajustes</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Configuración general del CRM</p>
+                <p class="text-xs text-slate-500 mt-0.5">Configuración general del CRM · Integraciones</p>
             </div>
             <button @click="saveSettings()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                 <i class="ph ph-floppy-disk"></i> Guardar Cambios
             </button>
         </div>
+
+        <!-- Settings Tabs -->
+        <div class="flex-shrink-0 px-6 pt-3 border-b border-slate-800 flex gap-1">
+            <template x-for="tab in [
+                {id:'general', label:'General', icon:'ph-buildings'},
+                {id:'whatsapp', label:'WhatsApp API', icon:'ph-whatsapp-logo'},
+                {id:'meta', label:'Meta / Social', icon:'ph-meta-logo'},
+                {id:'email', label:'Email / AI', icon:'ph-envelope-simple'},
+                {id:'chileautos', label:'ChileAutos', icon:'ph-car-simple'},
+            ]" :key="tab.id">
+                <button @click="settingsTab = tab.id"
+                    :class="settingsTab === tab.id ? 'text-orange-400 border-orange-400' : 'text-slate-500 border-transparent hover:text-slate-300'"
+                    class="px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5">
+                    <i :class="'ph ' + tab.icon"></i> <span x-text="tab.label"></span>
+                </button>
+            </template>
+        </div>
+
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
 
-            <!-- WhatsApp Section -->
-            <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
-                <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-                    <i class="ph ph-whatsapp-logo text-green-400 text-lg"></i> WhatsApp para Publicaciones
-                </h3>
-                <p class="text-xs text-slate-400 mb-3">Este número se usa en ChileAutos y el catálogo web para recibir consultas de compradores.</p>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Número WhatsApp</label>
-                        <input type="tel" x-model="crmSettings.whatsapp_number" placeholder="+56976654569"
-                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500">
+            <!-- ═══ TAB: GENERAL (Company) ═══ -->
+            <template x-if="settingsTab === 'general'">
+                <div class="space-y-6">
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+                            <i class="ph ph-buildings text-blue-400 text-lg"></i> Datos de la Empresa
+                        </h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Nombre de la Empresa</label>
+                                <input type="text" x-model="crmSettings.company_name" placeholder="Mi Automotora SpA"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Sitio Web</label>
+                                <input type="url" x-model="crmSettings.company_website" placeholder="https://miautomotora.cl"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-400 mb-1">URL del Logo</label>
+                                <input type="url" x-model="crmSettings.company_logo_url" placeholder="https://..."
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-end">
-                        <p class="text-xs text-slate-500">Formato: <span class="text-green-400 font-mono">+569XXXXXXXX</span></p>
+                    <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                        <i class="ph ph-info text-blue-400 text-lg mt-0.5 flex-shrink-0"></i>
+                        <div>
+                            <p class="text-xs text-blue-300 font-medium">Multi-Tenant SaaS</p>
+                            <p class="text-xs text-slate-400 mt-1">Cada empresa tiene sus propias credenciales de integración. Los datos están aislados por empresa.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </template>
 
-            <!-- ChileAutos Integration Section -->
-            <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-semibold text-white flex items-center gap-2">
-                        <span class="text-lg">🚗</span> Integración ChileAutos
-                    </h3>
-                    <div class="flex items-center gap-2">
-                        <button @click="testChileAutosConnection()"
-                            class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors">
-                            <i class="ph ph-plugs-connected mr-1"></i> Probar Conexión
-                        </button>
-                        <span x-show="chileautosStatus?.connected" class="text-xs text-green-400 flex items-center gap-1">
-                            <i class="ph ph-check-circle"></i> Conectado
-                        </span>
-                        <span x-show="chileautosStatus && !chileautosStatus.connected" class="text-xs text-red-400 flex items-center gap-1">
-                            <i class="ph ph-x-circle"></i> Error
-                        </span>
+            <!-- ═══ TAB: WHATSAPP API ═══ -->
+            <template x-if="settingsTab === 'whatsapp'">
+                <div class="space-y-6">
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+                            <i class="ph ph-whatsapp-logo text-green-400 text-lg"></i> WhatsApp Business API
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">Credenciales de la API de WhatsApp Business (Meta Cloud API) para recibir y enviar mensajes automáticos.</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-400 mb-1">Access Token</label>
+                                <input type="password" x-model="crmSettings.whatsapp_access_token"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Phone Number ID</label>
+                                <input type="text" x-model="crmSettings.whatsapp_phone_number_id" placeholder="10529..."
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Verify Token (Webhook)</label>
+                                <input type="text" x-model="crmSettings.whatsapp_verify_token" placeholder="autodirecto2026"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                            <i class="ph ph-whatsapp-logo text-green-400 text-lg"></i> WhatsApp para Publicaciones
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-3">Número visible en ChileAutos y catálogo web.</p>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Número WhatsApp</label>
+                            <input type="tel" x-model="crmSettings.whatsapp_number" placeholder="+56976654569"
+                                class="w-full max-w-xs bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500">
+                        </div>
+                    </div>
+                    <!-- Webhook URL info -->
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                            <i class="ph ph-webhooks-logo text-purple-400 text-lg"></i> Webhook URL
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-2">Configura esta URL en tu app de Meta Business:</p>
+                        <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-cyan-400 flex items-center justify-between">
+                            <span x-text="window.location.origin + '/api/wa/webhook'"></span>
+                            <button @click="navigator.clipboard.writeText(window.location.origin + '/api/wa/webhook').then(() => $toast('✅ URL copiada', 'success', 2000))"
+                                class="text-slate-400 hover:text-white ml-3 flex-shrink-0"><i class="ph ph-copy"></i></button>
+                        </div>
                     </div>
                 </div>
+            </template>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Client ID</label>
-                        <input type="text" x-model="crmSettings.chileautos_client_id"
-                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+            <!-- ═══ TAB: META / SOCIAL ═══ -->
+            <template x-if="settingsTab === 'meta'">
+                <div class="space-y-6">
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+                            <i class="ph ph-meta-logo text-blue-400 text-lg"></i> Meta Business (Facebook & Instagram)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">IDs y tokens para publicar automáticamente en Facebook e Instagram desde el módulo Social.</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Facebook Page ID</label>
+                                <input type="text" x-model="crmSettings.meta_fb_page_id" placeholder="1090579..."
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Instagram User ID</label>
+                                <input type="text" x-model="crmSettings.meta_ig_user_id" placeholder="17841..."
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-400 mb-1">Page Access Token</label>
+                                <input type="password" x-model="crmSettings.meta_fb_page_access_token"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-400 mb-1">System User Token</label>
+                                <input type="password" x-model="crmSettings.meta_system_user_token"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">App ID</label>
+                                <input type="text" x-model="crmSettings.meta_app_id" placeholder="1343372..."
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">App Secret</label>
+                                <input type="password" x-model="crmSettings.meta_app_secret"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Client Secret</label>
-                        <input type="password" x-model="crmSettings.chileautos_client_secret"
-                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Seller Identifier (GUID)</label>
-                        <input type="text" x-model="crmSettings.chileautos_seller_id"
-                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Entorno</label>
-                        <select x-model="crmSettings.chileautos_env"
-                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-                            <option value="staging">🧪 Staging (Pruebas)</option>
-                            <option value="production">🚀 Producción</option>
-                        </select>
+                    <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                        <i class="ph ph-info text-blue-400 text-lg mt-0.5 flex-shrink-0"></i>
+                        <p class="text-xs text-slate-400">Obtén estos valores en <a href="https://business.facebook.com/settings" target="_blank" class="text-blue-400 hover:underline">Meta Business Settings</a>. El System User Token se genera desde Business Manager → System Users.</p>
                     </div>
                 </div>
+            </template>
 
-                <!-- Status info -->
-                <div x-show="chileautosStatus?.connected" class="mt-4 bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-                    <div class="flex items-center gap-2 text-xs text-green-400">
-                        <i class="ph ph-check-circle text-base"></i>
-                        <span x-text="'Conectado al entorno ' + (chileautosStatus?.env || 'staging') + ' — ' + (chileautosStatus?.active_count || 0) + ' aviso(s) activo(s)'"></span>
+            <!-- ═══ TAB: EMAIL / AI ═══ -->
+            <template x-if="settingsTab === 'email'">
+                <div class="space-y-6">
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+                            <i class="ph ph-envelope-simple text-pink-400 text-lg"></i> Resend (Email)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">API key de <a href="https://resend.com" target="_blank" class="text-blue-400 hover:underline">Resend</a> para enviar informes de inspección y notificaciones por email.</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Resend API Key</label>
+                                <input type="password" x-model="crmSettings.resend_api_key"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-pink-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Email Remitente</label>
+                                <input type="email" x-model="crmSettings.resend_from_email" placeholder="noreply@midominio.cl"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-pink-500">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+                            <i class="ph ph-brain text-yellow-400 text-lg"></i> Google AI (Gemini)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">API key de Google para generación de descripciones con IA y el chatbot de WhatsApp.</p>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Google API Key</label>
+                            <input type="password" x-model="crmSettings.google_api_key"
+                                class="w-full max-w-md bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-yellow-500">
+                        </div>
                     </div>
                 </div>
-                <div x-show="chileautosStatus && !chileautosStatus.connected" class="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                    <p class="text-xs text-red-400"><i class="ph ph-warning mr-1"></i> <span x-text="chileautosStatus?.error || 'Error desconocido'"></span></p>
-                </div>
-            </div>
+            </template>
 
-            <!-- Credenciales Info -->
-            <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                <i class="ph ph-info text-blue-400 text-lg mt-0.5 flex-shrink-0"></i>
-                <div>
-                    <p class="text-xs text-blue-300 font-medium">¿Cómo obtener credenciales de producción?</p>
-                    <p class="text-xs text-slate-400 mt-1">
-                        Contactar a <a href="mailto:soporte@chileautos.cl" class="text-blue-400 hover:underline font-mono">soporte@chileautos.cl</a>
-                        para obtener tus credenciales productivas (Client ID, Secret y Seller ID).
-                        Las credenciales actuales de staging son solo para pruebas.
-                    </p>
-                    <p class="text-xs text-slate-500 mt-1">
-                        📧 Email: <span class="text-blue-400 font-mono">soporte@chileautos.cl</span>
-                    </p>
+            <!-- ═══ TAB: CHILEAUTOS ═══ -->
+            <template x-if="settingsTab === 'chileautos'">
+                <div class="space-y-6">
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                                <span class="text-lg">🚗</span> Integración ChileAutos
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <button @click="testChileAutosConnection()"
+                                    class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors">
+                                    <i class="ph ph-plugs-connected mr-1"></i> Probar Conexión
+                                </button>
+                                <span x-show="chileautosStatus?.connected" class="text-xs text-green-400 flex items-center gap-1">
+                                    <i class="ph ph-check-circle"></i> Conectado
+                                </span>
+                                <span x-show="chileautosStatus && !chileautosStatus.connected" class="text-xs text-red-400 flex items-center gap-1">
+                                    <i class="ph ph-x-circle"></i> Error
+                                </span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Client ID</label>
+                                <input type="text" x-model="crmSettings.chileautos_client_id"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Client Secret</label>
+                                <input type="password" x-model="crmSettings.chileautos_client_secret"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Seller Identifier (GUID)</label>
+                                <input type="text" x-model="crmSettings.chileautos_seller_id"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Entorno</label>
+                                <select x-model="crmSettings.chileautos_env"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                                    <option value="staging">🧪 Staging (Pruebas)</option>
+                                    <option value="production">🚀 Producción</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div x-show="chileautosStatus?.connected" class="mt-4 bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                            <div class="flex items-center gap-2 text-xs text-green-400">
+                                <i class="ph ph-check-circle text-base"></i>
+                                <span x-text="'Conectado al entorno ' + (chileautosStatus?.env || 'staging') + ' — ' + (chileautosStatus?.active_count || 0) + ' aviso(s) activo(s)'"></span>
+                            </div>
+                        </div>
+                        <div x-show="chileautosStatus && !chileautosStatus.connected" class="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                            <p class="text-xs text-red-400"><i class="ph ph-warning mr-1"></i> <span x-text="chileautosStatus?.error || 'Error desconocido'"></span></p>
+                        </div>
+                    </div>
+                    <!-- Webhook Leads -->
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                            <i class="ph ph-webhooks-logo text-purple-400 text-lg"></i> Webhook de Leads (ChileAutos)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-2">Cuando alguien consulta por tus vehículos en ChileAutos, recibirás el lead automáticamente.</p>
+                        <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-cyan-400 flex items-center justify-between">
+                            <span x-text="window.location.origin + '/api/webhooks/chileautos-lead'"></span>
+                            <button @click="navigator.clipboard.writeText(window.location.origin + '/api/webhooks/chileautos-lead').then(() => $toast('✅ URL copiada', 'success', 2000))"
+                                class="text-slate-400 hover:text-white ml-3 flex-shrink-0"><i class="ph ph-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                        <i class="ph ph-info text-blue-400 text-lg mt-0.5 flex-shrink-0"></i>
+                        <div>
+                            <p class="text-xs text-blue-300 font-medium">¿Cómo obtener credenciales de producción?</p>
+                            <p class="text-xs text-slate-400 mt-1">Contactar a <a href="mailto:soporte@chileautos.cl" class="text-blue-400 hover:underline font-mono">soporte@chileautos.cl</a></p>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </template>
 
-            <!-- Webhook Info -->
-            <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
-                <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-3">
-                    <i class="ph ph-webhooks-logo text-purple-400 text-lg"></i> Webhook de Leads (ChileAutos)
-                </h3>
-                <p class="text-xs text-slate-400 mb-2">Cuando alguien consulta por tus vehículos en ChileAutos, recibirás el lead automáticamente como Comprador en el CRM.</p>
-                <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-cyan-400 flex items-center justify-between">
-                    <span x-text="window.location.origin + '/api/webhooks/chileautos-lead'"></span>
-                    <button @click="navigator.clipboard.writeText(window.location.origin + '/api/webhooks/chileautos-lead').then(() => $toast('✅ URL copiada', 'success', 2000))"
-                        class="text-slate-400 hover:text-white ml-3 flex-shrink-0">
-                        <i class="ph ph-copy"></i>
-                    </button>
-                </div>
-                <p class="text-xs text-slate-500 mt-2">Enviar esta URL a <span class="text-blue-400 font-mono">soporte@chileautos.cl</span> para activar la recepción de leads.</p>
-            </div>
         </div>
     </div>
 
@@ -8636,12 +8796,29 @@
 
                 // ─── Settings / Ajustes State ───────────────────────────
                 crmSettings: {
-                    whatsapp_number: '+56976654569',
+                    whatsapp_number: '',
                     chileautos_client_id: '',
                     chileautos_client_secret: '',
                     chileautos_seller_id: '',
                     chileautos_env: 'staging',
+                    // Integration credentials (per-company)
+                    whatsapp_access_token: '',
+                    whatsapp_phone_number_id: '',
+                    whatsapp_verify_token: '',
+                    meta_fb_page_id: '',
+                    meta_fb_page_access_token: '',
+                    meta_ig_user_id: '',
+                    meta_system_user_token: '',
+                    meta_app_id: '',
+                    meta_app_secret: '',
+                    resend_api_key: '',
+                    resend_from_email: '',
+                    google_api_key: '',
+                    company_name: '',
+                    company_logo_url: '',
+                    company_website: '',
                 },
+                settingsTab: 'general',
                 chileautosStatus: null,
                 chileautosPublishing: false,
 
