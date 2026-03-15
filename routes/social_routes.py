@@ -350,7 +350,7 @@ def publish_instagram():
     """
     Publish to Instagram.
     Body JSON:
-      - image_urls: [str] — public HTTPS URLs (max 10 for carousel)
+      - image_urls: [str] — public HTTPS URLs (max 20, auto-split into batches of 10)
       - caption: str
       - post_type: 'image' | 'carousel' | 'reel' | 'story'
       - video_url: str (for reel/story video)
@@ -390,33 +390,21 @@ def publish_instagram():
             return jsonify({'ok': True, 'ig_media_id': result.get('id'), 'type': 'image'})
 
         elif post_type == 'carousel' or (post_type == 'image' and len(image_urls) > 1):
-            # ── Carousel (2–10 images) ──
-            child_ids = []
-            for url in image_urls[:10]:
-                child = _graph_post(f'{ig_id}/media', {
-                    'image_url': url,
-                    'is_carousel_item': 'true',
-                })
-                if 'error' in child:
-                    return jsonify({'ok': False, 'error': f'Failed creating carousel item: {child["error"].get("message")}'}), 400
-                child_ids.append(child['id'])
+            # ── Carousel (2–20 images, split into batches of 10 for IG API) ──
+            batch_results = _publish_ig_carousel_batched(ig_id, image_urls, caption)
+            # Check for errors
+            errors_found = [err for _, err in batch_results if err]
+            if errors_found:
+                return jsonify({'ok': False, 'error': errors_found[0]}), 400
 
-            # Create carousel container
-            carousel = _graph_post(f'{ig_id}/media', {
-                'media_type': 'CAROUSEL',
-                'children': ','.join(child_ids),
-                'caption': caption,
+            media_ids = [mid for mid, _ in batch_results if mid]
+            return jsonify({
+                'ok': True,
+                'ig_media_id': media_ids[0] if media_ids else None,
+                'ig_media_ids': media_ids,
+                'type': 'carousel',
+                'batches': len(media_ids),
             })
-            if 'error' in carousel:
-                return jsonify({'ok': False, 'error': carousel['error'].get('message', 'Carousel container failed')}), 400
-
-            _wait_for_container(carousel['id'])
-
-            result = _graph_post(f'{ig_id}/media_publish', {'creation_id': carousel['id']})
-            if 'error' in result:
-                return jsonify({'ok': False, 'error': result['error'].get('message', 'Publish failed')}), 400
-
-            return jsonify({'ok': True, 'ig_media_id': result.get('id'), 'type': 'carousel'})
 
         elif post_type == 'reel':
             # ── Reel ──
@@ -463,6 +451,54 @@ def publish_instagram():
 
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _publish_ig_carousel_single(ig_id, image_urls, caption):
+    """Publish a single IG carousel (max 10 images). Returns (media_id, error_msg)."""
+    child_ids = []
+    for url in image_urls[:10]:
+        child = _graph_post(f'{ig_id}/media', {
+            'image_url': url,
+            'is_carousel_item': 'true',
+        })
+        if 'error' in child:
+            return None, f'Failed creating carousel item: {child["error"].get("message")}'
+        child_ids.append(child['id'])
+
+    carousel = _graph_post(f'{ig_id}/media', {
+        'media_type': 'CAROUSEL',
+        'children': ','.join(child_ids),
+        'caption': caption,
+    })
+    if 'error' in carousel:
+        return None, carousel['error'].get('message', 'Carousel container failed')
+
+    _wait_for_container(carousel['id'])
+
+    result = _graph_post(f'{ig_id}/media_publish', {'creation_id': carousel['id']})
+    if 'error' in result:
+        return None, result['error'].get('message', 'Publish failed')
+
+    return result.get('id'), None
+
+
+def _publish_ig_carousel_batched(ig_id, image_urls, caption):
+    """
+    Publish carousel(s) to IG, splitting into batches of 10 if >10 images.
+    IG API hard-limits carousels to 10 items. If user selected up to 20,
+    we publish 2 separate carousel posts (second one gets "...continuación" caption).
+    Returns list of (media_id, error_msg) tuples.
+    """
+    BATCH = 10
+    batches = [image_urls[i:i+BATCH] for i in range(0, len(image_urls), BATCH)]
+    results = []
+    for idx, batch in enumerate(batches):
+        batch_caption = caption if idx == 0 else f'{caption}\n\n📸 ...continuación ({idx+1}/{len(batches)})'
+        media_id, err = _publish_ig_carousel_single(ig_id, batch, batch_caption)
+        results.append((media_id, err))
+        if err:
+            break  # Stop on first error
+    return results
 
 
 def _wait_for_container(container_id, max_wait=60):
@@ -755,30 +791,14 @@ def publish_post(post_id):
             if ig_id:
                 image_urls = [m['url'] if isinstance(m, dict) else m for m in media_urls]
                 if post_type == 'carousel' or len(image_urls) > 1:
-                    # Carousel
-                    child_ids = []
-                    for url in image_urls[:10]:
-                        child = _graph_post(f'{ig_id}/media', {
-                            'image_url': url,
-                            'is_carousel_item': 'true',
-                        })
-                        if 'error' in child:
-                            errors.append(f'IG carousel item: {child["error"].get("message")}')
+                    # Carousel — split into batches of 10 for IG API
+                    batch_results = _publish_ig_carousel_batched(ig_id, image_urls, caption)
+                    for mid, err in batch_results:
+                        if err:
+                            errors.append(f'IG carousel: {err}')
                             break
-                        child_ids.append(child['id'])
-
-                    if child_ids and not errors:
-                        carousel = _graph_post(f'{ig_id}/media', {
-                            'media_type': 'CAROUSEL',
-                            'children': ','.join(child_ids),
-                            'caption': caption,
-                        })
-                        if 'error' not in carousel:
-                            _wait_for_container(carousel['id'])
-                            r = _graph_post(f'{ig_id}/media_publish', {'creation_id': carousel['id']})
-                            results['ig'] = r.get('id')
-                        else:
-                            errors.append(f'IG carousel: {carousel["error"].get("message")}')
+                        if mid and not results['ig']:
+                            results['ig'] = mid
                 else:
                     # Single image
                     container = _graph_post(f'{ig_id}/media', {

@@ -5953,7 +5953,7 @@
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
                         <label class="text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
                             <span><i class="ph ph-images text-blue-400 mr-1"></i> Imágenes</span>
-                            <span class="text-xs text-slate-500" x-text="socialImages.length + '/10'"></span>
+                            <span class="text-xs text-slate-500" x-text="socialImages.length + '/20'"></span>
                         </label>
 
                         <!-- Image strip -->
@@ -5982,7 +5982,7 @@
                             <div class="border-2 border-dashed border-slate-600 rounded-lg p-3 text-center hover:border-blue-500 transition-colors">
                                 <i class="ph ph-cloud-arrow-up text-xl text-slate-400 mb-1"></i>
                                 <p class="text-xs text-slate-400">Arrastra o haz clic para subir</p>
-                                <p class="text-[10px] text-slate-500 mt-0.5">JPEG o PNG · máx 10 imágenes por carrusel</p>
+                                <p class="text-[10px] text-slate-500 mt-0.5">JPEG o PNG · máx 20 imágenes por carrusel</p>
                             </div>
                         </div>
                     </div>
@@ -6153,7 +6153,7 @@
                 <!-- Post type info -->
                 <div class="text-[10px] text-slate-500 text-center space-y-1 px-2">
                     <p x-show="socialPostType === 'image'">📷 Feed — La imagen se recorta a 4:5 (retrato). Las fotos de iPhone se ajustan automáticamente.</p>
-                    <p x-show="socialPostType === 'carousel'">📱 Carrusel — Hasta 10 imágenes. Se recortan según la primera imagen.</p>
+                    <p x-show="socialPostType === 'carousel'">📱 Carrusel — Hasta 20 imágenes. Se recortan según la primera imagen.</p>
                     <p x-show="socialPostType === 'reel'">🎬 Reel — Video vertical 9:16.</p>
                     <p x-show="socialPostType === 'story'">⭕ Story — Formato vertical 9:16, desaparece en 24h.</p>
                 </div>
@@ -7862,7 +7862,7 @@
                         let added = 0;
                         sorted.forEach(p => {
                             const url = p.url || p.photo_url || '';
-                            if (url && this.socialImages.length < 10 && !this.socialImages.some(i => i.url === url)) {
+                            if (url && this.socialImages.length < 20 && !this.socialImages.some(i => i.url === url)) {
                                 this.socialImages.push({ url: url, preview: url });
                                 added++;
                             }
@@ -7886,7 +7886,7 @@
                         const photos = data.photos || data.images || [];
                         photos.forEach(p => {
                             const url = typeof p === 'string' ? p : (p.url || p.photo_url || '');
-                            if (url && this.socialImages.length < 10) {
+                            if (url && this.socialImages.length < 20) {
                                 this.socialImages.push({ url: url, preview: url });
                             }
                         });
@@ -7901,7 +7901,7 @@
                     const files = event.target.files;
                     if (!files) return;
                     for (const f of files) {
-                        if (this.socialImages.length >= 10) break;
+                        if (this.socialImages.length >= 20) break;
                         if (!f.type.startsWith('image/')) continue;
                         const preview = URL.createObjectURL(f);
                         this.socialImages.push({ file: f, preview: preview, url: null });
