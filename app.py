@@ -1002,6 +1002,11 @@ if FUNNELS_DIR.exists():
     app.register_blueprint(funnels_bp)
     print("  ✅ Funnels dashboard mounted at /funnels")
 
+    # ── Social Media Publishing module (external Blueprint) ──
+    from routes.social_routes import social_bp
+    app.register_blueprint(social_bp)
+    print("  ✅ Social media API mounted at /api/social")
+
 DB_PATH = os.getenv("DB_PATH", str(ROOT / "data" / "inventory.db"))
 
 
@@ -7568,16 +7573,76 @@ def wa_webhook_verify():
     return "Forbidden", 403
 
 
+@app.route("/api/wa/debug", methods=["GET"])
+def wa_debug():
+    """Show last webhook debug entries — stored in wa_messages under phone 00000DEBUG."""
+    import requests as _req
+    supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    # Get the debug conversation
+    r = _req.get(
+        f"{supa_url}/rest/v1/wa_conversations?phone_number=eq.00000DEBUG&select=id",
+        headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+        timeout=10,
+    )
+    convs = r.json() if r.ok else []
+    if not convs:
+        return jsonify({"status": "no debug entries yet"}), 200
+    conv_id = convs[0]["id"]
+    r2 = _req.get(
+        f"{supa_url}/rest/v1/wa_messages?conversation_id=eq.{conv_id}&order=created_at.desc&limit=30&select=content,created_at",
+        headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
+        timeout=10,
+    )
+    return jsonify(r2.json() if r2.ok else {"error": r2.text}), 200
+
+
+def _wa_debug_log(msg, supa_url=None, supa_key=None):
+    """Write a debug entry to Supabase under a fake '00000DEBUG' conversation."""
+    import requests as _req
+    if not supa_url:
+        supa_url = os.environ.get("SUPABASE_URL", "").strip()
+    if not supa_key:
+        supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
+    headers_supa = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"}
+    try:
+        # Upsert the debug conversation
+        r = _req.post(
+            f"{supa_url}/rest/v1/wa_conversations",
+            json={"phone_number": "00000DEBUG", "display_name": "🐛 Webhook Debug Log"},
+            headers={**headers_supa, "Prefer": "resolution=merge-duplicates,return=representation"},
+            timeout=5,
+        )
+        conv_id = (r.json() or [{}])[0].get("id") if r.ok else None
+        if not conv_id:
+            return
+        _req.post(
+            f"{supa_url}/rest/v1/wa_messages",
+            json={"conversation_id": conv_id, "role": "system", "content": msg[:2000]},
+            headers=headers_supa,
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
 @app.route("/api/wa/webhook", methods=["POST"])
 def wa_webhook_receive():
     """Receive incoming WhatsApp messages from Meta."""
     import requests as _req
+    import traceback as _tb
 
     # Always return 200 immediately so Meta doesn't retry
     try:
         body = request.get_json(force=True, silent=True) or {}
     except Exception:
+        _wa_debug_log("❌ Failed to parse request body")
         return "OK", 200
+
+    # ── Log EVERY webhook hit to Supabase for debugging ──────
+    import json as _json
+    body_preview = _json.dumps(body, ensure_ascii=False)[:800]
+    _wa_debug_log(f"📩 WEBHOOK HIT: {body_preview}")
 
     def process(body):
         try:
@@ -7587,6 +7652,7 @@ def wa_webhook_receive():
             value   = change.get("value") or {}
             messages = value.get("messages") or []
             if not messages:
+                _wa_debug_log(f"⏭️ No messages in payload (status update). value keys: {list(value.keys())}")
                 return  # status update, ignore
 
             msg = messages[0]
@@ -7598,6 +7664,7 @@ def wa_webhook_receive():
                 ((msg.get("interactive") or {}).get("button_reply") or {}).get("title")
             )
             if not phone or not text:
+                _wa_debug_log(f"⏭️ No phone/text. phone={phone}, msg_type={msg.get('type')}, keys={list(msg.keys())}")
                 return
 
             print(f"[wa_webhook] Message from {phone}: {text[:80]}")
@@ -7704,9 +7771,13 @@ def wa_webhook_receive():
                 headers={**headers_supa, "Prefer": "return=minimal"}, timeout=10,
             )
             print(f"[wa_webhook] Replied to {phone} ✅")
+            _wa_debug_log(f"✅ Replied to {phone}: {ai_reply[:100]}")
 
         except Exception as e:
-            print(f"[wa_webhook] Processing error: {e}")
+            import traceback as _tb
+            err = f"❌ Processing error: {e}\n{_tb.format_exc()}"
+            print(f"[wa_webhook] {err}")
+            _wa_debug_log(err)
 
     process(body)
     return "OK", 200

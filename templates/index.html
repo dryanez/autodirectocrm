@@ -234,6 +234,15 @@
                     x-show="waUnread === 0">AI</span>
             </a>
 
+            <a href="#" @click.prevent="currentView='social'; loadSocial()"
+                :class="currentView==='social' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
+                <i class="ph ph-share-network text-xl mr-3"
+                    :class="currentView==='social' ? 'text-blue-400' : ''"></i>
+                <span class="font-medium">Redes Sociales</span>
+                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-2 py-0.5 rounded-full font-semibold">Nuevo</span>
+            </a>
+
             <div class="border-t border-slate-700 mt-4 pt-4">
                 <a href="#" @click.prevent="currentView='modulos'; loadModules()"
                     :class="currentView==='modulos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
@@ -5190,6 +5199,397 @@
     </div>
     <!-- END WhatsApp View -->
 
+    <!-- ══════════════════════════════════════════════════════════
+         REDES SOCIALES — Social Media Publishing
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="currentView==='social'" class="flex-1 flex flex-col overflow-hidden h-full min-h-0" style="display:none;">
+
+        <!-- Header Bar -->
+        <div class="flex-shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="ph ph-share-network text-2xl text-blue-400"></i>
+                <h2 class="text-lg font-bold text-white">Redes Sociales</h2>
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    :class="socialConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'"
+                    x-text="socialConnected ? 'Conectado' : 'Desconectado'"></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-400" x-show="socialQuota !== null">
+                    <i class="ph ph-chart-bar"></i>
+                    <span x-text="socialQuota + '/100 publicaciones hoy'"></span>
+                </span>
+                <button @click="socialTab='settings'"
+                    class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+                    <i class="ph ph-gear text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sub-tabs -->
+        <div class="flex-shrink-0 px-6 pt-3 pb-0 flex gap-1 border-b border-slate-800 bg-slate-900/40">
+            <template x-for="tab in [{id:'compose', icon:'ph-pencil-simple-line', label:'Componer'},
+                                      {id:'recent', icon:'ph-clock-counter-clockwise', label:'Publicaciones'},
+                                      {id:'analytics', icon:'ph-chart-line-up', label:'Analytics'},
+                                      {id:'settings', icon:'ph-plugs-connected', label:'Conexión'}]">
+                <button @click="socialTab=tab.id; if(tab.id==='recent') loadSocialRecent(); if(tab.id==='analytics') loadSocialAnalytics();"
+                    :class="socialTab===tab.id ? 'text-blue-400 border-blue-400 bg-blue-500/5' : 'text-slate-400 border-transparent hover:text-slate-200'"
+                    class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2">
+                    <i :class="tab.icon" class="text-base"></i>
+                    <span x-text="tab.label"></span>
+                </button>
+            </template>
+        </div>
+
+        <!-- ── TAB: COMPONER (Composer) ─────────────────────────────── -->
+        <div x-show="socialTab==='compose'" class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Left column: Compose form -->
+                <div class="space-y-4">
+                    <!-- Vehicle selector -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-2 block">
+                            <i class="ph ph-car text-blue-400 mr-1"></i> Seleccionar Vehículo (opcional)
+                        </label>
+                        <select x-model="socialSelectedVehicleId" @change="socialSelectVehicle()"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                            <option value="">— Sin vehículo —</option>
+                            <template x-for="v in socialVehicles" :key="v.id">
+                                <option :value="v.id" x-text="(v.brand||'') + ' ' + (v.model||'') + ' ' + (v.year||'') + (v.plate ? ' — ' + v.plate : '')"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Caption -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
+                            <span><i class="ph ph-text-aa text-blue-400 mr-1"></i> Caption</span>
+                            <span class="text-xs text-slate-500" x-text="socialCaption.length + '/2200'"></span>
+                        </label>
+                        <textarea x-model="socialCaption" maxlength="2200" rows="5"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-white resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            placeholder="Escribe el caption para tu publicación..."></textarea>
+                        <div class="flex gap-2 mt-2">
+                            <button @click="socialGenerateCaption()"
+                                class="text-xs px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors flex items-center gap-1"
+                                :disabled="socialGeneratingCaption">
+                                <i class="ph" :class="socialGeneratingCaption ? 'ph-spinner animate-spin' : 'ph-magic-wand'"></i>
+                                <span x-text="socialGeneratingCaption ? 'Generando...' : 'Generar con IA'"></span>
+                            </button>
+                            <button @click="socialCaption += '\n\n#autodirecto #autos #chile #venta'"
+                                class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors">
+                                + Hashtags
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Image upload / selection -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-2 block">
+                            <i class="ph ph-images text-blue-400 mr-1"></i> Imágenes
+                            <span class="text-xs text-slate-500 ml-1" x-text="'(' + socialImages.length + '/10)'"></span>
+                        </label>
+
+                        <!-- Image grid -->
+                        <div class="grid grid-cols-4 gap-2 mb-3" x-show="socialImages.length > 0">
+                            <template x-for="(img, idx) in socialImages" :key="idx">
+                                <div class="relative aspect-square rounded-lg overflow-hidden border border-slate-600 group">
+                                    <img :src="img.preview || img.url" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <button @click="socialImages.splice(idx, 1)"
+                                            class="p-1 rounded-full bg-red-500/80 text-white hover:bg-red-600">
+                                            <i class="ph ph-trash text-sm"></i>
+                                        </button>
+                                    </div>
+                                    <span x-show="idx === 0" class="absolute top-1 left-1 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full">Principal</span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Upload area -->
+                        <div class="relative">
+                            <input type="file" accept="image/jpeg,image/png" multiple @change="socialHandleImageUpload($event)"
+                                class="absolute inset-0 opacity-0 cursor-pointer z-10">
+                            <div class="border-2 border-dashed border-slate-600 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
+                                <i class="ph ph-cloud-arrow-up text-2xl text-slate-400 mb-1"></i>
+                                <p class="text-xs text-slate-400">Arrastra o haz clic para subir imágenes</p>
+                                <p class="text-[10px] text-slate-500 mt-1">JPEG o PNG, máx. 10 imágenes</p>
+                            </div>
+                        </div>
+
+                        <!-- Load from vehicle photos -->
+                        <button x-show="socialSelectedVehicleId" @click="socialLoadVehiclePhotos()"
+                            class="mt-2 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors flex items-center gap-1 w-full justify-center">
+                            <i class="ph ph-download-simple"></i>
+                            <span>Cargar fotos del vehículo</span>
+                        </button>
+                    </div>
+
+                    <!-- Platforms -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-3 block">
+                            <i class="ph ph-broadcast text-blue-400 mr-1"></i> Publicar en
+                        </label>
+                        <div class="flex gap-3">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="socialPublishIG"
+                                    class="form-checkbox rounded bg-slate-700 border-slate-600 text-pink-500 focus:ring-pink-500">
+                                <i class="ph ph-instagram-logo text-lg text-pink-400"></i>
+                                <span class="text-sm text-slate-300">Instagram</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="socialPublishFB"
+                                    class="form-checkbox rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500">
+                                <i class="ph ph-facebook-logo text-lg text-blue-400"></i>
+                                <span class="text-sm text-slate-300">Facebook</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Publish button -->
+                    <button @click="socialPublish()"
+                        :disabled="socialPublishing || (socialImages.length === 0 && !socialCaption.trim())"
+                        class="w-full py-3 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
+                        :class="socialPublishing ? 'bg-slate-700 cursor-wait' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-blue-500/25'">
+                        <i class="ph" :class="socialPublishing ? 'ph-spinner animate-spin' : 'ph-paper-plane-tilt'"></i>
+                        <span x-text="socialPublishing ? 'Publicando...' : 'Publicar ahora'"></span>
+                    </button>
+                </div>
+
+                <!-- Right column: Preview -->
+                <div class="space-y-4">
+                    <!-- IG Preview -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishIG">
+                        <div class="px-3 py-2.5 flex items-center gap-2 border-b border-slate-700">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                                <i class="ph ph-instagram-logo text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-white" x-text="socialIGUsername || 'autodirecto.cl'"></p>
+                                <p class="text-[10px] text-slate-400">Vista previa de Instagram</p>
+                            </div>
+                        </div>
+                        <div class="aspect-square bg-slate-900 flex items-center justify-center">
+                            <template x-if="socialImages.length > 0">
+                                <img :src="socialImages[0].preview || socialImages[0].url" class="w-full h-full object-cover">
+                            </template>
+                            <template x-if="socialImages.length === 0">
+                                <div class="text-slate-600 text-center">
+                                    <i class="ph ph-image text-4xl"></i>
+                                    <p class="text-xs mt-2">Sin imagen seleccionada</p>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="px-3 py-2">
+                            <div class="flex gap-4 py-2">
+                                <i class="ph ph-heart text-xl text-slate-300"></i>
+                                <i class="ph ph-chat-circle text-xl text-slate-300"></i>
+                                <i class="ph ph-paper-plane-tilt text-xl text-slate-300"></i>
+                                <i class="ph ph-bookmark-simple text-xl text-slate-300 ml-auto"></i>
+                            </div>
+                            <p class="text-sm text-white">
+                                <span class="font-semibold" x-text="socialIGUsername || 'autodirecto.cl'"></span>
+                                <span class="ml-1 text-slate-300" x-text="socialCaption.substring(0, 120) + (socialCaption.length > 120 ? '...' : '')"></span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- FB Preview -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishFB">
+                        <div class="px-3 py-2.5 flex items-center gap-2 border-b border-slate-700">
+                            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+                                <i class="ph ph-facebook-logo text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-white" x-text="socialFBPageName || 'Autodirecto.cl'"></p>
+                                <p class="text-[10px] text-slate-400">Vista previa de Facebook</p>
+                            </div>
+                        </div>
+                        <div class="px-3 py-2">
+                            <p class="text-sm text-slate-200 whitespace-pre-wrap" x-text="socialCaption || 'Sin texto...'"></p>
+                        </div>
+                        <div x-show="socialImages.length > 0" class="bg-slate-900">
+                            <img :src="socialImages[0].preview || socialImages[0].url" class="w-full max-h-80 object-cover">
+                        </div>
+                        <div class="px-3 py-2 flex items-center gap-4 border-t border-slate-700 text-slate-400 text-sm">
+                            <span class="flex items-center gap-1"><i class="ph ph-thumbs-up"></i> Me gusta</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-chat-circle"></i> Comentar</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-share-fat"></i> Compartir</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TAB: PUBLICACIONES RECIENTES ────────────────────── -->
+        <div x-show="socialTab==='recent'" class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-4xl mx-auto">
+                <div x-show="socialRecentLoading" class="flex items-center justify-center py-20">
+                    <i class="ph ph-spinner animate-spin text-3xl text-blue-400"></i>
+                </div>
+                <div x-show="!socialRecentLoading && socialRecentPosts.length === 0" class="flex flex-col items-center justify-center py-20 text-slate-500">
+                    <i class="ph ph-clock-counter-clockwise text-5xl mb-3"></i>
+                    <p class="text-lg font-medium">Sin publicaciones recientes</p>
+                    <p class="text-sm mt-1">Las publicaciones de tu cuenta aparecerán aquí</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" x-show="!socialRecentLoading && socialRecentPosts.length > 0">
+                    <template x-for="post in socialRecentPosts" :key="post.id">
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden hover:border-slate-600 transition-colors group">
+                            <div class="aspect-square bg-slate-900">
+                                <img :src="post.media_url || post.thumbnail_url || ''" class="w-full h-full object-cover" loading="lazy">
+                            </div>
+                            <div class="p-3">
+                                <p class="text-xs text-slate-300 line-clamp-2" x-text="post.caption || 'Sin caption'"></p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <div class="flex items-center gap-3 text-xs text-slate-400">
+                                        <span class="flex items-center gap-1"><i class="ph ph-heart"></i> <span x-text="post.like_count || 0"></span></span>
+                                        <span class="flex items-center gap-1"><i class="ph ph-chat-circle"></i> <span x-text="post.comments_count || 0"></span></span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500" x-text="new Date(post.timestamp).toLocaleDateString('es-CL')"></span>
+                                </div>
+                                <a :href="post.permalink" target="_blank" class="mt-2 text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                                    <i class="ph ph-arrow-square-out"></i> Ver en Instagram
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TAB: ANALYTICS ─────────────────────────────────── -->
+        <div x-show="socialTab==='analytics'" class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-4xl mx-auto">
+                <div x-show="socialAnalyticsLoading" class="flex items-center justify-center py-20">
+                    <i class="ph ph-spinner animate-spin text-3xl text-blue-400"></i>
+                </div>
+                <div x-show="!socialAnalyticsLoading" class="space-y-6">
+                    <!-- Account stats cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
+                            <p class="text-2xl font-bold text-white" x-text="socialAccountStats.followers || '—'"></p>
+                            <p class="text-xs text-slate-400 mt-1">Seguidores</p>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
+                            <p class="text-2xl font-bold text-white" x-text="socialAccountStats.media_count || '—'"></p>
+                            <p class="text-xs text-slate-400 mt-1">Publicaciones</p>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
+                            <p class="text-2xl font-bold text-blue-400" x-text="socialAccountStats.impressions || '—'"></p>
+                            <p class="text-xs text-slate-400 mt-1">Impresiones (hoy)</p>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
+                            <p class="text-2xl font-bold text-emerald-400" x-text="socialAccountStats.reach || '—'"></p>
+                            <p class="text-xs text-slate-400 mt-1">Alcance (hoy)</p>
+                        </div>
+                    </div>
+
+                    <!-- Recent post performance -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                        <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-chart-bar text-blue-400"></i> Rendimiento de publicaciones recientes
+                        </h3>
+                        <div x-show="socialRecentPosts.length > 0" class="space-y-2">
+                            <template x-for="post in socialRecentPosts.slice(0, 10)" :key="post.id">
+                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-700/50 transition-colors">
+                                    <img :src="post.media_url || post.thumbnail_url || ''" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs text-slate-300 truncate" x-text="post.caption || 'Sin caption'"></p>
+                                        <p class="text-[10px] text-slate-500" x-text="new Date(post.timestamp).toLocaleDateString('es-CL')"></p>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-xs text-slate-400 flex-shrink-0">
+                                        <span class="flex items-center gap-1"><i class="ph ph-heart text-pink-400"></i> <span x-text="post.like_count || 0"></span></span>
+                                        <span class="flex items-center gap-1"><i class="ph ph-chat-circle text-blue-400"></i> <span x-text="post.comments_count || 0"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <div x-show="socialRecentPosts.length === 0" class="text-center py-8 text-slate-500">
+                            <p class="text-sm">Carga las publicaciones recientes primero</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TAB: CONEXIÓN / SETTINGS ────────────────────────── -->
+        <div x-show="socialTab==='settings'" class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-2xl mx-auto space-y-6">
+
+                <!-- Connection status -->
+                <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                    <h3 class="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                        <i class="ph ph-plugs-connected text-blue-400"></i> Estado de Conexión
+                    </h3>
+                    <div x-show="socialStatusLoading" class="py-4 text-center">
+                        <i class="ph ph-spinner animate-spin text-2xl text-blue-400"></i>
+                    </div>
+                    <div x-show="!socialStatusLoading" class="space-y-4">
+                        <!-- Token status -->
+                        <div class="flex items-center justify-between p-3 rounded-lg" :class="socialConnected ? 'bg-emerald-500/10' : 'bg-red-500/10'">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full" :class="socialConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'"></div>
+                                <span class="text-sm text-white">Meta Token</span>
+                            </div>
+                            <span class="text-xs" :class="socialConnected ? 'text-emerald-400' : 'text-red-400'"
+                                x-text="socialConnected ? 'Válido' : 'Inválido o no configurado'"></span>
+                        </div>
+
+                        <!-- Instagram account -->
+                        <div class="flex items-center justify-between p-3 rounded-lg"
+                            :class="socialIGUsername ? 'bg-pink-500/10' : 'bg-slate-700/50'">
+                            <div class="flex items-center gap-2">
+                                <i class="ph ph-instagram-logo text-lg text-pink-400"></i>
+                                <div>
+                                    <p class="text-sm text-white" x-text="socialIGUsername ? '@' + socialIGUsername : 'No conectado'"></p>
+                                    <p class="text-[10px] text-slate-400" x-show="socialIGFollowers" x-text="socialIGFollowers + ' seguidores'"></p>
+                                </div>
+                            </div>
+                            <span class="text-xs" :class="socialIGUsername ? 'text-pink-400' : 'text-slate-500'"
+                                x-text="socialIGUsername ? 'Conectado' : '—'"></span>
+                        </div>
+
+                        <!-- Facebook page -->
+                        <div class="flex items-center justify-between p-3 rounded-lg"
+                            :class="socialFBPageName ? 'bg-blue-500/10' : 'bg-slate-700/50'">
+                            <div class="flex items-center gap-2">
+                                <i class="ph ph-facebook-logo text-lg text-blue-400"></i>
+                                <div>
+                                    <p class="text-sm text-white" x-text="socialFBPageName || 'No conectado'"></p>
+                                    <p class="text-[10px] text-slate-400" x-show="socialFBCategory" x-text="socialFBCategory"></p>
+                                </div>
+                            </div>
+                            <span class="text-xs" :class="socialFBPageName ? 'text-blue-400' : 'text-slate-500'"
+                                x-text="socialFBPageName ? 'Conectado' : '—'"></span>
+                        </div>
+
+                        <!-- Refresh button -->
+                        <button @click="loadSocialStatus()"
+                            class="w-full py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors text-sm flex items-center justify-center gap-2">
+                            <i class="ph ph-arrows-clockwise"></i> Verificar conexión
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Setup instructions -->
+                <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                    <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                        <i class="ph ph-info text-amber-400"></i> Información
+                    </h3>
+                    <div class="text-xs text-slate-400 space-y-2">
+                        <p>Los tokens de Meta están configurados en el servidor (.env). Para cambiarlos, contacta al administrador.</p>
+                        <p>• Instagram: Publica imágenes, carruseles (hasta 10), reels y stories.</p>
+                        <p>• Facebook: Publica fotos y texto en tu Página de Facebook.</p>
+                        <p>• Límite: 100 publicaciones por cada 24 horas (impuesto por Meta).</p>
+                        <p>• Las imágenes deben ser JPEG (se convierten automáticamente) y accesibles públicamente.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <!-- END Social Media View -->
+
     <script>
         /* ── Global modal & toast helpers ─────────────────────────────────── */
         window._modalResolve = null;
@@ -5309,6 +5709,28 @@
                 waFilter: 'all',
                 waRealtimeChannel: null,
                 waRealtimeMsgChannel: null,
+
+                // ─── Social Media Publishing ───
+                socialTab: 'compose',
+                socialConnected: false,
+                socialQuota: null,
+                socialStatusLoading: false,
+                socialIGUsername: '',
+                socialIGFollowers: 0,
+                socialFBPageName: '',
+                socialFBCategory: '',
+                socialCaption: '',
+                socialImages: [],           // [{file, preview, url}]
+                socialSelectedVehicleId: '',
+                socialVehicles: [],
+                socialPublishIG: true,
+                socialPublishFB: true,
+                socialPublishing: false,
+                socialGeneratingCaption: false,
+                socialRecentPosts: [],
+                socialRecentLoading: false,
+                socialAnalyticsLoading: false,
+                socialAccountStats: {},
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -5945,6 +6367,258 @@
                 waFormatTime(ts) {
                     if (!ts) return '';
                     return new Date(ts).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+                },
+
+                // ─── Social Media Publishing ───
+                async loadSocial() {
+                    await this.loadSocialStatus();
+                    // Load vehicles for the selector
+                    if (this.socialVehicles.length === 0) {
+                        try {
+                            const r = await this.authFetch('/api/consignaciones');
+                            const data = await r.json();
+                            this.socialVehicles = (Array.isArray(data) ? data : data.consignaciones || []).filter(v => v.status !== 'vendido');
+                        } catch(e) { console.error('[social] load vehicles', e); }
+                    }
+                },
+
+                async loadSocialStatus() {
+                    this.socialStatusLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/social/status');
+                        const data = await r.json();
+                        this.socialConnected = data.connected || false;
+                        if (data.instagram) {
+                            this.socialIGUsername = data.instagram.username || '';
+                            this.socialIGFollowers = data.instagram.followers_count || 0;
+                        }
+                        if (data.facebook) {
+                            this.socialFBPageName = data.facebook.name || '';
+                            this.socialFBCategory = data.facebook.category || '';
+                        }
+                        // Load quota
+                        try {
+                            const qr = await this.authFetch('/api/social/rate-limit');
+                            const qd = await qr.json();
+                            if (qd.ok) this.socialQuota = qd.quota_usage;
+                        } catch(e) {}
+                    } catch(e) {
+                        console.error('[social] loadStatus', e);
+                        this.socialConnected = false;
+                    }
+                    this.socialStatusLoading = false;
+                },
+
+                async loadSocialRecent() {
+                    this.socialRecentLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/social/insights/recent');
+                        const data = await r.json();
+                        this.socialRecentPosts = data.posts || [];
+                    } catch(e) { console.error('[social] loadRecent', e); }
+                    this.socialRecentLoading = false;
+                },
+
+                async loadSocialAnalytics() {
+                    this.socialAnalyticsLoading = true;
+                    try {
+                        // Load account info from status
+                        if (!this.socialIGUsername) await this.loadSocialStatus();
+                        this.socialAccountStats = {
+                            followers: this.socialIGFollowers || '—',
+                            media_count: '—',
+                            impressions: '—',
+                            reach: '—',
+                        };
+                        // Get recent posts for performance view
+                        if (this.socialRecentPosts.length === 0) await this.loadSocialRecent();
+                        // Try insights
+                        try {
+                            const r = await this.authFetch('/api/social/insights/account?period=day&metrics=impressions,reach');
+                            const data = await r.json();
+                            if (data.ok && data.data) {
+                                data.data.forEach(m => {
+                                    if (m.name === 'impressions' && m.values && m.values.length)
+                                        this.socialAccountStats.impressions = m.values[m.values.length - 1].value || 0;
+                                    if (m.name === 'reach' && m.values && m.values.length)
+                                        this.socialAccountStats.reach = m.values[m.values.length - 1].value || 0;
+                                });
+                            }
+                        } catch(e) {}
+                    } catch(e) { console.error('[social] loadAnalytics', e); }
+                    this.socialAnalyticsLoading = false;
+                },
+
+                socialSelectVehicle() {
+                    if (!this.socialSelectedVehicleId) return;
+                    const v = this.socialVehicles.find(x => String(x.id) === String(this.socialSelectedVehicleId));
+                    if (!v) return;
+                    // Auto-fill caption if empty
+                    if (!this.socialCaption.trim()) {
+                        const parts = [v.brand, v.model, v.year].filter(Boolean).join(' ');
+                        const price = v.selling_price ? ('$' + Number(v.selling_price).toLocaleString('es-CL')) : '';
+                        const km = v.mileage ? (Number(v.mileage).toLocaleString('es-CL') + ' km') : '';
+                        this.socialCaption = `🚗 ${parts}\n${[price, km].filter(Boolean).join(' · ')}\n\n📍 Autodirecto — Consignación Premium\n📞 Contáctanos por DM o WhatsApp\n\n#autodirecto #${(v.brand||'auto').toLowerCase()} #autos #chile #autosusados #venta`;
+                    }
+                },
+
+                async socialLoadVehiclePhotos() {
+                    if (!this.socialSelectedVehicleId) return;
+                    try {
+                        const r = await this.authFetch(`/api/consignaciones/${this.socialSelectedVehicleId}`);
+                        const data = await r.json();
+                        const photos = data.photos || data.images || [];
+                        photos.forEach(p => {
+                            const url = typeof p === 'string' ? p : (p.url || p.photo_url || '');
+                            if (url && this.socialImages.length < 10) {
+                                this.socialImages.push({ url: url, preview: url });
+                            }
+                        });
+                        if (this.socialImages.length > 0) $toast('Fotos cargadas: ' + this.socialImages.length);
+                    } catch(e) {
+                        console.error('[social] loadVehiclePhotos', e);
+                        $toast('Error cargando fotos del vehículo', 'error');
+                    }
+                },
+
+                socialHandleImageUpload(event) {
+                    const files = event.target.files;
+                    if (!files) return;
+                    for (const f of files) {
+                        if (this.socialImages.length >= 10) break;
+                        if (!f.type.startsWith('image/')) continue;
+                        const preview = URL.createObjectURL(f);
+                        this.socialImages.push({ file: f, preview: preview, url: null });
+                    }
+                    event.target.value = '';
+                },
+
+                async socialUploadImage(imgObj) {
+                    if (imgObj.url) return imgObj.url; // Already uploaded
+                    if (!imgObj.file) return null;
+                    const fd = new FormData();
+                    fd.append('file', imgObj.file);
+                    const r = await this.authFetch('/api/social/upload-media', { method: 'POST', body: fd });
+                    const data = await r.json();
+                    if (data.ok) {
+                        imgObj.url = data.url;
+                        return data.url;
+                    }
+                    throw new Error(data.error || 'Upload failed');
+                },
+
+                async socialPublish() {
+                    if (this.socialPublishing) return;
+                    if (this.socialImages.length === 0 && !this.socialCaption.trim()) {
+                        $toast('Agrega al menos una imagen o un caption', 'warning');
+                        return;
+                    }
+                    if (!this.socialPublishIG && !this.socialPublishFB) {
+                        $toast('Selecciona al menos una plataforma', 'warning');
+                        return;
+                    }
+
+                    this.socialPublishing = true;
+                    try {
+                        // 1. Upload all images that don't have URLs yet
+                        const imageUrls = [];
+                        for (const img of this.socialImages) {
+                            const url = await this.socialUploadImage(img);
+                            if (url) imageUrls.push(url);
+                        }
+
+                        const results = { instagram: null, facebook: null };
+
+                        // 2. Publish to Instagram
+                        if (this.socialPublishIG && imageUrls.length > 0) {
+                            const postType = imageUrls.length > 1 ? 'carousel' : 'image';
+                            const r = await this.authFetch('/api/social/publish/instagram', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    image_urls: imageUrls,
+                                    caption: this.socialCaption,
+                                    post_type: postType,
+                                }),
+                            });
+                            results.instagram = await r.json();
+                        }
+
+                        // 3. Publish to Facebook
+                        if (this.socialPublishFB) {
+                            const r = await this.authFetch('/api/social/publish/facebook', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    message: this.socialCaption,
+                                    image_urls: imageUrls,
+                                }),
+                            });
+                            results.facebook = await r.json();
+                        }
+
+                        // 4. Show results
+                        const igOk = results.instagram?.ok;
+                        const fbOk = results.facebook?.ok;
+                        if (igOk && fbOk) {
+                            $toast('✅ Publicado en Instagram y Facebook', 'success');
+                        } else if (igOk) {
+                            $toast('✅ Publicado en Instagram' + (results.facebook ? ' ⚠️ Error en Facebook: ' + (results.facebook.error || '') : ''), fbOk === false ? 'warning' : 'success');
+                        } else if (fbOk) {
+                            $toast('✅ Publicado en Facebook' + (results.instagram ? ' ⚠️ Error en Instagram: ' + (results.instagram.error || '') : ''), igOk === false ? 'warning' : 'success');
+                        } else {
+                            const errs = [results.instagram?.error, results.facebook?.error].filter(Boolean).join('; ');
+                            $toast('❌ Error publicando: ' + errs, 'error');
+                        }
+
+                        // 5. Reset form on success
+                        if (igOk || fbOk) {
+                            this.socialCaption = '';
+                            this.socialImages = [];
+                            this.socialSelectedVehicleId = '';
+                            // Refresh quota
+                            try {
+                                const qr = await this.authFetch('/api/social/rate-limit');
+                                const qd = await qr.json();
+                                if (qd.ok) this.socialQuota = qd.quota_usage;
+                            } catch(e) {}
+                        }
+                    } catch(e) {
+                        console.error('[social] publish error', e);
+                        $toast('Error: ' + e.message, 'error');
+                    }
+                    this.socialPublishing = false;
+                },
+
+                async socialGenerateCaption() {
+                    if (this.socialGeneratingCaption) return;
+                    const v = this.socialVehicles.find(x => String(x.id) === String(this.socialSelectedVehicleId));
+                    if (!v) {
+                        $toast('Selecciona un vehículo primero para generar el caption con IA', 'warning');
+                        return;
+                    }
+                    this.socialGeneratingCaption = true;
+                    try {
+                        // Simple template-based generation (can be replaced with AI later)
+                        const parts = [v.brand, v.model, v.year].filter(Boolean).join(' ');
+                        const price = v.selling_price ? ('$' + Number(v.selling_price).toLocaleString('es-CL')) : '';
+                        const km = v.mileage ? (Number(v.mileage).toLocaleString('es-CL') + ' km') : '';
+                        const fuel = v.fuel_type || '';
+                        const trans = v.transmission || '';
+                        const details = [km, fuel, trans].filter(Boolean).join(' · ');
+
+                        const templates = [
+                            `🔥 ¡Llegó un ${parts}!\n\n${price ? '💰 ' + price + '\n' : ''}${details ? '📋 ' + details + '\n' : ''}\n✨ Vehículo en consignación premium\n📍 Autodirecto — Tu auto, sin complicaciones\n\n¿Interesado? Escríbenos por DM 💬\n\n#autodirecto #${(v.brand||'auto').toLowerCase()} #autos #chile #autosusados`,
+                            `🚗 ${parts} disponible ahora\n\n${price ? 'Precio: ' + price + '\n' : ''}${details ? details + '\n' : ''}\n📸 Agenda tu visita\n🤝 Financiamiento disponible\n\n#autodirecto #ventadeautos #${(v.brand||'auto').toLowerCase()} #chile`,
+                            `⭐ ${parts}\n${price ? '\n💲 ' + price : ''}\n${details ? '📊 ' + details : ''}\n\n🏷️ Consignación Premium Autodirecto\n📲 Consulta disponibilidad por WhatsApp o DM\n\n#autodirecto #autos #chile #${(v.brand||'auto').toLowerCase()} #seminuevo`,
+                        ];
+                        this.socialCaption = templates[Math.floor(Math.random() * templates.length)];
+                        $toast('Caption generado ✨');
+                    } catch(e) {
+                        console.error('[social] generateCaption', e);
+                        $toast('Error generando caption', 'error');
+                    }
+                    this.socialGeneratingCaption = false;
                 },
 
                 // ─── Modules (SaaS) ───
