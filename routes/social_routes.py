@@ -12,6 +12,8 @@ All Meta Graph API calls go through this module.
 Zero lines added to app.py beyond the 2-line registration.
 """
 
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -32,6 +34,9 @@ def _cfg(key, default=''):
 
 GRAPH_API = 'https://graph.facebook.com/v25.0'
 
+# Webhook verify token — must match what you enter in Meta dashboard
+WEBHOOK_VERIFY_TOKEN = os.environ.get('META_WEBHOOK_VERIFY_TOKEN', 'autodirecto_social_2026')
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,27 +51,43 @@ def _fb_page_id():
     return _cfg('META_FB_PAGE_ID')
 
 def _graph_get(endpoint, params=None, token=None):
-    """GET request to Meta Graph API."""
+    """GET request to Meta Graph API. Token as access_token param."""
     tok = token or _meta_token()
     if not tok:
         return {'error': {'message': 'No Meta token configured'}}
-    headers = {'Authorization': f'Bearer {tok}'}
+    p = dict(params or {})
+    p['access_token'] = tok
     try:
-        r = requests.get(f'{GRAPH_API}/{endpoint}', params=params or {}, headers=headers, timeout=30)
-        return r.json()
+        url = f'{GRAPH_API}/{endpoint}'
+        print(f'[social] GET {url}')
+        r = requests.get(url, params=p, timeout=30)
+        data = r.json()
+        if 'error' in data:
+            print(f'[social] ❌ GET error: {data["error"]}')
+        return data
     except Exception as e:
+        print(f'[social] ❌ GET exception: {e}')
         return {'error': {'message': str(e)}}
 
 def _graph_post(endpoint, data=None, token=None):
-    """POST request to Meta Graph API."""
+    """POST request to Meta Graph API. Form-encoded with access_token (NOT JSON)."""
     tok = token or _meta_token()
     if not tok:
         return {'error': {'message': 'No Meta token configured'}}
-    headers = {'Authorization': f'Bearer {tok}', 'Content-Type': 'application/json'}
+    payload = dict(data or {})
+    payload['access_token'] = tok
     try:
-        r = requests.post(f'{GRAPH_API}/{endpoint}', json=data or {}, headers=headers, timeout=60)
-        return r.json()
+        url = f'{GRAPH_API}/{endpoint}'
+        print(f'[social] POST {url} keys={list(payload.keys())}')
+        r = requests.post(url, data=payload, timeout=60)
+        result = r.json()
+        if 'error' in result:
+            print(f'[social] ❌ POST error: {result["error"]}')
+        else:
+            print(f'[social] ✅ POST ok: {list(result.keys())}')
+        return result
     except Exception as e:
+        print(f'[social] ❌ POST exception: {e}')
         return {'error': {'message': str(e)}}
 
 def _get_db():
@@ -172,7 +193,7 @@ def publish_instagram():
             for url in image_urls[:10]:
                 child = _graph_post(f'{ig_id}/media', {
                     'image_url': url,
-                    'is_carousel_item': True,
+                    'is_carousel_item': 'true',
                 })
                 if 'error' in child:
                     return jsonify({'ok': False, 'error': f'Failed creating carousel item: {child["error"].get("message")}'}), 400
@@ -284,14 +305,15 @@ def publish_facebook():
 
     try:
         if image_urls:
-            # ── Photo post (single for now, first image) ──
+            # ── Photo post ──
+            # FB photos API: 'url' for image, 'message' for text (NOT 'caption')
             payload = {
                 'url': image_urls[0],
-                'caption': message,
+                'message': message,
             }
             if scheduled_time:
-                payload['published'] = False
-                payload['scheduled_publish_time'] = scheduled_time
+                payload['published'] = 'false'
+                payload['scheduled_publish_time'] = str(scheduled_time)
 
             result = _graph_post(f'{page_id}/photos', payload)
             if 'error' in result:
@@ -309,10 +331,8 @@ def publish_facebook():
             if link:
                 payload['link'] = link
             if scheduled_time:
-                payload['published'] = False
-                payload['scheduled_publish_time'] = scheduled_time
-            else:
-                payload['published'] = True
+                payload['published'] = 'false'
+                payload['scheduled_publish_time'] = str(scheduled_time)
 
             result = _graph_post(f'{page_id}/feed', payload)
             if 'error' in result:
@@ -325,51 +345,7 @@ def publish_facebook():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. COMBINED PUBLISH (IG + FB in one call)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@social_bp.route('/publish', methods=['POST'])
-def publish_combined():
-    """
-    Publish to both IG and FB in one call.
-    Body JSON:
-      - image_urls: [str]
-      - caption: str
-      - post_type: 'image' | 'carousel'
-      - publish_instagram: bool (default true)
-      - publish_facebook: bool (default true)
-    """
-    data = request.json or {}
-    results = {'ok': True, 'instagram': None, 'facebook': None}
-
-    if data.get('publish_instagram', True):
-        with social_bp.test_request_context(json=data):
-            ig_resp = publish_instagram()
-            if hasattr(ig_resp, 'get_json'):
-                results['instagram'] = ig_resp.get_json()
-            else:
-                results['instagram'] = ig_resp[0].get_json() if isinstance(ig_resp, tuple) else ig_resp
-
-    if data.get('publish_facebook', True):
-        fb_data = {**data, 'message': data.get('caption', '')}
-        with social_bp.test_request_context(json=fb_data):
-            fb_resp = publish_facebook()
-            if hasattr(fb_resp, 'get_json'):
-                results['facebook'] = fb_resp.get_json()
-            else:
-                results['facebook'] = fb_resp[0].get_json() if isinstance(fb_resp, tuple) else fb_resp
-
-    # Check if any failed
-    if results['instagram'] and not results['instagram'].get('ok', True):
-        results['ok'] = False
-    if results['facebook'] and not results['facebook'].get('ok', True):
-        results['ok'] = False
-
-    return jsonify(results)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 5. UPLOAD MEDIA (image → Supabase Storage → public URL)
+# 4. UPLOAD MEDIA (image → Supabase Storage → public URL)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @social_bp.route('/upload-media', methods=['POST'])
@@ -508,3 +484,90 @@ def rate_limit():
     data = result.get('data', [{}])
     usage = data[0].get('quota_usage', 0) if data else 0
     return jsonify({'ok': True, 'quota_usage': usage, 'quota_total': 100})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. INSTAGRAM / FACEBOOK WEBHOOKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@social_bp.route('/webhook', methods=['GET'])
+def webhook_verify():
+    """
+    Meta webhook verification (GET).
+    Meta sends: hub.mode=subscribe, hub.verify_token=<your token>, hub.challenge=<string>
+    Return the challenge if token matches.
+
+    In Meta dashboard set:
+      Callback URL: https://autodirectocrm-production.up.railway.app/api/social/webhook
+      Verify token: autodirecto_social_2026
+    """
+    mode = request.args.get('hub.mode', '')
+    token = request.args.get('hub.verify_token', '')
+    challenge = request.args.get('hub.challenge', '')
+
+    print(f'[social] webhook verify: mode={mode} token_match={token == WEBHOOK_VERIFY_TOKEN}')
+
+    if mode == 'subscribe' and token == WEBHOOK_VERIFY_TOKEN:
+        print(f'[social] ✅ webhook verified!')
+        return challenge, 200
+    else:
+        print(f'[social] ❌ webhook verification failed')
+        return 'Forbidden', 403
+
+
+@social_bp.route('/webhook', methods=['POST'])
+def webhook_receive():
+    """Receive Instagram/Facebook webhook events (comments, mentions, etc)."""
+    # Verify signature
+    app_secret = _cfg('META_APP_SECRET')
+    if app_secret:
+        sig_header = request.headers.get('X-Hub-Signature-256', '')
+        if sig_header:
+            expected = 'sha256=' + hmac.new(
+                app_secret.encode(), request.data, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(sig_header, expected):
+                print('[social] ❌ webhook signature mismatch')
+                return 'Bad signature', 403
+
+    payload = request.json or {}
+    obj = payload.get('object', '')
+    entries = payload.get('entry', [])
+    print(f'[social] 📩 webhook: object={obj}, entries={len(entries)}')
+
+    for entry in entries:
+        changes = entry.get('changes', [])
+        for change in changes:
+            field = change.get('field', '')
+            value = change.get('value', {})
+            print(f'[social]   → {field}: {json.dumps(value)[:200]}')
+
+    return 'OK', 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. DEBUG
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@social_bp.route('/debug/test-token', methods=['GET'])
+def debug_test_token():
+    """Quick test — verify token works for IG + FB."""
+    tok = _meta_token()
+    if not tok:
+        return jsonify({'error': 'No token', 'env': {
+            'META_SYSTEM_USER_TOKEN': bool(_cfg('META_SYSTEM_USER_TOKEN')),
+            'META_FB_PAGE_ACCESS_TOKEN': bool(_cfg('META_FB_PAGE_ACCESS_TOKEN')),
+            'META_IG_USER_ID': _cfg('META_IG_USER_ID'),
+            'META_FB_PAGE_ID': _cfg('META_FB_PAGE_ID'),
+        }})
+
+    me = _graph_get('me', {'fields': 'id,name'})
+    ig = _graph_get(_ig_user_id(), {'fields': 'id,username'}) if _ig_user_id() else {'skip': True}
+    fb = _graph_get(_fb_page_id(), {'fields': 'id,name'}) if _fb_page_id() else {'skip': True}
+
+    return jsonify({
+        'token_preview': tok[:20] + '...',
+        'me': me,
+        'instagram': ig,
+        'facebook': fb,
+    })
