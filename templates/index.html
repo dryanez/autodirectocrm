@@ -4848,7 +4848,7 @@
                     </button>
                     <button @click="igDownloadCanvas()"
                         class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-all">
-                        <i class="ph ph-download-simple"></i> Descargar 1080×1920
+                        <i class="ph ph-download-simple"></i> Descargar 1080×1350
                     </button>
                 </div>
 
@@ -5375,6 +5375,9 @@
                             mileage_km: c.mileage || '',
                             fuel_type: c.fuel_type || '',
                             transmission: c.transmission || '',
+                            engine: c.motor || '',
+                            owners: c.num_dueños || c.num_duenos || '',
+                            maintenance: c.mantenciones || '',
                             color: c.color || '',
                             plate: c.plate || '',
                             status: c.status,
@@ -5389,6 +5392,19 @@
                     this.igSelectedPhoto = null;
                     this.igEditing = false;
                     this.igLoadSocialPhotos();
+                    // Enrich with detail data (motor, owners, maintenance, fuel, etc.)
+                    this.authFetch('/api/consignaciones/' + l.id).then(async r => {
+                        if (!r.ok) return;
+                        const d = await r.json();
+                        this.igSelectedListing = {
+                            ...this.igSelectedListing,
+                            engine: d.motor || d.vehicle_motor || this.igSelectedListing.engine || '',
+                            fuel_type: d.fuel_type || d.vehicle_combustible || this.igSelectedListing.fuel_type || '',
+                            transmission: d.transmission || d.vehicle_transmision || this.igSelectedListing.transmission || '',
+                            owners: d.num_dueños || d.num_duenos || this.igSelectedListing.owners || '',
+                            maintenance: d.mantenciones || this.igSelectedListing.maintenance || '',
+                        };
+                    }).catch(() => {});
                 },
 
                 async igLoadSocialPhotos() {
@@ -5443,90 +5459,244 @@
                     const canvas = document.getElementById('ig-canvas');
                     if (!canvas || !this.igSelectedPhoto) return;
                     const ctx = canvas.getContext('2d');
-                    const W = 1080, H = 1920;
+                    // 1080×1350 = Instagram post ratio (same as layoutinstapro)
+                    const W = 1080, H = 1350;
                     canvas.width = W; canvas.height = H;
+
+                    const BG = '#171719';
+                    const TXT = '#F1F1F1';
+                    const LABEL = '#b5b5b3';
+                    const PAD = 60;
+
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
                     img.onload = () => {
-                        // Draw photo full-bleed, cover-fit
+                        // ── 1. Fill background ──
+                        ctx.fillStyle = BG;
+                        ctx.fillRect(0, 0, W, H);
+
+                        // ── 2. Draw photo cover-fit ──
                         const scaleW = W / img.naturalWidth;
                         const scaleH = H / img.naturalHeight;
                         const scale = Math.max(scaleW, scaleH);
                         const dw = img.naturalWidth * scale;
                         const dh = img.naturalHeight * scale;
-                        const dx = (W - dw) / 2;
-                        const dy = (H - dh) / 2;
-                        ctx.drawImage(img, dx, dy, dw, dh);
+                        ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
-                        // Gradient strip
-                        const gradH = Math.round(H * 0.40);
-                        const isTop = this.igSettings.textPosition === 'top';
-                        const gradY = isTop ? 0 : H - gradH;
-                        const hex = this.igSettings.gradientColor || '#0a0e1a';
-                        const cr = parseInt(hex.slice(1,3),16)||0;
-                        const cg = parseInt(hex.slice(3,5),16)||0;
-                        const cb = parseInt(hex.slice(5,7),16)||0;
-                        const grad = ctx.createLinearGradient(0, isTop ? 0 : H, 0, isTop ? gradH : H - gradH);
-                        grad.addColorStop(0, `rgba(${cr},${cg},${cb},0.92)`);
-                        grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-                        ctx.fillStyle = grad;
-                        ctx.fillRect(0, gradY, W, gradH);
+                        // ── 3. Top gradient (brand/model area) ──
+                        const topGrad = ctx.createLinearGradient(0, 0, 0, 500);
+                        topGrad.addColorStop(0, 'rgba(23,23,25,0.92)');
+                        topGrad.addColorStop(0.6, 'rgba(23,23,25,0.40)');
+                        topGrad.addColorStop(1, 'rgba(23,23,25,0)');
+                        ctx.fillStyle = topGrad;
+                        ctx.fillRect(0, 0, W, 500);
 
-                        // Text
+                        // ── 4. Bottom gradient (price/specs area) ──
+                        const botGrad = ctx.createLinearGradient(0, H, 0, H - 700);
+                        botGrad.addColorStop(0, 'rgba(23,23,25,1)');
+                        botGrad.addColorStop(0.5, 'rgba(23,23,25,0.85)');
+                        botGrad.addColorStop(1, 'rgba(23,23,25,0)');
+                        ctx.fillStyle = botGrad;
+                        ctx.fillRect(0, H - 700, W, 700);
+
                         const l = this.igSelectedListing;
-                        const baseY = isTop ? 140 : H - 240;
-                        const lineH = isTop ? 64 : -64;
                         ctx.textAlign = 'left';
-                        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-                        ctx.shadowBlur = 8;
 
-                        // Car name (brand + model)
-                        ctx.fillStyle = '#ffffff';
-                        ctx.font = '800 64px "Inter",sans-serif';
-                        ctx.fillText((l.brand||'') + ' ' + (l.model||''), 72, baseY);
+                        // ── 5. Header: ── BRAND ──
+                        const headerY = PAD + 20;
+                        // Horizontal line
+                        ctx.strokeStyle = LABEL;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(PAD, headerY + 10);
+                        ctx.lineTo(PAD + 48, headerY + 10);
+                        ctx.stroke();
+                        // Brand text (letter-spaced uppercase)
+                        ctx.fillStyle = LABEL;
+                        ctx.font = '500 20px "Inter",sans-serif';
+                        ctx.letterSpacing = '0.5em';
+                        ctx.fillText((l.brand || 'MARCA').toUpperCase(), PAD + 64, headerY + 17);
+                        ctx.letterSpacing = '0px';
 
-                        // Details line (year · km · fuel)
-                        const parts = [];
-                        if (this.igSettings.showYear && l.year) parts.push(String(l.year));
-                        if (this.igSettings.showKm && l.mileage_km) parts.push(Number(l.mileage_km).toLocaleString('es-CL') + ' km');
-                        if (l.fuel_type) parts.push(l.fuel_type);
-                        if (parts.length) {
-                            ctx.font = '400 38px "Inter",sans-serif';
-                            ctx.fillStyle = 'rgba(255,255,255,0.80)';
-                            ctx.fillText(parts.join('  ·  '), 72, baseY + lineH);
-                        }
+                        // ── 6. Model (huge, light weight) ──
+                        ctx.fillStyle = TXT;
+                        ctx.font = '300 80px "Inter",sans-serif';
+                        ctx.fillText((l.model || 'MODELO').toUpperCase(), PAD, headerY + 100);
 
-                        // Price
-                        if (this.igSettings.showPrice && l.price) {
-                            ctx.font = '800 56px "Inter",sans-serif';
-                            ctx.fillStyle = '#60a5fa';
-                            ctx.fillText('$' + Number(l.price).toLocaleString('es-CL'), 72, baseY + lineH * 2);
-                        }
+                        // ── 7. Year ──
+                        ctx.fillStyle = TXT;
+                        ctx.font = '300 32px "Inter",sans-serif';
+                        ctx.globalAlpha = 0.8;
+                        ctx.fillText(String(l.year || ''), PAD, headerY + 148);
+                        ctx.globalAlpha = 1;
 
-                        ctx.shadowBlur = 0;
+                        // ── 8. Logo box (top-right, glassmorphism style) ──
+                        const finishWithLogo = () => {
+                            // ── 9. Bottom card (glassmorphism) ──
+                            const cardH = 260;
+                            const cardY = H - PAD - cardH;
+                            const cardX = PAD;
+                            const cardW = W - PAD * 2;
+                            const cardR = 24; // border-radius
 
-                        // Draw logo last (on top)
-                        const drawDone = () => { if (callback) callback(canvas); };
+                            // Card background (semi-transparent)
+                            ctx.fillStyle = 'rgba(23,23,25,0.55)';
+                            // Rounded rect
+                            ctx.beginPath();
+                            ctx.moveTo(cardX + cardR, cardY);
+                            ctx.lineTo(cardX + cardW - cardR, cardY);
+                            ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardR, cardR);
+                            ctx.lineTo(cardX + cardW, cardY + cardH - cardR);
+                            ctx.arcTo(cardX + cardW, cardY + cardH, cardX + cardW - cardR, cardY + cardH, cardR);
+                            ctx.lineTo(cardX + cardR, cardY + cardH);
+                            ctx.arcTo(cardX, cardY + cardH, cardX, cardY + cardH - cardR, cardR);
+                            ctx.lineTo(cardX, cardY + cardR);
+                            ctx.arcTo(cardX, cardY, cardX + cardR, cardY, cardR);
+                            ctx.closePath();
+                            ctx.fill();
+
+                            // Card border
+                            ctx.strokeStyle = 'rgba(241,241,241,0.10)';
+                            ctx.lineWidth = 1;
+                            ctx.stroke();
+
+                            // ── 10. Price section ──
+                            const innerPad = 40;
+                            const priceY = cardY + innerPad;
+
+                            // "PRECIO DE VENTA" label
+                            ctx.fillStyle = LABEL;
+                            ctx.font = '500 16px "Inter",sans-serif';
+                            ctx.letterSpacing = '0.4em';
+                            ctx.fillText('PRECIO DE VENTA', cardX + innerPad, priceY + 16);
+                            ctx.letterSpacing = '0px';
+
+                            // Price value
+                            const priceStr = l.price ? '$' + Number(l.price).toLocaleString('es-CL') : '$0';
+                            ctx.fillStyle = TXT;
+                            ctx.font = '300 64px "Inter",sans-serif';
+                            ctx.fillText(priceStr, cardX + innerPad, priceY + 80);
+
+                            // "SELECCIÓN PREMIUM" pill (right side)
+                            const pillText = 'SELECCIÓN PREMIUM';
+                            ctx.font = '500 12px "Inter",sans-serif';
+                            ctx.letterSpacing = '0.3em';
+                            const pillW = ctx.measureText(pillText).width + 40;
+                            const pillH = 32;
+                            const pillX = cardX + cardW - innerPad - pillW;
+                            const pillY = priceY + 54;
+                            const pillR = 16;
+                            ctx.strokeStyle = 'rgba(181,181,179,0.3)';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(pillX + pillR, pillY);
+                            ctx.lineTo(pillX + pillW - pillR, pillY);
+                            ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR, pillR);
+                            ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
+                            ctx.arcTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH, pillR);
+                            ctx.lineTo(pillX + pillR, pillY + pillH);
+                            ctx.arcTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR, pillR);
+                            ctx.lineTo(pillX, pillY + pillR);
+                            ctx.arcTo(pillX, pillY, pillX + pillR, pillY, pillR);
+                            ctx.closePath();
+                            ctx.stroke();
+                            ctx.fillStyle = LABEL;
+                            ctx.fillText(pillText, pillX + 20, pillY + 21);
+                            ctx.letterSpacing = '0px';
+
+                            // Divider line
+                            const divY = priceY + 100;
+                            ctx.strokeStyle = 'rgba(241,241,241,0.10)';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(cardX + innerPad, divY);
+                            ctx.lineTo(cardX + cardW - innerPad, divY);
+                            ctx.stroke();
+
+                            // ── 11. Specs grid (3 cols, 2 rows) ──
+                            const specY = divY + 24;
+                            const colW = (cardW - innerPad * 2) / 3;
+                            const specs = [
+                                ['MOTOR', l.engine || '-'],
+                                ['KILOMETRAJE', l.mileage_km ? Number(l.mileage_km).toLocaleString('es-CL') + ' kms' : '-'],
+                                ['COMBUSTIBLE', (l.fuel_type || '-').toUpperCase()],
+                                ['DUEÑOS', l.owners || '-'],
+                                ['MANTENCIONES', (l.maintenance || 'AL DÍA').toUpperCase()],
+                            ];
+
+                            specs.forEach((spec, i) => {
+                                const col = i < 3 ? i : (i - 3);
+                                const row = i < 3 ? 0 : 1;
+                                const sx = cardX + innerPad + col * colW;
+                                const sy = specY + row * 52;
+
+                                // Label
+                                ctx.fillStyle = LABEL;
+                                ctx.font = '500 12px "Inter",sans-serif';
+                                ctx.letterSpacing = '0.2em';
+                                ctx.fillText(spec[0], sx, sy + 14);
+                                ctx.letterSpacing = '0px';
+
+                                // Value
+                                ctx.fillStyle = TXT;
+                                ctx.font = '300 20px "Inter",sans-serif';
+                                ctx.fillText(spec[1], sx, sy + 40);
+                            });
+
+                            if (callback) callback(canvas);
+                        };
+
+                        // ── Draw logo in top-right glassmorphism box ──
+                        const logoBoxW = 260, logoBoxH = 100;
+                        const logoBoxX = W - PAD - logoBoxW;
+                        const logoBoxY = PAD + 10;
+                        const logoBoxR = 12;
+
+                        // Glass background
+                        ctx.fillStyle = 'rgba(23,23,25,0.45)';
+                        ctx.beginPath();
+                        ctx.moveTo(logoBoxX + logoBoxR, logoBoxY);
+                        ctx.lineTo(logoBoxX + logoBoxW - logoBoxR, logoBoxY);
+                        ctx.arcTo(logoBoxX + logoBoxW, logoBoxY, logoBoxX + logoBoxW, logoBoxY + logoBoxR, logoBoxR);
+                        ctx.lineTo(logoBoxX + logoBoxW, logoBoxY + logoBoxH - logoBoxR);
+                        ctx.arcTo(logoBoxX + logoBoxW, logoBoxY + logoBoxH, logoBoxX + logoBoxW - logoBoxR, logoBoxY + logoBoxH, logoBoxR);
+                        ctx.lineTo(logoBoxX + logoBoxR, logoBoxY + logoBoxH);
+                        ctx.arcTo(logoBoxX, logoBoxY + logoBoxH, logoBoxX, logoBoxY + logoBoxH - logoBoxR, logoBoxR);
+                        ctx.lineTo(logoBoxX, logoBoxY + logoBoxR);
+                        ctx.arcTo(logoBoxX, logoBoxY, logoBoxX + logoBoxR, logoBoxY, logoBoxR);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.strokeStyle = 'rgba(241,241,241,0.10)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
                         if (this.igLogo) {
                             const logoImg = new Image();
                             logoImg.crossOrigin = 'anonymous';
                             logoImg.onload = () => {
-                                const pct = (this.igSettings.logoScalePct || 18) / 100;
-                                const lw = Math.round(W * pct);
-                                const lh = Math.round((logoImg.naturalHeight / logoImg.naturalWidth) * lw);
-                                const pad = 56;
-                                let lx = pad, ly = pad;
-                                const pos = this.igSettings.logoPosition || 'top-right';
-                                if (pos === 'top-right')    { lx = W - lw - pad; ly = pad; }
-                                if (pos === 'bottom-left')  { lx = pad;          ly = H - lh - pad; }
-                                if (pos === 'bottom-right') { lx = W - lw - pad; ly = H - lh - pad; }
+                                const logoPad = 20;
+                                const maxW = logoBoxW - logoPad * 2;
+                                const maxH = logoBoxH - logoPad * 2;
+                                const logoScale = Math.min(maxW / logoImg.naturalWidth, maxH / logoImg.naturalHeight);
+                                const lw = logoImg.naturalWidth * logoScale;
+                                const lh = logoImg.naturalHeight * logoScale;
+                                const lx = logoBoxX + (logoBoxW - lw) / 2;
+                                const ly = logoBoxY + (logoBoxH - lh) / 2;
                                 ctx.drawImage(logoImg, lx, ly, lw, lh);
-                                drawDone();
+                                finishWithLogo();
                             };
-                            logoImg.onerror = drawDone;
+                            logoImg.onerror = finishWithLogo;
                             logoImg.src = this.igLogo;
                         } else {
-                            drawDone();
+                            // "TU LOGO AQUÍ" placeholder text
+                            ctx.fillStyle = LABEL;
+                            ctx.font = '500 14px "Inter",sans-serif';
+                            ctx.letterSpacing = '0.2em';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('TU LOGO AQUÍ', logoBoxX + logoBoxW / 2, logoBoxY + logoBoxH / 2 + 5);
+                            ctx.letterSpacing = '0px';
+                            ctx.textAlign = 'left';
+                            finishWithLogo();
                         }
                     };
                     img.onerror = () => console.error('[ig] Failed to load photo:', this.igSelectedPhoto?.url);
