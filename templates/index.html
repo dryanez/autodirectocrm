@@ -4834,30 +4834,154 @@
             </div>
 
             <!-- Canvas editor — editing -->
+            <!-- Canvas editor — editing mode (side-by-side: preview + edit fields) -->
             <div x-show="igEditing" class="flex-1 flex flex-col overflow-hidden min-h-0">
                 <!-- Toolbar -->
-                <div class="flex-shrink-0 h-14 px-4 border-b border-slate-800 bg-slate-900/60 flex items-center gap-3">
+                <div class="flex-shrink-0 h-12 px-4 border-b border-slate-800 bg-slate-900/60 flex items-center gap-3">
                     <button @click="igEditing = false"
                         class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition-colors">
                         ← Volver
                     </button>
                     <p class="font-bold text-white text-sm flex-1" x-text="(igSelectedListing?.brand||'') + ' ' + (igSelectedListing?.model||'') + ' ' + (igSelectedListing?.year||'')"></p>
-                    <button @click="igRenderCanvas()"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white text-sm transition-colors">
-                        <i class="ph ph-arrows-clockwise"></i> Actualizar
-                    </button>
                     <button @click="igDownloadCanvas()"
                         class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-all">
-                        <i class="ph ph-download-simple"></i> Descargar 1080×1350
+                        <i class="ph ph-download-simple"></i> Descargar
                     </button>
                 </div>
 
-                <!-- Canvas preview -->
-                <div class="flex-1 overflow-auto flex items-center justify-center p-4 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABBElEQVQ4T2NkYGD4z8BAAiMFkIGBgYGBgYEBJA8A')]"
-                    style="background-color:#0d1220; background-image: repeating-conic-gradient(#1a1f35 0% 25%, #0d1220 0% 50%); background-size: 24px 24px;">
-                    <canvas id="ig-canvas"
-                        style="max-height:100%; max-width:100%; border-radius:14px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);"
-                        x-ref="igCanvas"></canvas>
+                <!-- Side-by-side: Canvas + Edit panel -->
+                <div class="flex-1 flex overflow-hidden min-h-0">
+
+                    <!-- LEFT: Canvas preview with drag/zoom -->
+                    <div class="flex-1 overflow-auto flex items-center justify-center p-3 relative"
+                        style="background-color:#0d1220; background-image: repeating-conic-gradient(#1a1f35 0% 25%, #0d1220 0% 50%); background-size: 20px 20px;">
+
+                        <!-- Zoom controls overlay -->
+                        <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/80 backdrop-blur rounded-lg px-3 py-1.5 border border-slate-700">
+                            <button @click="igImgScale = Math.max(50, igImgScale - 10); igRenderCanvas()"
+                                class="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white text-sm">−</button>
+                            <span class="text-xs text-slate-400 w-10 text-center" x-text="igImgScale + '%'"></span>
+                            <button @click="igImgScale = Math.min(300, igImgScale + 10); igRenderCanvas()"
+                                class="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white text-sm">+</button>
+                            <input type="range" min="50" max="300" x-model="igImgScale" @input="igRenderCanvas()"
+                                class="w-20 accent-pink-500 h-1">
+                            <span class="text-[10px] text-slate-600 ml-1">Arrastra la imagen para moverla</span>
+                        </div>
+
+                        <canvas id="ig-canvas"
+                            style="max-height:100%; max-width:100%; border-radius:10px; box-shadow: 0 8px 40px rgba(0,0,0,0.7); cursor: grab;"
+                            x-ref="igCanvas"
+                            @mousedown="igDragging=true; igDragStartX=$event.clientX-igImgX; igDragStartY=$event.clientY-igImgY; $event.target.style.cursor='grabbing'"
+                            @mousemove="if(igDragging){igImgX=$event.clientX-igDragStartX; igImgY=$event.clientY-igDragStartY; igRenderCanvas()}"
+                            @mouseup="igDragging=false; $event.target.style.cursor='grab'"
+                            @mouseleave="igDragging=false; $event.target.style.cursor='grab'"
+                            ></canvas>
+                    </div>
+
+                    <!-- RIGHT: Editable fields panel -->
+                    <div class="w-72 flex-shrink-0 border-l border-slate-800 bg-slate-900/60 overflow-y-auto">
+
+                        <!-- Section: Detalles -->
+                        <div class="px-4 py-3 border-b border-slate-700/50">
+                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Detalles del Vehículo</h4>
+                            <div class="space-y-2.5">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Marca</label>
+                                        <input type="text" x-model="igSelectedListing.brand" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs uppercase focus:outline-none focus:border-pink-500">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Año</label>
+                                        <input type="text" x-model="igSelectedListing.year" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-pink-500">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Modelo</label>
+                                    <input type="text" x-model="igSelectedListing.model" @input="igRenderCanvas()"
+                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs uppercase focus:outline-none focus:border-pink-500">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Precio</label>
+                                    <input type="text" x-model="igSelectedListing.price" @input="igRenderCanvas()"
+                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-bold focus:outline-none focus:border-pink-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Especificaciones -->
+                        <div class="px-4 py-3 border-b border-slate-700/50">
+                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Especificaciones</h4>
+                            <div class="space-y-2.5">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Motor</label>
+                                        <input type="text" x-model="igSelectedListing.engine" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-pink-500"
+                                            placeholder="ej: 2.0 lts">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Kilometraje</label>
+                                        <input type="text" x-model="igSelectedListing.mileage_km" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-pink-500">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Combustible</label>
+                                        <input type="text" x-model="igSelectedListing.fuel_type" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs uppercase focus:outline-none focus:border-pink-500"
+                                            placeholder="Bencina">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Dueños</label>
+                                        <input type="text" x-model="igSelectedListing.owners" @input="igRenderCanvas()"
+                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-pink-500"
+                                            placeholder="ej: 3 dueños">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Mantenciones</label>
+                                    <input type="text" x-model="igSelectedListing.maintenance" @input="igRenderCanvas()"
+                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs uppercase focus:outline-none focus:border-pink-500"
+                                        placeholder="Al día">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Logo y Estilo -->
+                        <div class="px-4 py-3 border-b border-slate-700/50">
+                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Logo y Estilo</h4>
+                            <div class="space-y-2.5">
+                                <button @click="igShowLogoSetup = true"
+                                    class="w-full text-xs px-3 py-2 rounded-lg border transition-colors flex items-center justify-center gap-2"
+                                    :class="igLogo ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' : 'border-red-500/30 bg-red-500/10 text-red-400'">
+                                    <i class="ph" :class="igLogo ? 'ph-check-circle' : 'ph-warning'"></i>
+                                    <span x-text="igLogo ? 'Cambiar Logo' : 'Subir Logo'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Section: Imagen -->
+                        <div class="px-4 py-3">
+                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Imagen</h4>
+                            <div class="space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] text-slate-500">Zoom</span>
+                                    <input type="range" min="50" max="300" x-model="igImgScale" @input="igRenderCanvas()"
+                                        class="flex-1 accent-pink-500 h-1">
+                                    <span class="text-[10px] text-slate-400 w-8 text-right" x-text="igImgScale + '%'"></span>
+                                </div>
+                                <button @click="igImgX=0; igImgY=0; igImgScale=150; igRenderCanvas()"
+                                    class="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition-colors">
+                                    <i class="ph ph-arrows-counter-clockwise mr-1"></i> Resetear posición
+                                </button>
+                                <p class="text-[10px] text-slate-600 leading-relaxed">Arrastra la vista previa para mover la foto. Usa el zoom para ajustar el tamaño.</p>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
 
@@ -5151,6 +5275,13 @@
                 igLogoPreview: null,
                 igShowLogoSetup: false,
                 igShowSettings: false,
+                // Image manipulation
+                igImgScale: 150,
+                igImgX: 0,
+                igImgY: 0,
+                igDragging: false,
+                igDragStartX: 0,
+                igDragStartY: 0,
                 igSettings: {
                     showPrice: true, showKm: true, showYear: true,
                     gradientColor: '#0a0e1a', logoPosition: 'top-left',
@@ -5391,6 +5522,9 @@
                     this.igSelectedListing = l;
                     this.igSelectedPhoto = null;
                     this.igEditing = false;
+                    this.igImgX = 0;
+                    this.igImgY = 0;
+                    this.igImgScale = 150;
                     this.igLoadSocialPhotos();
                     // Enrich with detail data (motor, owners, maintenance, fuel, etc.)
                     this.authFetch('/api/consignaciones/' + l.id).then(async r => {
@@ -5459,7 +5593,6 @@
                     const canvas = document.getElementById('ig-canvas');
                     if (!canvas || !this.igSelectedPhoto) return;
                     const ctx = canvas.getContext('2d');
-                    // 1080×1350 = Instagram post ratio (same as layoutinstapro)
                     const W = 1080, H = 1350;
                     canvas.width = W; canvas.height = H;
 
@@ -5475,29 +5608,33 @@
                         ctx.fillStyle = BG;
                         ctx.fillRect(0, 0, W, H);
 
-                        // ── 2. Draw photo cover-fit ──
+                        // ── 2. Draw photo with drag/zoom ──
+                        const userScale = (this.igImgScale || 150) / 100;
                         const scaleW = W / img.naturalWidth;
                         const scaleH = H / img.naturalHeight;
-                        const scale = Math.max(scaleW, scaleH);
-                        const dw = img.naturalWidth * scale;
-                        const dh = img.naturalHeight * scale;
-                        ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+                        const baseScale = Math.max(scaleW, scaleH);
+                        const finalScale = baseScale * userScale;
+                        const dw = img.naturalWidth * finalScale;
+                        const dh = img.naturalHeight * finalScale;
+                        const ox = (this.igImgX || 0) * (W / (canvas.clientWidth || W));
+                        const oy = (this.igImgY || 0) * (H / (canvas.clientHeight || H));
+                        ctx.drawImage(img, (W - dw) / 2 + ox, (H - dh) / 2 + oy, dw, dh);
 
-                        // ── 3. Top gradient (brand/model area) ──
-                        const topGrad = ctx.createLinearGradient(0, 0, 0, 500);
-                        topGrad.addColorStop(0, 'rgba(23,23,25,0.92)');
-                        topGrad.addColorStop(0.6, 'rgba(23,23,25,0.40)');
+                        // ── 3. Top gradient ──
+                        const topGrad = ctx.createLinearGradient(0, 0, 0, 550);
+                        topGrad.addColorStop(0, 'rgba(23,23,25,0.95)');
+                        topGrad.addColorStop(0.55, 'rgba(23,23,25,0.50)');
                         topGrad.addColorStop(1, 'rgba(23,23,25,0)');
                         ctx.fillStyle = topGrad;
-                        ctx.fillRect(0, 0, W, 500);
+                        ctx.fillRect(0, 0, W, 550);
 
-                        // ── 4. Bottom gradient (price/specs area) ──
-                        const botGrad = ctx.createLinearGradient(0, H, 0, H - 700);
+                        // ── 4. Bottom gradient (taller for bigger card) ──
+                        const botGrad = ctx.createLinearGradient(0, H, 0, H - 800);
                         botGrad.addColorStop(0, 'rgba(23,23,25,1)');
-                        botGrad.addColorStop(0.5, 'rgba(23,23,25,0.85)');
+                        botGrad.addColorStop(0.55, 'rgba(23,23,25,0.90)');
                         botGrad.addColorStop(1, 'rgba(23,23,25,0)');
                         ctx.fillStyle = botGrad;
-                        ctx.fillRect(0, H - 700, W, 700);
+                        ctx.fillRect(0, H - 800, W, 800);
 
                         const l = this.igSelectedListing;
                         ctx.textAlign = 'left';
@@ -5506,42 +5643,50 @@
                         const headerY = PAD + 20;
                         // Horizontal line
                         ctx.strokeStyle = LABEL;
-                        ctx.lineWidth = 1;
+                        ctx.lineWidth = 1.5;
                         ctx.beginPath();
-                        ctx.moveTo(PAD, headerY + 10);
-                        ctx.lineTo(PAD + 48, headerY + 10);
+                        ctx.moveTo(PAD, headerY + 14);
+                        ctx.lineTo(PAD + 56, headerY + 14);
                         ctx.stroke();
-                        // Brand text (letter-spaced uppercase)
+                        // Brand text (letter-spaced uppercase) — BIGGER
                         ctx.fillStyle = LABEL;
-                        ctx.font = '500 20px "Inter",sans-serif';
+                        ctx.font = '500 24px "Inter",sans-serif';
                         ctx.letterSpacing = '0.5em';
-                        ctx.fillText((l.brand || 'MARCA').toUpperCase(), PAD + 64, headerY + 17);
+                        ctx.fillText((l.brand || 'MARCA').toUpperCase(), PAD + 72, headerY + 22);
                         ctx.letterSpacing = '0px';
 
-                        // ── 6. Model (huge, light weight) ──
+                        // ── 6. Model (HUGE, light weight) — BIGGER ──
                         ctx.fillStyle = TXT;
-                        ctx.font = '300 80px "Inter",sans-serif';
-                        ctx.fillText((l.model || 'MODELO').toUpperCase(), PAD, headerY + 100);
+                        ctx.font = '300 96px "Inter",sans-serif';
+                        const modelText = (l.model || 'MODELO').toUpperCase();
+                        // If model text is too wide, scale it down
+                        const maxModelW = W - PAD * 2;
+                        let modelFontSize = 96;
+                        ctx.font = '300 ' + modelFontSize + 'px "Inter",sans-serif';
+                        while (ctx.measureText(modelText).width > maxModelW && modelFontSize > 40) {
+                            modelFontSize -= 4;
+                            ctx.font = '300 ' + modelFontSize + 'px "Inter",sans-serif';
+                        }
+                        ctx.fillText(modelText, PAD, headerY + 120);
 
-                        // ── 7. Year ──
+                        // ── 7. Year — slightly bigger ──
                         ctx.fillStyle = TXT;
-                        ctx.font = '300 32px "Inter",sans-serif';
+                        ctx.font = '300 36px "Inter",sans-serif';
                         ctx.globalAlpha = 0.8;
-                        ctx.fillText(String(l.year || ''), PAD, headerY + 148);
+                        ctx.fillText(String(l.year || ''), PAD, headerY + 170);
                         ctx.globalAlpha = 1;
 
                         // ── 8. Logo box (top-right, glassmorphism style) ──
                         const finishWithLogo = () => {
-                            // ── 9. Bottom card (glassmorphism) ──
-                            const cardH = 260;
+                            // ── 9. Bottom card (glassmorphism) — BIGGER ──
+                            const cardH = 360;
                             const cardY = H - PAD - cardH;
                             const cardX = PAD;
                             const cardW = W - PAD * 2;
-                            const cardR = 24; // border-radius
+                            const cardR = 28;
 
-                            // Card background (semi-transparent)
-                            ctx.fillStyle = 'rgba(23,23,25,0.55)';
-                            // Rounded rect
+                            // Card background
+                            ctx.fillStyle = 'rgba(23,23,25,0.60)';
                             ctx.beginPath();
                             ctx.moveTo(cardX + cardR, cardY);
                             ctx.lineTo(cardX + cardW - cardR, cardY);
@@ -5560,32 +5705,32 @@
                             ctx.lineWidth = 1;
                             ctx.stroke();
 
-                            // ── 10. Price section ──
-                            const innerPad = 40;
+                            // ── 10. Price section — BIGGER ──
+                            const innerPad = 48;
                             const priceY = cardY + innerPad;
 
-                            // "PRECIO DE VENTA" label
+                            // "PRECIO DE VENTA" label — bigger
                             ctx.fillStyle = LABEL;
-                            ctx.font = '500 16px "Inter",sans-serif';
+                            ctx.font = '500 18px "Inter",sans-serif';
                             ctx.letterSpacing = '0.4em';
-                            ctx.fillText('PRECIO DE VENTA', cardX + innerPad, priceY + 16);
+                            ctx.fillText('PRECIO DE VENTA', cardX + innerPad, priceY + 18);
                             ctx.letterSpacing = '0px';
 
-                            // Price value
+                            // Price value — BIGGER (72px like reference)
                             const priceStr = l.price ? '$' + Number(l.price).toLocaleString('es-CL') : '$0';
                             ctx.fillStyle = TXT;
-                            ctx.font = '300 64px "Inter",sans-serif';
-                            ctx.fillText(priceStr, cardX + innerPad, priceY + 80);
+                            ctx.font = '300 76px "Inter",sans-serif';
+                            ctx.fillText(priceStr, cardX + innerPad, priceY + 92);
 
-                            // "SELECCIÓN PREMIUM" pill (right side)
+                            // "SELECCIÓN PREMIUM" pill (right side) — bigger
                             const pillText = 'SELECCIÓN PREMIUM';
-                            ctx.font = '500 12px "Inter",sans-serif';
+                            ctx.font = '500 14px "Inter",sans-serif';
                             ctx.letterSpacing = '0.3em';
-                            const pillW = ctx.measureText(pillText).width + 40;
-                            const pillH = 32;
+                            const pillW = ctx.measureText(pillText).width + 48;
+                            const pillH = 36;
                             const pillX = cardX + cardW - innerPad - pillW;
-                            const pillY = priceY + 54;
-                            const pillR = 16;
+                            const pillY = priceY + 58;
+                            const pillR = 18;
                             ctx.strokeStyle = 'rgba(181,181,179,0.3)';
                             ctx.lineWidth = 1;
                             ctx.beginPath();
@@ -5601,11 +5746,11 @@
                             ctx.closePath();
                             ctx.stroke();
                             ctx.fillStyle = LABEL;
-                            ctx.fillText(pillText, pillX + 20, pillY + 21);
+                            ctx.fillText(pillText, pillX + 24, pillY + 24);
                             ctx.letterSpacing = '0px';
 
                             // Divider line
-                            const divY = priceY + 100;
+                            const divY = priceY + 120;
                             ctx.strokeStyle = 'rgba(241,241,241,0.10)';
                             ctx.lineWidth = 1;
                             ctx.beginPath();
@@ -5613,8 +5758,8 @@
                             ctx.lineTo(cardX + cardW - innerPad, divY);
                             ctx.stroke();
 
-                            // ── 11. Specs grid (3 cols, 2 rows) ──
-                            const specY = divY + 24;
+                            // ── 11. Specs grid (3 cols, 2 rows) — BIGGER ──
+                            const specY = divY + 30;
                             const colW = (cardW - innerPad * 2) / 3;
                             const specs = [
                                 ['MOTOR', l.engine || '-'],
@@ -5628,19 +5773,19 @@
                                 const col = i < 3 ? i : (i - 3);
                                 const row = i < 3 ? 0 : 1;
                                 const sx = cardX + innerPad + col * colW;
-                                const sy = specY + row * 52;
+                                const sy = specY + row * 64;
 
-                                // Label
+                                // Label — bigger
                                 ctx.fillStyle = LABEL;
-                                ctx.font = '500 12px "Inter",sans-serif';
+                                ctx.font = '500 14px "Inter",sans-serif';
                                 ctx.letterSpacing = '0.2em';
-                                ctx.fillText(spec[0], sx, sy + 14);
+                                ctx.fillText(spec[0], sx, sy + 16);
                                 ctx.letterSpacing = '0px';
 
-                                // Value
+                                // Value — bigger
                                 ctx.fillStyle = TXT;
-                                ctx.font = '300 20px "Inter",sans-serif';
-                                ctx.fillText(spec[1], sx, sy + 40);
+                                ctx.font = '300 26px "Inter",sans-serif';
+                                ctx.fillText(spec[1], sx, sy + 48);
                             });
 
                             if (callback) callback(canvas);
