@@ -1007,6 +1007,11 @@ if FUNNELS_DIR.exists():
     app.register_blueprint(social_bp)
     print("  ✅ Social media API mounted at /api/social")
 
+    # ── FB Marketplace Auto-Poster module (external Blueprint) ──
+    from routes.fb_poster_routes import fb_poster_bp
+    app.register_blueprint(fb_poster_bp)
+    print("  ✅ FB Poster API mounted at /api/fb-poster")
+
 DB_PATH = os.getenv("DB_PATH", str(ROOT / "data" / "inventory.db"))
 
 

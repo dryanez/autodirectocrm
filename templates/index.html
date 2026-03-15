@@ -246,6 +246,16 @@
                 <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Nuevo</span>
             </a>
 
+            <a href="#" @click.prevent="currentView='fbposter'; loadFBPoster()"
+                :class="currentView==='fbposter' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-storefront text-lg mr-2.5"
+                    :class="currentView==='fbposter' ? 'text-blue-400' : ''"></i>
+                <span class="font-medium">FB Poster</span>
+                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
+                    x-text="fbpGroups.filter(g => g.enabled).length"></span>
+            </a>
+
             <div class="border-t border-slate-700 mt-2 pt-2">
                 <a href="#" @click.prevent="currentView='modulos'; loadModules()"
                     :class="currentView==='modulos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
@@ -6529,6 +6539,389 @@
     </div>
     <!-- END Social Media View -->
 
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- FB MARKETPLACE AUTO-POSTER VIEW                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div x-show="currentView==='fbposter'" class="flex-1 flex flex-col overflow-hidden h-full min-h-0" style="display:none;">
+
+        <!-- Header bar with tabs -->
+        <div class="flex items-center justify-between px-6 py-3 border-b border-slate-700 bg-slate-900/60 flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <i class="ph ph-storefront text-2xl text-blue-400"></i>
+                <div>
+                    <h2 class="text-lg font-bold text-white">FB Marketplace Poster</h2>
+                    <p class="text-xs text-slate-400">Marketplace + <span x-text="fbpEnabledCount"></span> Grupos · V Región</p>
+                </div>
+            </div>
+            <div class="flex gap-1 bg-slate-800 rounded-lg p-1">
+                <button @click="fbpTab='post'"
+                    :class="fbpTab==='post' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+                    <i class="ph ph-paper-plane-tilt mr-1"></i> Publicar
+                </button>
+                <button @click="fbpTab='history'; loadFBPosterJobs()"
+                    :class="fbpTab==='history' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+                    <i class="ph ph-clock-counter-clockwise mr-1"></i> Historial
+                </button>
+                <button @click="fbpTab='settings'"
+                    :class="fbpTab==='settings' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+                    <i class="ph ph-gear mr-1"></i> Ajustes
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ POST TAB ═══ -->
+        <div x-show="fbpTab==='post'" class="flex-1 overflow-y-auto p-6 space-y-5">
+
+            <!-- Step 1: Select Car -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">1</span>
+                    Seleccionar Vehículo
+                </h3>
+
+                <div x-show="fbpCarsLoading" class="text-center py-6 text-slate-400">
+                    <div class="animate-spin inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    <p class="mt-2 text-xs">Cargando vehículos en venta...</p>
+                </div>
+
+                <div x-show="!fbpCarsLoading && fbpCars.length === 0" class="text-center py-6 text-slate-500 text-sm">
+                    No hay vehículos en venta.
+                </div>
+
+                <div x-show="!fbpCarsLoading && fbpCars.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    <template x-for="car in fbpCars" :key="car.id">
+                        <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200"
+                             :class="fbpSelectedCar?.id === car.id ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30' : 'border-slate-600 hover:border-slate-500 bg-slate-800/30'"
+                             @click="fbpSelectCar(car)">
+                            <div class="flex gap-3">
+                                <div class="w-20 h-16 rounded-lg overflow-hidden bg-slate-700 flex-shrink-0">
+                                    <img x-show="car._images?.length" :src="car._images?.[0]"
+                                         class="w-full h-full object-cover" alt="">
+                                    <div x-show="!car._images?.length" class="w-full h-full flex items-center justify-center text-slate-500 text-xl">🚗</div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-xs truncate text-white" x-text="`${car.car_make || ''} ${car.car_model || ''} ${car.car_year || ''}`"></p>
+                                    <p class="text-[10px] text-slate-400" x-text="car.plate || 'Sin patente'"></p>
+                                    <p class="text-[10px] text-green-400 font-medium"
+                                       x-text="car.selling_price ? `$${Number(car.selling_price).toLocaleString('es-CL')}` : 'Sin precio'"></p>
+                                    <div class="flex items-center gap-1 mt-0.5">
+                                        <i class="ph ph-camera text-[10px] text-slate-500"></i>
+                                        <span class="text-[10px] text-slate-500" x-text="`${car._images?.length || 0} fotos`"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Step 2: Preview & Caption -->
+            <div x-show="fbpSelectedCar" class="bg-slate-800/50 rounded-xl border border-slate-700 p-5" x-transition>
+                <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">2</span>
+                    Vista Previa del Anuncio
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Photos -->
+                    <div>
+                        <div class="aspect-video rounded-xl overflow-hidden bg-black">
+                            <img x-show="fbpSelectedCar?._images?.length"
+                                 :src="fbpSelectedCar?._images?.[fbpPreviewIdx]"
+                                 class="w-full h-full object-contain">
+                            <div x-show="!fbpSelectedCar?._images?.length" class="w-full h-full flex items-center justify-center text-slate-600 text-3xl">📷</div>
+                        </div>
+                        <div class="flex gap-1 mt-2 overflow-x-auto py-1" x-show="(fbpSelectedCar?._images?.length || 0) > 1">
+                            <template x-for="(img, i) in (fbpSelectedCar?._images || [])" :key="i">
+                                <img :src="img" class="w-11 h-11 rounded-lg object-cover cursor-pointer border-2 flex-shrink-0 transition-all"
+                                     :class="fbpPreviewIdx === i ? 'border-blue-500 scale-105' : 'border-transparent opacity-60 hover:opacity-100'"
+                                     @click="fbpPreviewIdx = i">
+                            </template>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1" x-show="fbpSelectedCar?._images?.length">
+                            <span x-text="fbpSelectedCar?._images?.length"></span> fotos · se subirán a Marketplace
+                        </p>
+                    </div>
+                    <!-- Caption editor -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="text-xs font-semibold text-slate-300">Descripción</h4>
+                            <button @click="fbpBuildCaption()" class="text-[10px] text-blue-400 hover:text-blue-300">
+                                <i class="ph ph-arrows-clockwise mr-0.5"></i> Regenerar
+                            </button>
+                        </div>
+                        <textarea x-model="fbpCaption" rows="14"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none font-mono"
+                            placeholder="Se genera automáticamente al seleccionar un vehículo..."></textarea>
+                        <div class="mt-2 flex items-center gap-2 text-[10px] text-slate-400">
+                            <i class="ph ph-map-pin"></i>
+                            <span x-text="fbpLocation"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Select Groups -->
+            <div x-show="fbpSelectedCar" class="bg-slate-800/50 rounded-xl border border-slate-700 p-5" x-transition>
+                <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">3</span>
+                    Grupos de Facebook
+                    <span class="text-[10px] text-slate-400 font-normal ml-1" x-text="`(${fbpEnabledCount}/${fbpGroups.length})`"></span>
+                </h3>
+
+                <div class="flex gap-2 mb-3">
+                    <button @click="fbpSelectAllGroups()" class="px-2.5 py-1 text-[10px] rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition-colors">
+                        ✅ Todos
+                    </button>
+                    <button @click="fbpDeselectAllGroups()" class="px-2.5 py-1 text-[10px] rounded-lg bg-slate-600/20 text-slate-400 hover:bg-slate-600/30 transition-colors">
+                        ❌ Ninguno
+                    </button>
+                    <input type="text" x-model="fbpGroupSearch" placeholder="Buscar grupo..."
+                           class="flex-1 px-3 py-1 text-[10px] rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0.5 max-h-60 overflow-y-auto pr-1">
+                    <template x-for="group in fbpFilteredGroups" :key="group._idx">
+                        <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer text-[11px] hover:bg-slate-700/50 transition-colors">
+                            <input type="checkbox" :value="group._idx"
+                                   x-model.number="fbpSelectedGroups"
+                                   class="rounded border-slate-500 bg-slate-700 text-blue-500 focus:ring-blue-500 w-3.5 h-3.5">
+                            <span class="truncate" x-text="group.name"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Step 4: Launch -->
+            <div x-show="fbpSelectedCar" class="bg-slate-800/50 rounded-xl border border-slate-700 p-5" x-transition>
+                <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">4</span>
+                    Publicar
+                </h3>
+
+                <div class="flex items-center gap-4 flex-wrap">
+                    <button @click="fbpStartPosting()"
+                            :disabled="fbpPosting || !fbpSelectedCar?._images?.length"
+                            class="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <span x-show="!fbpPosting">
+                            🚀 Publicar Marketplace + <span x-text="fbpEnabledCount"></span> Grupos
+                        </span>
+                        <span x-show="fbpPosting" class="flex items-center gap-2">
+                            <span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                            Publicando...
+                        </span>
+                    </button>
+
+                    <div class="text-[10px] text-slate-500" x-show="fbpPosting">
+                        Worker: <span class="text-blue-400 font-mono" x-text="fbpWorkerUrl"></span>
+                    </div>
+                </div>
+
+                <!-- Warning -->
+                <div class="mt-3 flex items-start gap-2 text-[10px] text-yellow-400/70 bg-yellow-900/10 border border-yellow-700/20 rounded-lg p-2.5">
+                    <i class="ph ph-warning text-sm mt-0.5"></i>
+                    <div>
+                        <strong>Antes de publicar:</strong> Cierra Google Chrome · El worker debe estar corriendo en <span class="font-mono" x-text="fbpWorkerUrl"></span>
+                        · No toques el navegador durante la publicación
+                    </div>
+                </div>
+
+                <!-- Live Log -->
+                <div x-show="fbpJobLog.length > 0" class="mt-4">
+                    <h4 class="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1">
+                        <i class="ph ph-terminal"></i> Log en Vivo
+                    </h4>
+                    <div class="bg-slate-900 rounded-lg p-3 max-h-72 overflow-y-auto border border-slate-700 font-mono text-[11px]"
+                         x-ref="fbpLogContainer">
+                        <template x-for="(line, i) in fbpJobLog" :key="i">
+                            <div class="py-0.5"
+                                 :class="{
+                                     'text-green-400': line.includes('✅'),
+                                     'text-red-400': line.includes('❌') || line.includes('💥'),
+                                     'text-yellow-400': line.includes('⚠️'),
+                                     'text-blue-400': line.includes('🚀') || line.includes('📤'),
+                                     'text-slate-400': !line.includes('✅') && !line.includes('❌') && !line.includes('⚠️') && !line.includes('🚀') && !line.includes('📤') && !line.includes('💥'),
+                                 }"
+                                 x-text="line"></div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Results Summary -->
+                <div x-show="fbpJobResult" class="mt-4 bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <h4 class="text-xs font-semibold text-green-400 mb-3 flex items-center gap-1">
+                        <i class="ph ph-check-circle"></i> Resultados
+                    </h4>
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                            <p class="text-xl font-bold text-blue-400">1</p>
+                            <p class="text-[10px] text-slate-400">Marketplace</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-green-400" x-text="fbpJobResult?.groups_posted || 0"></p>
+                            <p class="text-[10px] text-slate-400">Grupos OK</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-red-400" x-text="fbpJobResult?.groups_failed || 0"></p>
+                            <p class="text-[10px] text-slate-400">Fallaron</p>
+                        </div>
+                    </div>
+                    <div x-show="fbpJobResult?.marketplace_url" class="mt-3 text-center">
+                        <a :href="fbpJobResult?.marketplace_url" target="_blank" class="text-xs text-blue-400 hover:underline">
+                            <i class="ph ph-arrow-square-out mr-0.5"></i> Ver en Marketplace
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ HISTORY TAB ═══ -->
+        <div x-show="fbpTab==='history'" class="flex-1 overflow-y-auto p-6">
+            <div x-show="fbpJobsLoading" class="text-center py-12 text-slate-400">
+                <div class="animate-spin inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            </div>
+
+            <div x-show="!fbpJobsLoading && fbpJobs.length === 0" class="text-center py-12 text-slate-500 text-sm">
+                No hay publicaciones anteriores.
+            </div>
+
+            <div class="space-y-2">
+                <template x-for="job in fbpJobs" :key="job.id">
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg flex items-center justify-center"
+                                     :class="{
+                                         'bg-green-500/20 text-green-400': job.status === 'completed',
+                                         'bg-red-500/20 text-red-400': job.status === 'error',
+                                         'bg-blue-500/20 text-blue-400': job.status === 'running',
+                                         'bg-slate-600/20 text-slate-400': job.status === 'queued',
+                                     }">
+                                    <i class="ph text-lg"
+                                       :class="{
+                                           'ph-check-circle': job.status === 'completed',
+                                           'ph-x-circle': job.status === 'error',
+                                           'ph-spinner animate-spin': job.status === 'running',
+                                           'ph-clock': job.status === 'queued',
+                                       }"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-white" x-text="job.car_title || 'Vehículo'"></p>
+                                    <p class="text-[10px] text-slate-400" x-text="new Date(job.created_at).toLocaleString('es-CL')"></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs">
+                                <span class="text-green-400" x-show="job.groups_posted > 0">
+                                    ✅ <span x-text="job.groups_posted"></span> grupos
+                                </span>
+                                <span class="text-red-400" x-show="job.groups_failed > 0">
+                                    ❌ <span x-text="job.groups_failed"></span> fallaron
+                                </span>
+                                <a x-show="job.marketplace_url" :href="job.marketplace_url" target="_blank"
+                                   class="text-blue-400 hover:text-blue-300">
+                                    <i class="ph ph-arrow-square-out"></i>
+                                </a>
+                                <button @click="fbpDeleteJob(job.id)" class="text-slate-500 hover:text-red-400 transition-colors">
+                                    <i class="ph ph-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ═══ SETTINGS TAB ═══ -->
+        <div x-show="fbpTab==='settings'" class="flex-1 overflow-y-auto p-6 space-y-5">
+            <!-- Location -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="ph ph-map-pin text-blue-400"></i> Ubicación de Publicación
+                </h3>
+                <input type="text" x-model="fbpLocation"
+                       class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                       placeholder="Ej: Bosques de Miramar, Viña del Mar">
+                <p class="text-[10px] text-slate-500 mt-1">Esta ubicación se usará al crear el listing en Marketplace</p>
+            </div>
+
+            <!-- Delays -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="ph ph-timer text-amber-400"></i> Delays entre Grupos
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-1">Mínimo (seg)</label>
+                        <input type="number" x-model.number="fbpDelayMin" min="5" max="120"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-1">Máximo (seg)</label>
+                        <input type="number" x-model.number="fbpDelayMax" min="10" max="300"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-1">Delay aleatorio entre publicaciones en grupos para evitar detección</p>
+            </div>
+
+            <!-- Worker URL -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="ph ph-robot text-green-400"></i> Worker Local (Playwright)
+                </h3>
+                <input type="text" x-model="fbpWorkerUrl"
+                       class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                       placeholder="http://localhost:5050">
+                <p class="text-[10px] text-slate-500 mt-1">URL del worker Playwright que corre en tu Mac. Ejecuta <code class="bg-slate-700 px-1 rounded">python app.py</code> en fb-poster/</p>
+                <button @click="fbpTestWorker()" class="mt-2 px-3 py-1.5 text-xs rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors">
+                    🔌 Probar Conexión
+                </button>
+            </div>
+
+            <!-- Group management -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="ph ph-users-three text-purple-400"></i> Grupos Configurados
+                    <span class="text-[10px] text-slate-400 font-normal" x-text="`(${fbpGroups.length} grupos)`"></span>
+                </h3>
+                <div class="space-y-1 max-h-72 overflow-y-auto">
+                    <template x-for="(group, i) in fbpGroups" :key="i">
+                        <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/30">
+                            <input type="checkbox" x-model="fbpGroups[i].enabled"
+                                   class="rounded border-slate-500 bg-slate-700 text-blue-500 focus:ring-blue-500 w-3.5 h-3.5">
+                            <span class="text-xs text-slate-300 flex-1 truncate" x-text="group.name"></span>
+                            <a :href="group.url" target="_blank" class="text-[10px] text-blue-400 hover:text-blue-300 flex-shrink-0">
+                                <i class="ph ph-arrow-square-out"></i>
+                            </a>
+                        </div>
+                    </template>
+                </div>
+                <button @click="fbpSaveConfig()" class="mt-3 px-4 py-2 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors">
+                    💾 Guardar Configuración
+                </button>
+            </div>
+
+            <!-- How it works -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="ph ph-info text-amber-400"></i> Cómo Funciona
+                </h3>
+                <div class="text-xs text-slate-400 space-y-2">
+                    <p>1. Selecciona un vehículo → se genera automáticamente el anuncio con fotos y descripción</p>
+                    <p>2. Elige los grupos donde quieres publicar (42 pre-configurados de V Región)</p>
+                    <p>3. Haz clic en "Publicar" → se conecta al worker local que abre Chrome</p>
+                    <p>4. El worker crea el listing en <strong>Facebook Marketplace</strong> (Bosques de Miramar)</p>
+                    <p>5. Luego comparte el listing en cada grupo con delays aleatorios</p>
+                    <p class="text-yellow-400/80 mt-2">⚠️ Requiere tener Chrome cerrado y el worker corriendo en tu Mac</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <!-- END FB Poster View -->
+
     <script>
         /* ── Global modal & toast helpers ─────────────────────────────────── */
         window._modalResolve = null;
@@ -6710,6 +7103,38 @@
                 socialGeneratingHashtags: false,
                 socialLoadingIdeas: false,
                 socialPostIdeas: [],
+
+                // ─── FB Marketplace Auto-Poster ───
+                fbpTab: 'post',             // post | history | settings
+                fbpCars: [],
+                fbpCarsLoading: false,
+                fbpSelectedCar: null,
+                fbpPreviewIdx: 0,
+                fbpCaption: '',
+                fbpGroups: [],              // [{name, url, enabled}]
+                fbpSelectedGroups: [],      // indices of enabled groups
+                fbpGroupSearch: '',
+                fbpLocation: 'Bosques de Miramar, Viña del Mar',
+                fbpDelayMin: 15,
+                fbpDelayMax: 45,
+                fbpPosting: false,
+                fbpCurrentJobId: null,
+                fbpJobLog: [],
+                fbpJobResult: null,
+                fbpJobs: [],                // history
+                fbpJobsLoading: false,
+                fbpPollInterval: null,
+                fbpWorkerUrl: 'http://localhost:5050', // local Playwright worker
+
+                get fbpFilteredGroups() {
+                    if (!this.fbpGroupSearch) return this.fbpGroups.map((g, i) => ({...g, _idx: i}));
+                    const q = this.fbpGroupSearch.toLowerCase();
+                    return this.fbpGroups.map((g, i) => ({...g, _idx: i})).filter(g => g.name.toLowerCase().includes(q));
+                },
+
+                get fbpEnabledCount() {
+                    return this.fbpSelectedGroups.length;
+                },
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -8174,6 +8599,225 @@
                             $toast(`⏰ Mejor hora sugerida: ${h}:${m} — ${data.reason || ''}`, 'success', 4000);
                         }
                     } catch(e) { console.error('[social] suggestBestTime', e); }
+                },
+
+                // ─── FB Marketplace Auto-Poster ───
+                async loadFBPoster() {
+                    this.fbpCarsLoading = true;
+                    try {
+                        // Load config (groups, location)
+                        const cfgR = await this.authFetch('/api/fb-poster/config');
+                        const cfgD = await cfgR.json();
+                        if (cfgD.ok && cfgD.config) {
+                            this.fbpGroups = cfgD.config.groups || [];
+                            this.fbpLocation = cfgD.config.location_name || 'Bosques de Miramar, Viña del Mar';
+                            this.fbpDelayMin = cfgD.config.delay_min || 15;
+                            this.fbpDelayMax = cfgD.config.delay_max || 45;
+                            // Auto-select all enabled groups
+                            this.fbpSelectedGroups = this.fbpGroups
+                                .map((g, i) => g.enabled ? i : -1)
+                                .filter(i => i >= 0);
+                        }
+
+                        // Load cars
+                        const carsR = await this.authFetch('/api/fb-poster/cars');
+                        const carsD = await carsR.json();
+                        if (carsD.ok) this.fbpCars = carsD.cars || [];
+                    } catch(e) {
+                        console.error('[fbp] loadFBPoster', e);
+                    }
+                    this.fbpCarsLoading = false;
+                },
+
+                async fbpSelectCar(car) {
+                    this.fbpSelectedCar = car;
+                    this.fbpPreviewIdx = 0;
+                    await this.fbpBuildCaption();
+                },
+
+                async fbpBuildCaption() {
+                    if (!this.fbpSelectedCar) return;
+                    try {
+                        const r = await this.authFetch('/api/fb-poster/build-caption', {
+                            method: 'POST',
+                            body: JSON.stringify(this.fbpSelectedCar),
+                        });
+                        const data = await r.json();
+                        if (data.ok) {
+                            this.fbpCaption = data.caption;
+                        }
+                    } catch(e) {
+                        console.error('[fbp] buildCaption', e);
+                        const c = this.fbpSelectedCar;
+                        this.fbpCaption = `🚗 ${c.car_make || ''} ${c.car_model || ''} ${c.car_year || ''}\n\n💰 Precio: ${c.selling_price ? '$' + Number(c.selling_price).toLocaleString('es-CL') : 'Consultar'}\n📍 ${this.fbpLocation}\n\n📲 Escríbenos por Messenger o WhatsApp\n🌐 autodirecto.cl`;
+                    }
+                },
+
+                fbpSelectAllGroups() {
+                    this.fbpSelectedGroups = this.fbpGroups.map((g, i) => i);
+                },
+
+                fbpDeselectAllGroups() {
+                    this.fbpSelectedGroups = [];
+                },
+
+                async fbpStartPosting() {
+                    if (this.fbpPosting || !this.fbpSelectedCar) return;
+                    this.fbpPosting = true;
+                    this.fbpJobLog = [];
+                    this.fbpJobResult = null;
+
+                    const selectedGroupsList = this.fbpSelectedGroups.map(i => this.fbpGroups[i]).filter(Boolean);
+                    const car = this.fbpSelectedCar;
+                    const carTitle = `${car.car_make || ''} ${car.car_model || ''} ${car.car_year || ''}`.trim();
+
+                    try {
+                        // 1. Create job in CRM backend (Supabase)
+                        const jobR = await this.authFetch('/api/fb-poster/jobs', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                consignacion_id: car.id,
+                                car_title: carTitle,
+                                caption: this.fbpCaption,
+                                groups: selectedGroupsList,
+                            }),
+                        });
+                        const jobD = await jobR.json();
+                        if (!jobD.ok) {
+                            this.fbpJobLog.push(`❌ Error creando job: ${jobD.error}`);
+                            this.fbpPosting = false;
+                            return;
+                        }
+                        const jobId = jobD.job?.id;
+                        this.fbpCurrentJobId = jobId;
+
+                        // 2. Trigger the local Playwright worker
+                        this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] 🚀 Enviando al worker local...`);
+
+                        try {
+                            const workerR = await fetch(`${this.fbpWorkerUrl}/api/post`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    car_id: car.id,
+                                    job_id: jobId,
+                                    caption: this.fbpCaption,
+                                    image_urls: car._images || [],
+                                    car: car,
+                                    groups: selectedGroupsList.map(g => ({name: g.name, url: g.url})),
+                                    location: this.fbpLocation,
+                                    crm_api: window.location.origin,
+                                }),
+                            });
+                            const workerD = await workerR.json();
+                            if (workerD.ok) {
+                                this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] ✅ Worker aceptó el job. Ejecutando...`);
+                                this.fbpStartPolling(jobId);
+                            } else {
+                                this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] ❌ Worker error: ${workerD.error}`);
+                                this.fbpPosting = false;
+                            }
+                        } catch(workerErr) {
+                            this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] ❌ No se pudo conectar al worker en ${this.fbpWorkerUrl}`);
+                            this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] 💡 Asegúrate de tener el worker corriendo: cd fb-poster && python app.py`);
+                            this.fbpPosting = false;
+                        }
+                    } catch(e) {
+                        this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] 💥 Error: ${e.message}`);
+                        this.fbpPosting = false;
+                    }
+                },
+
+                fbpStartPolling(jobId) {
+                    if (this.fbpPollInterval) clearInterval(this.fbpPollInterval);
+                    this.fbpPollInterval = setInterval(async () => {
+                        try {
+                            const r = await fetch(`${this.fbpWorkerUrl}/api/job/${jobId || this.fbpCurrentJobId}`);
+                            const data = await r.json();
+                            if (data.ok && data.job) {
+                                this.fbpJobLog = data.job.log || [];
+                                this.$nextTick(() => {
+                                    const el = this.$refs.fbpLogContainer;
+                                    if (el) el.scrollTop = el.scrollHeight;
+                                });
+
+                                if (data.job.status === 'completed' || data.job.status === 'error') {
+                                    this.fbpPosting = false;
+                                    this.fbpJobResult = data.job.result;
+                                    clearInterval(this.fbpPollInterval);
+                                    this.fbpPollInterval = null;
+                                    try {
+                                        await this.authFetch(`/api/fb-poster/jobs/${this.fbpCurrentJobId}`, {
+                                            method: 'PATCH',
+                                            body: JSON.stringify({
+                                                status: data.job.status,
+                                                marketplace_url: data.job.result?.marketplace_url || '',
+                                                groups_posted: data.job.result?.groups_posted?.length || 0,
+                                                groups_failed: data.job.result?.groups_failed?.length || 0,
+                                                log: data.job.log,
+                                                finished_at: new Date().toISOString(),
+                                            }),
+                                        });
+                                    } catch(e) {}
+                                }
+                            }
+                        } catch(e) { /* worker busy, keep polling */ }
+                    }, 2000);
+                },
+
+                async loadFBPosterJobs() {
+                    this.fbpJobsLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/fb-poster/jobs');
+                        const data = await r.json();
+                        if (data.ok) this.fbpJobs = data.jobs || [];
+                    } catch(e) {
+                        console.error('[fbp] loadJobs', e);
+                    }
+                    this.fbpJobsLoading = false;
+                },
+
+                async fbpDeleteJob(jobId) {
+                    if (!confirm('¿Eliminar este registro?')) return;
+                    try {
+                        await this.authFetch(`/api/fb-poster/jobs/${jobId}`, { method: 'DELETE' });
+                        this.fbpJobs = this.fbpJobs.filter(j => j.id !== jobId);
+                        $toast('Registro eliminado', 'success');
+                    } catch(e) {
+                        console.error('[fbp] deleteJob', e);
+                    }
+                },
+
+                async fbpSaveConfig() {
+                    try {
+                        await this.authFetch('/api/fb-poster/config', {
+                            method: 'PATCH',
+                            body: JSON.stringify({
+                                location_name: this.fbpLocation,
+                                groups: this.fbpGroups,
+                                delay_min: this.fbpDelayMin,
+                                delay_max: this.fbpDelayMax,
+                            }),
+                        });
+                        $toast('Configuración guardada ✅', 'success');
+                    } catch(e) {
+                        console.error('[fbp] saveConfig', e);
+                        $toast('Error guardando config', 'error');
+                    }
+                },
+
+                async fbpTestWorker() {
+                    try {
+                        const r = await fetch(`${this.fbpWorkerUrl}/api/groups`, { timeout: 5000 });
+                        const data = await r.json();
+                        if (data.ok) {
+                            $toast(`✅ Worker conectado! ${data.groups?.length || 0} grupos configurados`, 'success');
+                        } else {
+                            $toast('⚠️ Worker respondió pero con error', 'warning');
+                        }
+                    } catch(e) {
+                        $toast(`❌ No se pudo conectar a ${this.fbpWorkerUrl}`, 'error');
+                    }
                 },
 
                 // ─── Modules (SaaS) ───
