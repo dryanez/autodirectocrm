@@ -138,18 +138,19 @@ def _supa_select(table, params=None, order=None, limit=None):
         return []
 
 def _supa_insert(table, record):
-    """INSERT a row into Supabase table. Returns the created row."""
+    """INSERT a row into Supabase table. Returns the created row or dict with error."""
     try:
         r = requests.post(_supa_rest(table), json=record,
                           headers=_supa_headers(), timeout=15)
         if r.status_code in (200, 201):
             data = r.json()
             return data[0] if isinstance(data, list) else data
-        print(f'[social] supa INSERT {table} {r.status_code}: {r.text[:200]}')
-        return None
+        err = r.text[:300]
+        print(f'[social] supa INSERT {table} {r.status_code}: {err}', flush=True)
+        return {'_error': True, 'status': r.status_code, 'detail': err}
     except Exception as e:
-        print(f'[social] supa INSERT {table} error: {e}')
-        return None
+        print(f'[social] supa INSERT {table} error: {e}', flush=True)
+        return {'_error': True, 'detail': str(e)}
 
 def _supa_update(table, record, filters):
     """UPDATE row(s) in Supabase table. filters = dict of eq filters."""
@@ -633,17 +634,20 @@ def create_post():
         'caption': data.get('caption', ''),
         'hashtags': data.get('hashtags', ''),
         'post_type': data.get('post_type', 'image'),
-        'media_urls': json.dumps(data.get('media_urls', [])),
+        'media_urls': data.get('media_urls', []),
         'publish_instagram': data.get('publish_instagram', True),
         'publish_facebook': data.get('publish_facebook', True),
         'status': data.get('status', 'draft'),
-        'consignacion_id': data.get('consignacion_id') or None,
     }
+    if data.get('consignacion_id'):
+        record['consignacion_id'] = data['consignacion_id']
     if data.get('scheduled_at'):
         record['scheduled_at'] = data['scheduled_at']
         record['status'] = 'scheduled'
 
     row = _supa_insert('social_posts', record)
+    if isinstance(row, dict) and row.get('_error'):
+        return jsonify({'ok': False, 'error': f"Failed to create post: {row.get('detail', 'Unknown')}"}), 500
     if row:
         return jsonify({'ok': True, 'post': row})
     return jsonify({'ok': False, 'error': 'Failed to create post'}), 500
