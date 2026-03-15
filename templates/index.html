@@ -138,71 +138,71 @@
 </div>
 
     <!-- Sidebar -->
-    <aside class="w-64 glass flex flex-col border-r border-slate-700">
-        <div class="h-16 flex items-center justify-center border-b border-slate-700">
-            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500"
+    <aside class="w-56 glass flex flex-col border-r border-slate-700">
+        <div class="h-12 flex items-center justify-center border-b border-slate-700">
+            <h1 class="text-base font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500"
                 x-text="crmSettings.company_name || 'Autodirecto CRM'">
                 Autodirecto CRM
             </h1>
         </div>
-        <nav class="flex-1 px-4 py-6 space-y-2">
+        <nav class="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
             <a href="#" @click.prevent="currentView='dashboard'"
                 :class="currentView==='dashboard' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-squares-four text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-squares-four text-lg mr-2.5"
                     :class="currentView==='dashboard' ? 'text-blue-400' : ''"></i>
                 <span class="font-medium">Dashboard</span>
             </a>
             <a href="#" @click.prevent="currentView='inventario'; loadInventario()"
                 :class="currentView==='inventario' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-car text-xl mr-3" :class="currentView==='inventario' ? 'text-cyan-400' : ''"></i>
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-car text-lg mr-2.5" :class="currentView==='inventario' ? 'text-cyan-400' : ''"></i>
                 <span class="font-medium">Inventario</span>
             </a>
             <a href="#" @click.prevent="currentView='dashboard'"
                 :class="currentView==='dtes' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-file-text text-xl mr-3"></i>
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-file-text text-lg mr-2.5"></i>
                 <span class="font-medium">DTEs</span>
             </a>
 
-            <div class="pt-4 pb-2">
-                <p class="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Apps</p>
+            <div class="pt-2 pb-1">
+                <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Apps</p>
             </div>
 
             <a href="#" @click.prevent="currentView='funnels'"
                 x-show="hasModule('funnels')"
                 :class="currentView==='funnels' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-funnel text-xl mr-3" :class="currentView==='funnels' ? 'text-green-400' : ''"></i>
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-funnel text-lg mr-2.5" :class="currentView==='funnels' ? 'text-green-400' : ''"></i>
                 <span class="font-medium">Funnels</span>
                 <span
-                    class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold">Live</span>
+                    class="ml-auto bg-green-500/20 text-green-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Live</span>
             </a>
 
             <a href="#" @click.prevent="currentView='crm'; loadCRM()"
                 x-show="hasModule('crm')"
                 :class="currentView==='crm' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-address-book text-xl mr-3" :class="currentView==='crm' ? 'text-purple-400' : ''"></i>
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-address-book text-lg mr-2.5" :class="currentView==='crm' ? 'text-purple-400' : ''"></i>
                 <span class="font-medium">CRM</span>
-                <span class="ml-auto bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                <span class="ml-auto bg-purple-500/20 text-purple-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                     x-text="crmStats.total || ''"></span>
             </a>
 
             <a href="#" @click.prevent="currentView='calendar'; loadCalendar()"
                 x-show="hasModule('calendar')"
                 :class="currentView==='calendar' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-calendar-dots text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-calendar-dots text-lg mr-2.5"
                     :class="currentView==='calendar' ? 'text-cyan-400' : ''"></i>
                 <span class="font-medium">Calendario</span>
             </a>
 
             <a href="#" @click.prevent="currentView='consignaciones'; loadConsignaciones()"
                 :class="currentView==='consignaciones' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-clipboard-text text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-clipboard-text text-lg mr-2.5"
                     :class="currentView==='consignaciones' ? 'text-amber-400' : ''"></i>
                 <span class="font-medium">Consignaciones</span>
             </a>
@@ -210,78 +210,78 @@
             <a href="#" @click.prevent="currentView='compradores'; loadCompradores()"
                 x-show="hasModule('compradores')"
                 :class="currentView==='compradores' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-shopping-cart text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-shopping-cart text-lg mr-2.5"
                     :class="currentView==='compradores' ? 'text-emerald-400' : ''"></i>
                 <span class="font-medium">Compradores</span>
             </a>
 
             <a href="#" @click.prevent="currentView='instagram'; loadInstagram()"
                 :class="currentView==='instagram' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-instagram-logo text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-instagram-logo text-lg mr-2.5"
                     :class="currentView==='instagram' ? 'text-pink-400' : ''"></i>
                 <span class="font-medium">Instagram</span>
-                <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-2 py-0.5 rounded-full font-semibold">Overlay</span>
+                <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Overlay</span>
             </a>
 
             <a href="#" @click.prevent="currentView='whatsapp'; loadWhatsapp()"
                 :class="currentView==='whatsapp' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-whatsapp-logo text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-whatsapp-logo text-lg mr-2.5"
                     :class="currentView==='whatsapp' ? 'text-green-400' : ''"></i>
                 <span class="font-medium">WhatsApp AI</span>
-                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                     x-show="waUnread > 0" x-text="waUnread > 99 ? '99+' : waUnread"></span>
-                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                     x-show="waUnread === 0">AI</span>
             </a>
 
             <a href="#" @click.prevent="currentView='social'; loadSocial()"
                 :class="currentView==='social' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                <i class="ph ph-share-network text-xl mr-3"
+                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                <i class="ph ph-share-network text-lg mr-2.5"
                     :class="currentView==='social' ? 'text-blue-400' : ''"></i>
                 <span class="font-medium">Redes Sociales</span>
-                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-2 py-0.5 rounded-full font-semibold">Nuevo</span>
+                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Nuevo</span>
             </a>
 
-            <div class="border-t border-slate-700 mt-4 pt-4">
+            <div class="border-t border-slate-700 mt-2 pt-2">
                 <a href="#" @click.prevent="currentView='modulos'; loadModules()"
                     :class="currentView==='modulos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                    class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                    <i class="ph ph-puzzle-piece text-xl mr-3" :class="currentView==='modulos' ? 'text-pink-400' : ''"></i>
+                    class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                    <i class="ph ph-puzzle-piece text-lg mr-2.5" :class="currentView==='modulos' ? 'text-pink-400' : ''"></i>
                     <span class="font-medium">Módulos</span>
-                    <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                    <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                         x-text="modules.filter(m => m.enabled).length + '/' + modules.length"></span>
                 </a>
                 <a href="#" @click.prevent="currentView='usuarios'; loadUsuarios()"
                     :class="currentView==='usuarios' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                    class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                    <i class="ph ph-users text-xl mr-3" :class="currentView==='usuarios' ? 'text-indigo-400' : ''"></i>
+                    class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                    <i class="ph ph-users text-lg mr-2.5" :class="currentView==='usuarios' ? 'text-indigo-400' : ''"></i>
                     <span class="font-medium">Usuarios</span>
                 </a>
                 <a href="#" @click.prevent="currentView='ajustes'; loadSettings()"
                     :class="currentView==='ajustes' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                    class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                    <i class="ph ph-gear text-xl mr-3" :class="currentView==='ajustes' ? 'text-orange-400' : ''"></i>
+                    class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                    <i class="ph ph-gear text-lg mr-2.5" :class="currentView==='ajustes' ? 'text-orange-400' : ''"></i>
                     <span class="font-medium">Ajustes</span>
                 </a>
                 <!-- Super Admin: Empresas -->
                 <a href="#" x-show="currentUser?.role === 'super_admin'"
                     @click.prevent="currentView='empresas'; loadEmpresas()"
                     :class="currentView==='empresas' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                    class="flex items-center px-4 py-3 rounded-lg group transition-colors">
-                    <i class="ph ph-buildings text-xl mr-3" :class="currentView==='empresas' ? 'text-rose-400' : ''"></i>
+                    class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
+                    <i class="ph ph-buildings text-lg mr-2.5" :class="currentView==='empresas' ? 'text-rose-400' : ''"></i>
                     <span class="font-medium">Empresas</span>
-                    <span class="ml-auto bg-rose-500/20 text-rose-400 text-xs px-2 py-0.5 rounded-full font-semibold"
+                    <span class="ml-auto bg-rose-500/20 text-rose-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                         x-text="empresas.length || ''"></span>
                 </a>
             </div>
         </nav>
-        <div class="p-4 border-t border-slate-700">
+        <div class="p-3 border-t border-slate-700">
             <!-- Company Switcher (super_admin only) -->
-            <div x-show="currentUser?.role === 'super_admin' && empresas.length > 1" class="mb-3" style="display:none;">
+            <div x-show="currentUser?.role === 'super_admin' && empresas.length > 1" class="mb-2" style="display:none;">
                 <select @change="switchCompany($event.target.value)"
                     class="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-rose-400">
                     <template x-for="emp in empresas" :key="emp.id">
