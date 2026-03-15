@@ -4635,7 +4635,7 @@
     <!-- ══════════════════════════════════════════════════════════
          WHATSAPP AI AGENT VIEW
     ══════════════════════════════════════════════════════════ -->
-    <div x-show="currentView==='whatsapp'" class="flex-1 flex overflow-hidden" style="display:none;">
+    <div x-show="currentView==='whatsapp'" class="flex-1 flex overflow-hidden h-full min-h-0" style="display:none;">
 
         <!-- LEFT: Conversation list -->
         <div class="w-72 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/60">
@@ -4728,7 +4728,7 @@
         </div>
 
         <!-- RIGHT: Chat area -->
-        <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
             <!-- Empty state -->
             <template x-if="!waActiveConv">
@@ -4736,7 +4736,7 @@
                     <i class="ph ph-chats text-5xl"></i>
                     <div class="text-base font-semibold text-slate-500">Selecciona una conversación</div>
                     <div class="text-sm text-slate-600 text-center max-w-xs leading-relaxed">
-                        Los mensajes de WhatsApp aparecen aquí en tiempo real, respondidos automáticamente por GPT-4o.
+                        Los mensajes de WhatsApp aparecen aquí en tiempo real, respondidos automáticamente por Gemini AI.
                     </div>
                     <div class="flex items-center gap-2 mt-2 px-4 py-2 bg-green-900/20 border border-green-800/40 rounded-xl text-xs text-green-400">
                         <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
@@ -4747,7 +4747,7 @@
 
             <!-- Active conversation -->
             <template x-if="waActiveConv">
-                <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
                     <!-- Chat header -->
                     <div class="flex-shrink-0 h-13 px-5 py-2.5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
@@ -4798,7 +4798,7 @@
                     <!-- Info bar -->
                     <div class="flex-shrink-0 px-4 py-2 border-t border-slate-800 bg-slate-900/40 flex items-center gap-2 text-xs text-slate-600">
                         <i class="ph ph-robot text-slate-600"></i>
-                        Respuestas automáticas por GPT-4o
+                        Respuestas automáticas por Gemini AI
                         <span class="ml-auto flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                             Realtime activo
