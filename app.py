@@ -7666,7 +7666,7 @@ def wa_webhook_receive():
                 gemini_contents.insert(0, {"role": "user", "parts": [{"text": text}]})
 
             gemini_res = _req.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
                 json={
                     "system_instruction": {"parts": [{"text": system_prompt}]},
                     "contents": gemini_contents,
