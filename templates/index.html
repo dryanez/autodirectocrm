@@ -5825,24 +5825,82 @@
             </template>
         </div>
 
-        <!-- ── TAB: COMPONER (Composer) ─────────────────────────────── -->
-        <div x-show="socialTab==='compose'" class="flex-1 overflow-y-auto p-6">
-            <div class="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- ── TAB: COMPONER (Composer) — 3-column layout ─────────── -->
+        <div x-show="socialTab==='compose'" class="flex-1 flex overflow-hidden min-h-0">
 
-                <!-- Left column: Compose form -->
-                <div class="space-y-4">
-                    <!-- Vehicle selector -->
-                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                        <label class="text-sm font-medium text-slate-300 mb-2 block">
-                            <i class="ph ph-car text-blue-400 mr-1"></i> Seleccionar Vehículo (opcional)
-                        </label>
-                        <select x-model="socialSelectedVehicleId" @change="socialSelectVehicle()"
-                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                            <option value="">— Sin vehículo —</option>
-                            <template x-for="v in socialVehicles" :key="v.id">
-                                <option :value="v.id" x-text="(v.brand||'') + ' ' + (v.model||'') + ' ' + (v.year||'') + (v.plate ? ' — ' + v.plate : '')"></option>
-                            </template>
-                        </select>
+            <!-- ▸ LEFT: Vehicle Picker Sidebar (like Instagram Overlay) -->
+            <div class="w-64 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/60 h-full min-h-0">
+                <div class="flex-shrink-0 px-3 py-2.5 border-b border-slate-800 bg-blue-900/10">
+                    <div class="flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs"><i class="ph ph-car"></i></div>
+                        <div>
+                            <div class="text-xs font-bold text-white">Vehículos</div>
+                            <div class="text-[10px] text-slate-500" x-text="socialVehicles.length + ' disponibles'"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Search -->
+                <div class="flex-shrink-0 px-3 py-2 border-b border-slate-800">
+                    <div class="relative">
+                        <i class="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                        <input type="text" placeholder="Buscar vehículo…" x-model="socialVehicleSearch"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <!-- No-vehicle option -->
+                <button @click="socialSelectedVehicleId=''; socialImages=[];"
+                    :class="!socialSelectedVehicleId ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : 'border-l-2 border-l-transparent hover:bg-slate-800/40'"
+                    class="flex-shrink-0 w-full text-left px-3 py-2 border-b border-slate-800/50 text-xs text-slate-400 transition-colors flex items-center gap-2">
+                    <i class="ph ph-upload-simple text-base"></i>
+                    <span>Subir foto sin vehículo</span>
+                </button>
+                <!-- Vehicle list -->
+                <div class="flex-1 overflow-y-auto min-h-0">
+                    <template x-for="v in socialVehicles.filter(v => !socialVehicleSearch || ((v.brand||'')+' '+(v.model||'')+' '+(v.year||'')+' '+(v.plate||'')).toLowerCase().includes(socialVehicleSearch.toLowerCase()))" :key="v.id">
+                        <button @click="socialSelectedVehicleId = String(v.id); socialSelectVehicle()"
+                            class="w-full text-left px-3 py-2 border-b border-slate-800/50 transition-colors flex items-center gap-2.5"
+                            :class="String(socialSelectedVehicleId) === String(v.id) ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : 'hover:bg-slate-800/40 border-l-2 border-l-transparent'">
+                            <div class="w-11 h-8 rounded-md overflow-hidden flex-shrink-0 bg-slate-800">
+                                <img :src="v.cover_photo || v.photo_url" class="w-full h-full object-cover" x-show="v.cover_photo || v.photo_url">
+                                <div x-show="!v.cover_photo && !v.photo_url" class="w-full h-full flex items-center justify-center text-slate-600"><i class="ph ph-car text-sm"></i></div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-semibold text-white truncate" x-text="(v.brand||'') + ' ' + (v.model||'')"></div>
+                                <div class="text-[10px] text-slate-500 flex gap-1">
+                                    <span x-text="v.year"></span>
+                                    <span x-show="v.plate">·</span>
+                                    <span x-text="v.plate" class="uppercase"></span>
+                                </div>
+                            </div>
+                            <div class="text-[10px] font-bold text-blue-400 flex-shrink-0" x-show="v.price || v.selling_price"
+                                x-text="'$' + Number(v.selling_price || v.price || 0).toLocaleString('es-CL')"></div>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- ▸ CENTER: Compose Form -->
+            <div class="flex-1 overflow-y-auto p-5 min-h-0">
+                <div class="max-w-xl mx-auto space-y-4">
+
+                    <!-- Quick actions row -->
+                    <div class="flex gap-2">
+                        <button @click="socialGetPostIdeas()"
+                            class="text-xs px-3 py-1.5 rounded-lg bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition-colors flex items-center gap-1 border border-yellow-500/20"
+                            :disabled="socialLoadingIdeas">
+                            <i class="ph" :class="socialLoadingIdeas ? 'ph-spinner animate-spin' : 'ph-lightbulb'"></i>
+                            <span x-text="socialLoadingIdeas ? 'Generando...' : 'Ideas IA'"></span>
+                        </button>
+                    </div>
+
+                    <!-- Selected vehicle banner -->
+                    <div x-show="socialSelectedVehicleId" class="flex items-center gap-3 p-3 bg-blue-900/15 border border-blue-500/20 rounded-xl">
+                        <i class="ph ph-car text-blue-400 text-lg"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-white truncate"
+                                x-text="(() => { const v = socialVehicles.find(x => String(x.id) === String(socialSelectedVehicleId)); return v ? (v.brand||'') + ' ' + (v.model||'') + ' ' + (v.year||'') : ''; })()"></p>
+                        </div>
+                        <button @click="socialSelectedVehicleId=''; socialImages=[]" class="text-xs text-slate-400 hover:text-white"><i class="ph ph-x"></i></button>
                     </div>
 
                     <!-- Caption -->
@@ -5851,7 +5909,7 @@
                             <span><i class="ph ph-text-aa text-blue-400 mr-1"></i> Caption</span>
                             <span class="text-xs text-slate-500" x-text="socialCaption.length + '/2200'"></span>
                         </label>
-                        <textarea x-model="socialCaption" maxlength="2200" rows="5"
+                        <textarea x-model="socialCaption" maxlength="2200" rows="4"
                             class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-white resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             placeholder="Escribe el caption para tu publicación..."></textarea>
                         <div class="flex gap-2 mt-2">
@@ -5868,7 +5926,7 @@
                         </div>
                     </div>
 
-                    <!-- Hashtags (AI-powered) -->
+                    <!-- Hashtags -->
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
                         <label class="text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
                             <span><i class="ph ph-hash text-blue-400 mr-1"></i> Hashtags</span>
@@ -5891,25 +5949,28 @@
                         </div>
                     </div>
 
-                    <!-- Image upload / selection -->
+                    <!-- Images — thumbnail strip with drag reorder -->
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                        <label class="text-sm font-medium text-slate-300 mb-2 block">
-                            <i class="ph ph-images text-blue-400 mr-1"></i> Imágenes
-                            <span class="text-xs text-slate-500 ml-1" x-text="'(' + socialImages.length + '/10)'"></span>
+                        <label class="text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
+                            <span><i class="ph ph-images text-blue-400 mr-1"></i> Imágenes</span>
+                            <span class="text-xs text-slate-500" x-text="socialImages.length + '/10'"></span>
                         </label>
 
-                        <!-- Image grid -->
-                        <div class="grid grid-cols-4 gap-2 mb-3" x-show="socialImages.length > 0">
+                        <!-- Image strip -->
+                        <div class="flex gap-2 flex-wrap mb-3" x-show="socialImages.length > 0">
                             <template x-for="(img, idx) in socialImages" :key="idx">
-                                <div class="relative aspect-square rounded-lg overflow-hidden border border-slate-600 group">
+                                <div class="relative w-16 h-16 rounded-lg overflow-hidden border-2 group cursor-pointer flex-shrink-0"
+                                    :class="socialPreviewIdx === idx ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-slate-600'"
+                                    @click="socialPreviewIdx = idx">
                                     <img :src="img.preview || img.url" class="w-full h-full object-cover">
-                                    <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <button @click="socialImages.splice(idx, 1)"
+                                    <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <button @click.stop="socialImages.splice(idx, 1); if(socialPreviewIdx >= socialImages.length) socialPreviewIdx = Math.max(0, socialImages.length - 1)"
                                             class="p-1 rounded-full bg-red-500/80 text-white hover:bg-red-600">
-                                            <i class="ph ph-trash text-sm"></i>
+                                            <i class="ph ph-trash text-xs"></i>
                                         </button>
                                     </div>
-                                    <span x-show="idx === 0" class="absolute top-1 left-1 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full">Principal</span>
+                                    <span x-show="idx === 0" class="absolute top-0.5 left-0.5 text-[8px] bg-blue-500 text-white px-1 py-0 rounded">1</span>
+                                    <span x-show="idx > 0" class="absolute top-0.5 left-0.5 text-[8px] bg-slate-700/80 text-slate-300 px-1 py-0 rounded" x-text="idx+1"></span>
                                 </div>
                             </template>
                         </div>
@@ -5918,85 +5979,73 @@
                         <div class="relative">
                             <input type="file" accept="image/jpeg,image/png" multiple @change="socialHandleImageUpload($event)"
                                 class="absolute inset-0 opacity-0 cursor-pointer z-10">
-                            <div class="border-2 border-dashed border-slate-600 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
-                                <i class="ph ph-cloud-arrow-up text-2xl text-slate-400 mb-1"></i>
-                                <p class="text-xs text-slate-400">Arrastra o haz clic para subir imágenes</p>
-                                <p class="text-[10px] text-slate-500 mt-1">JPEG o PNG, máx. 10 imágenes</p>
+                            <div class="border-2 border-dashed border-slate-600 rounded-lg p-3 text-center hover:border-blue-500 transition-colors">
+                                <i class="ph ph-cloud-arrow-up text-xl text-slate-400 mb-1"></i>
+                                <p class="text-xs text-slate-400">Arrastra o haz clic para subir</p>
+                                <p class="text-[10px] text-slate-500 mt-0.5">JPEG o PNG · máx 10 imágenes por carrusel</p>
                             </div>
                         </div>
-
-                        <!-- Load from vehicle photos -->
-                        <button x-show="socialSelectedVehicleId" @click="socialLoadVehiclePhotos()"
-                            class="mt-2 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors flex items-center gap-1 w-full justify-center">
-                            <i class="ph ph-download-simple"></i>
-                            <span>Cargar fotos del vehículo</span>
-                        </button>
                     </div>
 
-                    <!-- Platforms -->
-                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                        <label class="text-sm font-medium text-slate-300 mb-3 block">
-                            <i class="ph ph-broadcast text-blue-400 mr-1"></i> Publicar en
-                        </label>
-                        <div class="flex gap-3">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" x-model="socialPublishIG"
-                                    class="form-checkbox rounded bg-slate-700 border-slate-600 text-pink-500 focus:ring-pink-500">
-                                <i class="ph ph-instagram-logo text-lg text-pink-400"></i>
-                                <span class="text-sm text-slate-300">Instagram</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" x-model="socialPublishFB"
-                                    class="form-checkbox rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500">
-                                <i class="ph ph-facebook-logo text-lg text-blue-400"></i>
-                                <span class="text-sm text-slate-300">Facebook</span>
-                            </label>
+                    <!-- Post Type + Platforms (combined row) -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Platforms -->
+                        <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-700">
+                            <label class="text-xs font-medium text-slate-400 mb-2 block uppercase tracking-wide">Publicar en</label>
+                            <div class="flex gap-3">
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" x-model="socialPublishIG"
+                                        class="form-checkbox rounded bg-slate-700 border-slate-600 text-pink-500 focus:ring-pink-500 w-3.5 h-3.5">
+                                    <i class="ph ph-instagram-logo text-base text-pink-400"></i>
+                                    <span class="text-xs text-slate-300">IG</span>
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" x-model="socialPublishFB"
+                                        class="form-checkbox rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500 w-3.5 h-3.5">
+                                    <i class="ph ph-facebook-logo text-base text-blue-400"></i>
+                                    <span class="text-xs text-slate-300">FB</span>
+                                </label>
+                            </div>
                         </div>
-                    </div>
-
-                    <!-- Post Type -->
-                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700" x-show="socialPublishIG">
-                        <label class="text-sm font-medium text-slate-300 mb-3 block">
-                            <i class="ph ph-image-square text-blue-400 mr-1"></i> Tipo de publicación
-                        </label>
-                        <div class="grid grid-cols-4 gap-2">
-                            <template x-for="t in [{id:'image', icon:'ph-image', label:'Feed'}, {id:'carousel', icon:'ph-stack', label:'Carrusel'}, {id:'reel', icon:'ph-video-camera', label:'Reel'}, {id:'story', icon:'ph-circle-dashed', label:'Story'}]">
-                                <button @click="socialPostType = t.id"
-                                    :class="socialPostType === t.id ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-600 text-slate-400 hover:text-slate-200'"
-                                    class="flex flex-col items-center gap-1 py-2 rounded-lg border text-xs transition-colors">
-                                    <i :class="t.icon" class="text-lg"></i>
-                                    <span x-text="t.label"></span>
-                                </button>
-                            </template>
+                        <!-- Post type -->
+                        <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-700" x-show="socialPublishIG">
+                            <label class="text-xs font-medium text-slate-400 mb-2 block uppercase tracking-wide">Tipo</label>
+                            <div class="flex gap-1.5">
+                                <template x-for="t in [{id:'image', icon:'ph-image', label:'Feed'}, {id:'carousel', icon:'ph-stack', label:'Carrusel'}, {id:'reel', icon:'ph-video-camera', label:'Reel'}, {id:'story', icon:'ph-circle-dashed', label:'Story'}]">
+                                    <button @click="socialPostType = t.id; if(t.id==='carousel' && socialImages.length < 2) {} "
+                                        :class="socialPostType === t.id ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-slate-300'"
+                                        class="flex flex-col items-center gap-0.5 py-1.5 px-2 rounded-lg border text-[10px] transition-colors flex-1">
+                                        <i :class="t.icon" class="text-sm"></i>
+                                        <span x-text="t.label"></span>
+                                    </button>
+                                </template>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Schedule -->
-                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                        <label class="text-sm font-medium text-slate-300 mb-3 block">
-                            <i class="ph ph-clock text-blue-400 mr-1"></i> Programación
-                        </label>
-                        <div class="flex gap-2 mb-3">
+                    <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-700">
+                        <div class="flex gap-2 mb-2">
                             <button @click="socialScheduleMode = 'now'"
                                 :class="socialScheduleMode === 'now' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-600 text-slate-400'"
-                                class="flex-1 py-2 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
+                                class="flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
                                 <i class="ph ph-paper-plane-tilt"></i> Publicar ahora
                             </button>
                             <button @click="socialScheduleMode = 'schedule'"
                                 :class="socialScheduleMode === 'schedule' ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-slate-900 border-slate-600 text-slate-400'"
-                                class="flex-1 py-2 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
+                                class="flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
                                 <i class="ph ph-calendar-plus"></i> Programar
                             </button>
                         </div>
                         <div x-show="socialScheduleMode === 'schedule'" x-transition class="grid grid-cols-2 gap-2">
                             <input type="date" x-model="socialScheduleDate"
-                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:border-purple-500">
                             <input type="time" x-model="socialScheduleTime"
-                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:border-purple-500">
                         </div>
                     </div>
 
-                    <!-- Publish / Schedule button -->
+                    <!-- Publish button -->
                     <button @click="socialPublish()"
                         :disabled="socialPublishing || (socialImages.length === 0 && !socialCaption.trim()) || (socialScheduleMode === 'schedule' && !socialScheduleDate)"
                         class="w-full py-3 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
@@ -6005,72 +6054,137 @@
                         <span x-text="socialPublishing ? 'Procesando...' : (socialScheduleMode === 'schedule' ? 'Programar publicación' : 'Publicar ahora')"></span>
                     </button>
                 </div>
+            </div>
 
-                <!-- Right column: Preview -->
-                <div class="space-y-4">
-                    <!-- IG Preview -->
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishIG">
-                        <div class="px-3 py-2.5 flex items-center gap-2 border-b border-slate-700">
-                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-                                <i class="ph ph-instagram-logo text-white text-sm"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm font-semibold text-white" x-text="socialIGUsername || 'autodirecto.cl'"></p>
-                                <p class="text-[10px] text-slate-400">Vista previa de Instagram</p>
-                            </div>
+            <!-- ▸ RIGHT: Live Preview (IG + FB) -->
+            <div class="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-900/40 overflow-y-auto p-4 min-h-0 space-y-4">
+                <!-- IG Preview -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishIG">
+                    <!-- IG Header -->
+                    <div class="px-3 py-2 flex items-center gap-2 border-b border-slate-700">
+                        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                            <i class="ph ph-instagram-logo text-white text-xs"></i>
                         </div>
-                        <div class="aspect-square bg-slate-900 flex items-center justify-center">
-                            <template x-if="socialImages.length > 0">
-                                <img :src="socialImages[0].preview || socialImages[0].url" class="w-full h-full object-cover">
-                            </template>
-                            <template x-if="socialImages.length === 0">
-                                <div class="text-slate-600 text-center">
-                                    <i class="ph ph-image text-4xl"></i>
-                                    <p class="text-xs mt-2">Sin imagen seleccionada</p>
-                                </div>
-                            </template>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-semibold text-white truncate" x-text="socialIGUsername || 'autodirecto.cl'"></p>
                         </div>
-                        <div class="px-3 py-2">
-                            <div class="flex gap-4 py-2">
-                                <i class="ph ph-heart text-xl text-slate-300"></i>
-                                <i class="ph ph-chat-circle text-xl text-slate-300"></i>
-                                <i class="ph ph-paper-plane-tilt text-xl text-slate-300"></i>
-                                <i class="ph ph-bookmark-simple text-xl text-slate-300 ml-auto"></i>
-                            </div>
-                            <p class="text-sm text-white">
-                                <span class="font-semibold" x-text="socialIGUsername || 'autodirecto.cl'"></span>
-                                <span class="ml-1 text-slate-300" x-text="socialCaption.substring(0, 120) + (socialCaption.length > 120 ? '...' : '')"></span>
-                            </p>
-                        </div>
+                        <i class="ph ph-dots-three text-slate-400"></i>
                     </div>
-
-                    <!-- FB Preview -->
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishFB">
-                        <div class="px-3 py-2.5 flex items-center gap-2 border-b border-slate-700">
-                            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
-                                <i class="ph ph-facebook-logo text-white text-sm"></i>
+                    <!-- IG Image area — proper aspect ratio per post type -->
+                    <div class="relative bg-black overflow-hidden"
+                        :style="socialPostType === 'story' || socialPostType === 'reel' ? 'aspect-ratio:9/16; max-height:360px' : socialPostType === 'carousel' ? 'aspect-ratio:1/1' : 'aspect-ratio:4/5; max-height:340px'">
+                        <template x-if="socialImages.length > 0">
+                            <div class="w-full h-full relative">
+                                <img :src="(socialImages[socialPreviewIdx] || socialImages[0])?.preview || (socialImages[socialPreviewIdx] || socialImages[0])?.url"
+                                    class="w-full h-full object-contain bg-black">
+                                <!-- Carousel arrows -->
+                                <template x-if="socialPostType === 'carousel' && socialImages.length > 1">
+                                    <div>
+                                        <button x-show="socialPreviewIdx > 0" @click="socialPreviewIdx--"
+                                            class="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center text-black text-xs shadow hover:bg-white">
+                                            <i class="ph ph-caret-left"></i>
+                                        </button>
+                                        <button x-show="socialPreviewIdx < socialImages.length - 1" @click="socialPreviewIdx++"
+                                            class="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center text-black text-xs shadow hover:bg-white">
+                                            <i class="ph ph-caret-right"></i>
+                                        </button>
+                                    </div>
+                                </template>
+                                <!-- Carousel dots -->
+                                <div x-show="socialPostType === 'carousel' && socialImages.length > 1"
+                                    class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                                    <template x-for="(_, di) in socialImages" :key="di">
+                                        <span class="w-1.5 h-1.5 rounded-full transition-colors"
+                                            :class="di === socialPreviewIdx ? 'bg-blue-400' : 'bg-white/40'"></span>
+                                    </template>
+                                </div>
+                                <!-- Carousel count badge -->
+                                <span x-show="socialPostType === 'carousel' && socialImages.length > 1"
+                                    class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full"
+                                    x-text="(socialPreviewIdx+1) + '/' + socialImages.length"></span>
                             </div>
-                            <div>
-                                <p class="text-sm font-semibold text-white" x-text="socialFBPageName || 'Autodirecto.cl'"></p>
-                                <p class="text-[10px] text-slate-400">Vista previa de Facebook</p>
+                        </template>
+                        <template x-if="socialImages.length === 0">
+                            <div class="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-1">
+                                <i class="ph ph-image text-3xl"></i>
+                                <p class="text-[10px]">Sin imagen</p>
                             </div>
+                        </template>
+                    </div>
+                    <!-- IG actions + caption -->
+                    <div class="px-3 py-2">
+                        <div class="flex gap-3 py-1.5">
+                            <i class="ph ph-heart text-lg text-slate-300"></i>
+                            <i class="ph ph-chat-circle text-lg text-slate-300"></i>
+                            <i class="ph ph-paper-plane-tilt text-lg text-slate-300"></i>
+                            <i class="ph ph-bookmark-simple text-lg text-slate-300 ml-auto"></i>
                         </div>
-                        <div class="px-3 py-2">
-                            <p class="text-sm text-slate-200 whitespace-pre-wrap" x-text="socialCaption || 'Sin texto...'"></p>
-                        </div>
-                        <div x-show="socialImages.length > 0" class="bg-slate-900">
-                            <img :src="socialImages[0].preview || socialImages[0].url" class="w-full max-h-80 object-cover">
-                        </div>
-                        <div class="px-3 py-2 flex items-center gap-4 border-t border-slate-700 text-slate-400 text-sm">
-                            <span class="flex items-center gap-1"><i class="ph ph-thumbs-up"></i> Me gusta</span>
-                            <span class="flex items-center gap-1"><i class="ph ph-chat-circle"></i> Comentar</span>
-                            <span class="flex items-center gap-1"><i class="ph ph-share-fat"></i> Compartir</span>
-                        </div>
+                        <p class="text-xs text-white leading-relaxed">
+                            <span class="font-semibold" x-text="socialIGUsername || 'autodirecto.cl'"></span>
+                            <span class="ml-1 text-slate-300" x-text="socialCaption.substring(0, 100) + (socialCaption.length > 100 ? '... más' : '')"></span>
+                        </p>
                     </div>
                 </div>
 
-                <!-- AI Post Ideas Panel -->
-                <div class="mt-6 bg-slate-800/30 rounded-xl border border-slate-700/50 p-4">
+                <!-- FB Preview -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden" x-show="socialPublishFB">
+                    <div class="px-3 py-2 flex items-center gap-2 border-b border-slate-700">
+                        <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center">
+                            <i class="ph ph-facebook-logo text-white text-xs"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-semibold text-white" x-text="socialFBPageName || 'Autodirecto.cl'"></p>
+                            <p class="text-[10px] text-slate-500">Ahora mismo · <i class="ph ph-globe-hemisphere-west"></i></p>
+                        </div>
+                    </div>
+                    <div class="px-3 py-2" x-show="socialCaption">
+                        <p class="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed" x-text="socialCaption.substring(0,200) + (socialCaption.length > 200 ? '...' : '')"></p>
+                    </div>
+                    <div x-show="socialImages.length > 0" class="bg-black">
+                        <img :src="(socialImages[0])?.preview || (socialImages[0])?.url" class="w-full max-h-56 object-contain bg-black">
+                    </div>
+                    <div class="px-3 py-1.5 flex items-center gap-4 border-t border-slate-700 text-slate-400 text-[11px]">
+                        <span class="flex items-center gap-1"><i class="ph ph-thumbs-up"></i> Me gusta</span>
+                        <span class="flex items-center gap-1"><i class="ph ph-chat-circle"></i> Comentar</span>
+                        <span class="flex items-center gap-1"><i class="ph ph-share-fat"></i> Compartir</span>
+                    </div>
+                </div>
+
+                <!-- Post type info -->
+                <div class="text-[10px] text-slate-500 text-center space-y-1 px-2">
+                    <p x-show="socialPostType === 'image'">📷 Feed — La imagen se recorta a 4:5 (retrato). Las fotos de iPhone se ajustan automáticamente.</p>
+                    <p x-show="socialPostType === 'carousel'">📱 Carrusel — Hasta 10 imágenes. Se recortan según la primera imagen.</p>
+                    <p x-show="socialPostType === 'reel'">🎬 Reel — Video vertical 9:16.</p>
+                    <p x-show="socialPostType === 'story'">⭕ Story — Formato vertical 9:16, desaparece en 24h.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── AI Post Ideas Panel (below compose, inside a collapsible) ── -->
+        <div x-show="socialTab==='compose'" style="display:none;">
+        <div class="flex-shrink-0 border-t border-slate-800 bg-slate-900/30 max-h-48 overflow-y-auto px-6 py-3" x-show="socialPostIdeas.length > 0">
+            <div class="max-w-4xl mx-auto">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-semibold text-white flex items-center gap-2">
+                        <i class="ph ph-lightbulb text-yellow-400"></i> Ideas de Contenido
+                    </h4>
+                    <button @click="socialPostIdeas=[]" class="text-[10px] text-slate-500 hover:text-white">Cerrar</button>
+                </div>
+                <div class="flex gap-2 overflow-x-auto pb-1">
+                    <template x-for="(idea, idx) in socialPostIdeas" :key="idx">
+                        <div class="flex-shrink-0 w-52 p-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-blue-500/30 cursor-pointer transition-colors"
+                            @click="socialUseIdea(idea)">
+                            <div class="text-xs font-medium text-white truncate" x-text="idea.title"></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5 line-clamp-2" x-text="idea.description"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- ── old AI Post Ideas Panel anchor ── -->
+        <div x-show="false" class="mt-6 bg-slate-800/30 rounded-xl border border-slate-700/50 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <h4 class="text-sm font-semibold text-white flex items-center gap-2">
                             <i class="ph ph-lightbulb text-yellow-400"></i> Ideas de Contenido
@@ -6561,6 +6675,8 @@
                 socialCaption: '',
                 socialHashtags: '',
                 socialImages: [],           // [{file, preview, url}]
+                socialPreviewIdx: 0,        // which image shown in preview
+                socialVehicleSearch: '',     // search filter for vehicle sidebar
                 socialSelectedVehicleId: '',
                 socialVehicles: [],
                 socialPublishIG: true,
@@ -7752,6 +7868,11 @@
                             }
                         });
                         if (added > 0) $toast(`📷 ${added} foto${added > 1 ? 's' : ''} cargada${added > 1 ? 's' : ''} automáticamente`, 'info');
+                        // Auto-switch to carousel if >1 images
+                        if (this.socialImages.length > 1 && this.socialPostType === 'image') {
+                            this.socialPostType = 'carousel';
+                        }
+                        this.socialPreviewIdx = 0;
                     } catch(e) {
                         console.error('[social] autoLoadPhotos', e);
                     }
@@ -7786,6 +7907,11 @@
                         this.socialImages.push({ file: f, preview: preview, url: null });
                     }
                     event.target.value = '';
+                    // Auto-switch to carousel if >1 images
+                    if (this.socialImages.length > 1 && this.socialPostType === 'image') {
+                        this.socialPostType = 'carousel';
+                    }
+                    this.socialPreviewIdx = 0;
                 },
 
                 async socialUploadImage(imgObj) {
@@ -7845,6 +7971,7 @@
                                 this.socialCaption = '';
                                 this.socialHashtags = '';
                                 this.socialImages = [];
+                                this.socialPreviewIdx = 0;
                                 this.socialSelectedVehicleId = '';
                                 this.socialScheduleMode = 'now';
                                 this.socialScheduleDate = '';
@@ -7935,6 +8062,7 @@
                             this.socialCaption = '';
                             this.socialHashtags = '';
                             this.socialImages = [];
+                            this.socialPreviewIdx = 0;
                             this.socialSelectedVehicleId = '';
                             // Refresh quota
                             try {
