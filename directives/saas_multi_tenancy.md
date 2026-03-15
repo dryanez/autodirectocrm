@@ -21,8 +21,8 @@ Transform Autodirecto CRM from a single-company app into a true multi-tenant Saa
 
 ## Architecture: 4 Phases
 
-### PHASE 1 — Database Schema (company_id everywhere)
-**SQL Migration: `setup_saas_tenancy.sql`**
+### PHASE 1 — Database Schema (company_id everywhere) ✅ SQL READY
+**SQL Migration: `setup_saas_tenancy.sql`** — MUST be pasted in Supabase SQL Editor
 
 1. Add `company_id UUID REFERENCES companies(id)` to:
    - `crm_users` (users belong to a company)
@@ -102,7 +102,18 @@ Transform Autodirecto CRM from a single-company app into a true multi-tenant Saa
 5. ✅ Settings load/save uses merged `/api/settings` endpoint (company_settings + crm_settings)
 6. ✅ Secrets masked for non-admin users
 
-### PHASE 4 — Onboarding & Super Admin
-1. `/api/companies` POST — already exists (creates new company)
-2. Super admin panel in Módulos view — manage all tenants
-3. Company switcher for super admins
+### PHASE 4 — Onboarding & Super Admin ✅ DONE
+1. ✅ `_is_super_admin(user)` helper — checks `role == 'super_admin'`
+2. ✅ `/api/companies` GET/POST — super_admin only (with user_count enrichment)
+3. ✅ `/api/companies/<id>` PATCH — update company details
+4. ✅ `/api/companies/onboard` POST — full onboarding (company + settings + first admin user + modules)
+5. ✅ `/api/companies/<id>/stats` GET — quick stats per company
+6. ✅ `/api/auth/switch-company` POST — re-issues token with new company_id
+7. ✅ `/api/companies/<id>/modules` GET/PATCH — super_admin protected
+8. ✅ Users CRUD scoped by `company_id` (GET lists, POST sets company_id)
+9. ✅ FAQ CRUD scoped by `company_id` (GET filtered, POST sets company_id)
+10. ✅ Frontend: "Empresas" sidebar item (super_admin only)
+11. ✅ Frontend: Empresas view — company cards + onboarding form
+12. ✅ Frontend: Company switcher dropdown in sidebar footer
+13. ✅ Frontend: super_admin role badge in user list
+14. ✅ SQL migration: `setup_super_admin.sql` — promotes existing admin to super_admin

@@ -1025,8 +1025,13 @@ def _legacy_init_schema():
 # ─── API: Users ───────────────────────────────────────────────────────────────
 @app.route("/api/users", methods=["GET"])
 def get_users():
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM crm_users WHERE active=1 ORDER BY name").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM crm_users WHERE active=1 AND company_id=? ORDER BY name",
+            (cid,)
+        ).fetchall()
     return jsonify([row_to_dict(r) for r in rows])
 
 
@@ -1035,12 +1040,14 @@ def create_user():
     data = request.json
     if not data.get("name") or not data.get("email"):
         return jsonify({"error": "name and email required"}), 400
+    user = _get_current_user()
+    cid = _get_company_id(user)
     with get_db() as conn:
         try:
             conn.execute(
-                "INSERT INTO crm_users (name, email, role, color, sucursal, password) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO crm_users (name, email, role, color, sucursal, password, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (data["name"], data["email"], data.get("role", "agent"), data.get("color", "#3b82f6"),
-                 data.get("sucursal", "Vitacura"), data.get("password", "admin1234"))
+                 data.get("sucursal", "Vitacura"), data.get("password", "admin1234"), cid)
             )
             conn.commit()
             user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1141,6 +1148,12 @@ def _get_company_id(user=None):
     if user and user.get("company_id"):
         return user["company_id"]
     return os.environ.get("COMPANY_ID", _DEFAULT_COMPANY_ID)
+
+def _is_super_admin(user=None):
+    """Check if the current user is a super_admin (cross-tenant access)."""
+    if user is None:
+        user = _get_current_user()
+    return user and user.get("role") == "super_admin"
 
 # In-memory cache for company settings (TTL 60s per company)
 _company_settings_cache = {}
@@ -4612,7 +4625,12 @@ def toggle_module(module_id):
 
 @app.route("/api/companies", methods=["GET"])
 def get_companies():
-    """List all companies (super admin only)."""
+    """List all companies (super_admin only)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin puede ver todas las empresas"}), 403
     import requests as req_lib
     supabase_url, headers = _supa_headers()
     if not supabase_url:
@@ -4623,14 +4641,33 @@ def get_companies():
             params={"select": "*", "order": "name.asc"},
             headers=headers, timeout=10
         )
-        return jsonify(r.json() if r.status_code == 200 else [])
+        companies = r.json() if r.status_code == 200 else []
+        # Enrich with user count per company
+        for c in companies:
+            try:
+                r_users = req_lib.get(
+                    supabase_url + "/rest/v1/crm_users",
+                    params={"select": "id", "company_id": "eq.{}".format(c["id"]), "active": "eq.true"},
+                    headers={**headers, "Prefer": "count=exact"},
+                    timeout=5
+                )
+                cr = r_users.headers.get("content-range", "")
+                c["user_count"] = int(cr.split("/")[-1]) if "/" in cr else len(r_users.json() or [])
+            except Exception:
+                c["user_count"] = 0
+        return jsonify(companies)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/companies", methods=["POST"])
 def create_company():
-    """Create a new company / automotriz tenant."""
+    """Create a new company / automotriz tenant (super_admin only)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin puede crear empresas"}), 403
     import requests as req_lib
     data = request.json or {}
     if not data.get("name") or not data.get("slug"):
@@ -4676,14 +4713,219 @@ def create_company():
                 timeout=10
             )
 
+        # Auto-create empty company_settings row
+        req_lib.post(
+            supabase_url + "/rest/v1/company_settings",
+            json={"company_id": company["id"], "company_name": data["name"]},
+            headers={**headers, "Prefer": "return=minimal"},
+            timeout=10,
+        )
+
         return jsonify(company), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/companies/<company_id>", methods=["PATCH"])
+def update_company(company_id):
+    """Update a company's details (super_admin only)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin puede editar empresas"}), 403
+    import requests as req_lib
+    data = request.json or {}
+    allowed = {"name", "slug", "rut", "website", "contact_email", "contact_phone",
+               "address", "comuna", "ciudad", "plan", "active"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields"}), 400
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        r = req_lib.patch(
+            supabase_url + "/rest/v1/companies?id=eq.{}".format(company_id),
+            json=updates,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10,
+        )
+        if r.status_code not in (200, 204):
+            return jsonify({"error": "Supabase error {}: {}".format(r.status_code, r.text)}), 502
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies/onboard", methods=["POST"])
+def onboard_company():
+    """Full onboarding: create company + settings row + first admin user (super_admin only).
+    Body: { company: {name, slug, rut, ...}, admin: {name, email, password} }
+    """
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin puede hacer onboarding"}), 403
+    import requests as req_lib
+    data = request.json or {}
+    co = data.get("company", {})
+    admin = data.get("admin", {})
+    if not co.get("name") or not co.get("slug"):
+        return jsonify({"error": "company.name and company.slug required"}), 400
+    if not admin.get("name") or not admin.get("email"):
+        return jsonify({"error": "admin.name and admin.email required"}), 400
+
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    try:
+        # 1. Create company
+        co_payload = {
+            "name": co["name"], "slug": co["slug"],
+            "rut": co.get("rut"), "website": co.get("website"),
+            "contact_email": co.get("contact_email") or admin.get("email"),
+            "contact_phone": co.get("contact_phone"),
+            "address": co.get("address"), "comuna": co.get("comuna"),
+            "ciudad": co.get("ciudad"), "plan": co.get("plan", "starter"),
+        }
+        r = req_lib.post(
+            supabase_url + "/rest/v1/companies",
+            json=co_payload,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10,
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"error": "Error creando empresa: {}".format(r.text)}), 502
+        company = r.json()[0] if isinstance(r.json(), list) else r.json()
+        cid = company["id"]
+
+        # 2. Create company_settings row
+        req_lib.post(
+            supabase_url + "/rest/v1/company_settings",
+            json={"company_id": cid, "company_name": co["name"]},
+            headers={**headers, "Prefer": "return=minimal"},
+            timeout=10,
+        )
+
+        # 3. Create first admin user linked to this company
+        admin_payload = {
+            "name": admin["name"],
+            "email": admin["email"].strip().lower(),
+            "password": admin.get("password", "admin1234"),
+            "role": "admin",
+            "color": admin.get("color", "#3b82f6"),
+            "sucursal": admin.get("sucursal", "Principal"),
+            "company_id": cid,
+            "active": True,
+        }
+        r_user = req_lib.post(
+            supabase_url + "/rest/v1/crm_users",
+            json=admin_payload,
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10,
+        )
+        first_user = None
+        if r_user.status_code in (200, 201):
+            first_user = (r_user.json() or [{}])[0] if isinstance(r_user.json(), list) else r_user.json()
+
+        # 4. Auto-enable free modules
+        r_free = req_lib.get(
+            supabase_url + "/rest/v1/modules",
+            params={"select": "id", "is_premium": "eq.false"},
+            headers=headers, timeout=10,
+        )
+        for m in (r_free.json() if r_free.ok else []):
+            req_lib.post(
+                supabase_url + "/rest/v1/company_modules",
+                json={"company_id": cid, "module_id": m["id"], "enabled": True, "enabled_by": "auto"},
+                headers={**headers, "Prefer": "resolution=merge-duplicates"},
+                timeout=10,
+            )
+
+        return jsonify({
+            "ok": True,
+            "company": company,
+            "admin_user": {"name": admin["name"], "email": admin["email"]} if first_user else None,
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/companies/<company_id>/stats", methods=["GET"])
+def get_company_stats(company_id):
+    """Get quick stats for a company (super_admin panel)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin"}), 403
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Supabase not configured"}), 500
+    stats = {}
+    tables = ["crm_users", "consignaciones", "crm_leads", "compradores", "wa_conversations", "social_posts"]
+    for tbl in tables:
+        try:
+            r = req_lib.get(
+                supabase_url + "/rest/v1/" + tbl,
+                params={"select": "id", "company_id": "eq.{}".format(company_id)},
+                headers={**headers, "Prefer": "count=exact"},
+                timeout=5,
+            )
+            cr = r.headers.get("content-range", "")
+            stats[tbl] = int(cr.split("/")[-1]) if "/" in cr else len(r.json() or [])
+        except Exception:
+            stats[tbl] = 0
+    return jsonify(stats)
+
+
+@app.route("/api/auth/switch-company", methods=["POST"])
+def auth_switch_company():
+    """Super admin can switch their active company context (re-issues token)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin puede cambiar de empresa"}), 403
+    data = request.json or {}
+    target_cid = data.get("company_id")
+    if not target_cid:
+        return jsonify({"error": "company_id required"}), 400
+    # Verify company exists
+    import requests as req_lib
+    supabase_url, headers = _supa_headers()
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/companies",
+            params={"select": "id,name,slug", "id": "eq.{}".format(target_cid)},
+            headers=headers, timeout=8,
+        )
+        companies = r.json() if r.ok else []
+        if not companies:
+            return jsonify({"error": "Empresa no encontrada"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Re-issue token with new company_id
+    new_token = _make_token(user["id"], user["email"], target_cid)
+    user_out = {k: user[k] for k in ["id", "name", "email", "role", "color", "sucursal"] if k in user}
+    user_out["company_id"] = target_cid
+    user_out["company_name"] = companies[0].get("name", "")
+    session["user"] = user_out
+    return jsonify({"ok": True, "user": user_out, "token": new_token})
+
+
 @app.route("/api/companies/<company_id>/modules", methods=["GET"])
 def get_company_modules(company_id):
-    """Get modules for a specific company (super admin managing other tenants)."""
+    """Get modules for a specific company (super_admin managing other tenants)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin"}), 403
     import requests as req_lib
     supabase_url, headers = _supa_headers()
     if not supabase_url:
@@ -4723,7 +4965,12 @@ def get_company_modules(company_id):
 
 @app.route("/api/companies/<company_id>/modules/<module_id>", methods=["PATCH"])
 def toggle_company_module(company_id, module_id):
-    """Enable/disable a module for a specific company (super admin)."""
+    """Enable/disable a module for a specific company (super_admin)."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in"}), 401
+    if not _is_super_admin(user):
+        return jsonify({"error": "Solo super_admin"}), 403
     import requests as req_lib
     data = request.json or {}
     supabase_url, headers = _supa_headers()
@@ -7918,16 +8165,18 @@ def wa_update_status(conv_id):
 
 @app.route("/api/wa/faq", methods=["GET"])
 def wa_get_faq():
-    """Return all FAQ entries."""
-    if not _get_current_user():
+    """Return all FAQ entries for the current company."""
+    user = _get_current_user()
+    if not user:
         return jsonify({"error": "Unauthorized"}), 401
+    cid = _get_company_id(user)
     import requests as _req
     supa_url = os.environ.get("SUPABASE_URL", "").strip()
     supa_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")).strip()
     try:
         r = _req.get(
             f"{supa_url}/rest/v1/wa_faq",
-            params={"select": "*", "order": "category.asc,created_at.desc"},
+            params={"select": "*", "company_id": f"eq.{cid}", "order": "category.asc,created_at.desc"},
             headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
             timeout=10,
         )
@@ -7939,9 +8188,11 @@ def wa_get_faq():
 
 @app.route("/api/wa/faq", methods=["POST"])
 def wa_create_faq():
-    """Create a new FAQ entry."""
-    if not _get_current_user():
+    """Create a new FAQ entry for the current company."""
+    user = _get_current_user()
+    if not user:
         return jsonify({"error": "Unauthorized"}), 401
+    cid = _get_company_id(user)
     import requests as _req
     data = request.get_json(force=True, silent=True) or {}
     question = (data.get("question") or "").strip()
@@ -7955,7 +8206,7 @@ def wa_create_faq():
     try:
         r = _req.post(
             f"{supa_url}/rest/v1/wa_faq",
-            json={"question": question, "answer": answer, "category": category},
+            json={"question": question, "answer": answer, "category": category, "company_id": cid},
             headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}", "Content-Type": "application/json", "Prefer": "return=representation"},
             timeout=10,
         )
