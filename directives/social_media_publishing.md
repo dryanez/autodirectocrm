@@ -1,7 +1,7 @@
 # Social Media Publishing System — Directive
 
 > **Module**: Social Media Manager for Autodirecto CRM  
-> **Status**: IN PROGRESS — Phases 1-3 built, Phase 4 partial, Phase 5 partial  
+> **Status**: IN PROGRESS — Phases 1-4 built, Phase 5 partial (AI features)  
 > **Date**: 2026-03-15 (updated)  
 > **Owner**: SimplyAPI CRM (`templates/index.html` + `routes/social_routes.py`)
 
