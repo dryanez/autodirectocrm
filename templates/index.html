@@ -216,13 +216,13 @@
                 <span class="font-medium">Compradores</span>
             </a>
 
-            <a href="#" @click.prevent="currentView='instagram'; loadInstagram()"
-                :class="currentView==='instagram' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+            <a href="#" @click.prevent="currentView='social'; socialHub='home'; loadSocialStatus(); loadFBPoster()"
+                :class="(currentView==='social'||currentView==='instagram'||currentView==='fbposter') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
                 class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
-                <i class="ph ph-instagram-logo text-lg mr-2.5"
-                    :class="currentView==='instagram' ? 'text-pink-400' : ''"></i>
-                <span class="font-medium">Instagram</span>
-                <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Overlay</span>
+                <i class="ph ph-share-network text-lg mr-2.5"
+                    :class="(currentView==='social'||currentView==='instagram'||currentView==='fbposter') ? 'text-blue-400' : ''"></i>
+                <span class="font-medium">Redes Sociales</span>
+                <span class="ml-auto bg-gradient-to-r from-pink-500/20 to-blue-500/20 text-blue-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">Hub</span>
             </a>
 
             <a href="#" @click.prevent="currentView='whatsapp'; loadWhatsapp()"
@@ -235,25 +235,6 @@
                     x-show="waUnread > 0" x-text="waUnread > 99 ? '99+' : waUnread"></span>
                 <span class="ml-auto bg-green-500/20 text-green-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
                     x-show="waUnread === 0">AI</span>
-            </a>
-
-            <a href="#" @click.prevent="currentView='social'; loadSocial()"
-                :class="currentView==='social' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
-                <i class="ph ph-share-network text-lg mr-2.5"
-                    :class="currentView==='social' ? 'text-blue-400' : ''"></i>
-                <span class="font-medium">Redes Sociales</span>
-                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full font-semibold">Nuevo</span>
-            </a>
-
-            <a href="#" @click.prevent="currentView='fbposter'; loadFBPoster()"
-                :class="currentView==='fbposter' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
-                class="flex items-center px-3 py-2 rounded-lg group transition-colors text-sm">
-                <i class="ph ph-storefront text-lg mr-2.5"
-                    :class="currentView==='fbposter' ? 'text-blue-400' : ''"></i>
-                <span class="font-medium">FB Poster</span>
-                <span class="ml-auto bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full font-semibold"
-                    x-text="fbpGroups.filter(g => g.enabled).length"></span>
             </a>
 
             <div class="border-t border-slate-700 mt-2 pt-2">
@@ -5046,6 +5027,9 @@
             <!-- Header -->
             <div class="flex-shrink-0 px-4 py-3 border-b border-slate-800 bg-pink-900/10">
                 <div class="flex items-center gap-2 mb-3">
+                    <button @click="currentView='social'; socialHub='home'" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Volver al Hub">
+                        <i class="ph ph-arrow-left text-sm"></i>
+                    </button>
                     <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 via-red-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
                         <i class="ph ph-instagram-logo"></i>
                     </div>
@@ -5794,15 +5778,234 @@
     <!-- END WhatsApp View -->
 
     <!-- ══════════════════════════════════════════════════════════
-         REDES SOCIALES — Social Media Publishing
+         REDES SOCIALES — Hub (unified social, overlay, marketplace)
     ══════════════════════════════════════════════════════════ -->
     <div x-show="currentView==='social'" class="flex-1 flex flex-col overflow-hidden h-full min-h-0" style="display:none;">
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- HUB LANDING — Beautiful card grid                              -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <template x-if="socialHub==='home'">
+        <div class="flex-1 flex flex-col overflow-y-auto">
+            <!-- Hero Header -->
+            <div class="flex-shrink-0 px-8 pt-8 pb-6 bg-gradient-to-br from-slate-900 via-blue-950/30 to-purple-950/20">
+                <div class="flex items-center gap-4 mb-1">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                        <i class="ph ph-share-network text-2xl text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-white tracking-tight">Redes Sociales</h1>
+                        <p class="text-sm text-slate-400">Publica, crea contenido y gestiona tu presencia online</p>
+                    </div>
+                </div>
+                <!-- Quick stats row -->
+                <div class="flex gap-4 mt-5">
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                        <div class="w-2 h-2 rounded-full" :class="socialConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'"></div>
+                        <span class="text-xs text-slate-300" x-text="socialConnected ? 'API Conectada' : 'API Desconectada'"></span>
+                    </div>
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50" x-show="socialQuota !== null">
+                        <i class="ph ph-chart-bar text-blue-400 text-xs"></i>
+                        <span class="text-xs text-slate-300" x-text="socialQuota + '/100 hoy'"></span>
+                    </div>
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                        <i class="ph ph-storefront text-blue-400 text-xs"></i>
+                        <span class="text-xs text-slate-300" x-text="fbpGroups.filter(g=>g.enabled).length + ' grupos FB'"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards Grid -->
+            <div class="px-8 py-6 flex-1">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+
+                    <!-- 📱 PUBLICAR — Social Posting (IG + FB) -->
+                    <button @click="socialHub='posting'; loadSocial()"
+                        class="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-blue-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                <i class="ph ph-paper-plane-tilt text-2xl text-white"></i>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-blue-500/15 text-blue-400 font-semibold">IG + FB</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-1.5 group-hover:text-blue-300 transition-colors">Publicar</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-4">Compone y publica en Instagram y Facebook. Incluye IA para captions, hashtags y mejores horarios.</p>
+                        <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                            <span class="flex items-center gap-1"><i class="ph ph-instagram-logo text-pink-400"></i> Instagram</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-facebook-logo text-blue-400"></i> Facebook</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-magic-wand text-purple-400"></i> IA</span>
+                        </div>
+                        <div class="absolute bottom-4 right-4 text-slate-600 group-hover:text-blue-400 transition-colors">
+                            <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </button>
+
+                    <!-- 🏪 MARKETPLACE — FB Auto Poster -->
+                    <button @click="currentView='fbposter'; loadFBPoster()"
+                        class="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-indigo-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-1">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                <i class="ph ph-storefront text-2xl text-white"></i>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-400 font-semibold"
+                                x-text="fbpGroups.filter(g=>g.enabled).length + ' grupos'"></span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-1.5 group-hover:text-indigo-300 transition-colors">Marketplace</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-4">Publica automáticamente en Facebook Marketplace + 42 grupos de la V Región. Chrome automation.</p>
+                        <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                            <span class="flex items-center gap-1"><i class="ph ph-storefront text-indigo-400"></i> Marketplace</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-users-three text-indigo-400"></i> Grupos</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-robot text-green-400"></i> Auto</span>
+                        </div>
+                        <div class="absolute bottom-4 right-4 text-slate-600 group-hover:text-indigo-400 transition-colors">
+                            <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </button>
+
+                    <!-- 🖼️ OVERLAY — Instagram Overlay Pro -->
+                    <button @click="currentView='instagram'; loadInstagram()"
+                        class="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-pink-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-xl hover:shadow-pink-500/10 hover:-translate-y-1">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500 via-red-500 to-purple-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                <i class="ph ph-image-square text-2xl text-white"></i>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-pink-500/15 text-pink-400 font-semibold">Pro</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-1.5 group-hover:text-pink-300 transition-colors">Overlay</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-4">Crea fotos con overlay profesional para Instagram. Agrega logo, precio, specs y descárgalas listas.</p>
+                        <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                            <span class="flex items-center gap-1"><i class="ph ph-instagram-logo text-pink-400"></i> Instagram</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-paint-brush text-purple-400"></i> Diseño</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-download-simple text-emerald-400"></i> Export</span>
+                        </div>
+                        <div class="absolute bottom-4 right-4 text-slate-600 group-hover:text-pink-400 transition-colors">
+                            <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </button>
+
+                    <!-- 👥 SEGUIDORES — Coming Soon -->
+                    <div class="group relative bg-slate-800/30 border border-slate-700/50 border-dashed rounded-2xl p-6 text-left opacity-60">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
+                                <i class="ph ph-users text-2xl text-white"></i>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">Pronto</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-1.5">Seguidores</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-4">Analytics de seguidores, crecimiento, engagement y mejores horarios de publicación.</p>
+                        <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                            <span class="flex items-center gap-1"><i class="ph ph-chart-line-up text-emerald-400"></i> Growth</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-users text-emerald-400"></i> Audience</span>
+                            <span class="flex items-center gap-1"><i class="ph ph-clock text-emerald-400"></i> Timing</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Recent Activity + Quick Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-6">
+
+                    <!-- Quick Actions -->
+                    <div class="bg-slate-800/40 rounded-2xl border border-slate-700 p-5">
+                        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-lightning text-yellow-400"></i> Acciones Rápidas
+                        </h3>
+                        <div class="space-y-2">
+                            <button @click="socialHub='posting'; loadSocial()"
+                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-700/30 hover:bg-blue-900/20 border border-slate-700 hover:border-blue-500/30 text-left transition-all text-xs">
+                                <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0"><i class="ph ph-pencil-simple text-blue-400"></i></div>
+                                <div><span class="text-white font-medium">Crear publicación</span><br><span class="text-slate-500 text-[10px]">IG + FB con IA</span></div>
+                            </button>
+                            <button @click="currentView='fbposter'; loadFBPoster()"
+                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-700/30 hover:bg-indigo-900/20 border border-slate-700 hover:border-indigo-500/30 text-left transition-all text-xs">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0"><i class="ph ph-storefront text-indigo-400"></i></div>
+                                <div><span class="text-white font-medium">Publicar en Marketplace</span><br><span class="text-slate-500 text-[10px]">Auto + 42 grupos</span></div>
+                            </button>
+                            <button @click="currentView='instagram'; loadInstagram()"
+                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-700/30 hover:bg-pink-900/20 border border-slate-700 hover:border-pink-500/30 text-left transition-all text-xs">
+                                <div class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0"><i class="ph ph-image-square text-pink-400"></i></div>
+                                <div><span class="text-white font-medium">Crear overlay</span><br><span class="text-slate-500 text-[10px]">Diseño profesional IG</span></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Platform Status -->
+                    <div class="bg-slate-800/40 rounded-2xl border border-slate-700 p-5">
+                        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-plugs-connected text-cyan-400"></i> Plataformas
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 via-red-500 to-purple-600 flex items-center justify-center"><i class="ph ph-instagram-logo text-white text-sm"></i></div>
+                                <div class="flex-1">
+                                    <p class="text-xs font-semibold text-white" x-text="socialIGUsername || 'Instagram'"></p>
+                                    <p class="text-[10px] text-slate-500" x-text="socialIGFollowers ? socialIGFollowers.toLocaleString() + ' seguidores' : 'No conectado'"></p>
+                                </div>
+                                <div class="w-2.5 h-2.5 rounded-full" :class="socialConnected ? 'bg-emerald-400' : 'bg-slate-600'"></div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center"><i class="ph ph-facebook-logo text-white text-sm"></i></div>
+                                <div class="flex-1">
+                                    <p class="text-xs font-semibold text-white" x-text="socialFBPageName || 'Facebook'"></p>
+                                    <p class="text-[10px] text-slate-500" x-text="socialFBCategory || 'No conectado'"></p>
+                                </div>
+                                <div class="w-2.5 h-2.5 rounded-full" :class="socialConnected ? 'bg-emerald-400' : 'bg-slate-600'"></div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center"><i class="ph ph-storefront text-white text-sm"></i></div>
+                                <div class="flex-1">
+                                    <p class="text-xs font-semibold text-white">FB Marketplace</p>
+                                    <p class="text-[10px] text-slate-500" x-text="fbpGroups.filter(g=>g.enabled).length + ' grupos activos'"></p>
+                                </div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tips / Info -->
+                    <div class="bg-slate-800/40 rounded-2xl border border-slate-700 p-5">
+                        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-lightbulb text-amber-400"></i> Tips
+                        </h3>
+                        <div class="space-y-2.5 text-xs text-slate-400">
+                            <div class="flex gap-2">
+                                <span class="text-amber-400">💡</span>
+                                <p>Publica en <strong class="text-white">Instagram + Facebook</strong> al mismo tiempo desde "Publicar"</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <span class="text-pink-400">🖼️</span>
+                                <p>Usa <strong class="text-white">Overlay</strong> para fotos pro con precio y logo antes de publicar</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <span class="text-blue-400">🏪</span>
+                                <p><strong class="text-white">Marketplace</strong> publica automáticamente en 42 grupos V-Región</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <span class="text-purple-400">🤖</span>
+                                <p>La <strong class="text-white">IA</strong> genera captions, hashtags y sugiere los mejores horarios</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        </template>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- POSTING SUB-VIEW — Original Social Media compose/calendar     -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <template x-if="socialHub==='posting'">
+        <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
         <!-- Header Bar -->
         <div class="flex-shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <i class="ph ph-share-network text-2xl text-blue-400"></i>
-                <h2 class="text-lg font-bold text-white">Redes Sociales</h2>
+                <button @click="socialHub='home'" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Volver al Hub">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                </button>
+                <i class="ph ph-paper-plane-tilt text-2xl text-blue-400"></i>
+                <h2 class="text-lg font-bold text-white">Publicar</h2>
                 <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
                     :class="socialConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'"
                     x-text="socialConnected ? 'Conectado' : 'Desconectado'"></span>
@@ -6536,8 +6739,11 @@
             </div>
         </div>
 
+        </div>
+        </template>
+
     </div>
-    <!-- END Social Media View -->
+    <!-- END Social Media View / Redes Sociales Hub -->
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- FB MARKETPLACE AUTO-POSTER VIEW                                        -->
@@ -6547,9 +6753,12 @@
         <!-- Header bar with tabs -->
         <div class="flex items-center justify-between px-6 py-3 border-b border-slate-700 bg-slate-900/60 flex-shrink-0">
             <div class="flex items-center gap-3">
-                <i class="ph ph-storefront text-2xl text-blue-400"></i>
+                <button @click="currentView='social'; socialHub='home'" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Volver al Hub">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                </button>
+                <i class="ph ph-storefront text-2xl text-indigo-400"></i>
                 <div>
-                    <h2 class="text-lg font-bold text-white">FB Marketplace Poster</h2>
+                    <h2 class="text-lg font-bold text-white">Marketplace</h2>
                     <p class="text-xs text-slate-400">Marketplace + <span x-text="fbpEnabledCount"></span> Grupos · V Región</p>
                 </div>
             </div>
@@ -7057,6 +7266,7 @@
                 waNewFAQ: { question: '', answer: '', category: 'general' },
 
                 // ─── Social Media Publishing ───
+                socialHub: 'home',  // 'home' | 'posting' | 'marketplace' | 'overlay' | 'followers'
                 socialTab: 'compose',
                 socialConnected: false,
                 socialQuota: null,
@@ -7449,8 +7659,9 @@
                             }
                         }
 
-                        // Navigate to Social page
+                        // Navigate to Social page → Posting sub-view
                         this.currentView = 'social';
+                        this.socialHub = 'posting';
                         this.socialTab = 'compose';
                         this.loadSocial();
                         $toast('🎨 Overlay enviado a Redes Sociales', 'success');
