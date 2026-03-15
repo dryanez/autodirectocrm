@@ -1,9 +1,9 @@
 # Social Media Publishing System — Directive
 
 > **Module**: Social Media Manager for Autodirecto CRM  
-> **Status**: PLANNING → ready for implementation  
-> **Date**: 2026-03-15  
-> **Owner**: SimplyAPI CRM (`templates/index.html` + `app.py`)
+> **Status**: IN PROGRESS — Phases 1-3 built, Phase 4 partial, Phase 5 partial  
+> **Date**: 2026-03-15 (updated)  
+> **Owner**: SimplyAPI CRM (`templates/index.html` + `routes/social_routes.py`)
 
 ---
 
@@ -545,82 +545,82 @@ Add to sidebar navigation. Internal view name: `social`.
 
 ## 8. Implementation Phases
 
-### Phase 1: Foundation (Priority: HIGH)
+### Phase 1: Foundation (Priority: HIGH) ✅ DONE
 **Estimated: 1–2 sessions**
 
-1. **Database**: Create `social_posts` table in Supabase
-2. **Backend**: Meta API integration
-   - `execution/social_publish.py` — publish to IG + FB
-   - `execution/social_token_manager.py` — token validation/refresh
-   - API endpoints: `/api/social/connect`, `/api/social/status`, `/api/social/posts`
-3. **Frontend**: Connection settings tab
+1. ✅ **Database**: Create `social_posts` table in Supabase (`setup_social_posts.sql`)
+2. ✅ **Backend**: Meta API integration
+   - Publishing logic inline in `routes/social_routes.py` (not separate execution scripts)
+   - Token validation via `/api/social/connect`, `/api/social/refresh-token`
+   - API endpoints: `/api/social/connect`, `/api/social/status`, `/api/social/disconnect`, `/api/social/posts`
+3. ✅ **Frontend**: Connection settings tab
    - Save Meta credentials to `crm_settings`
    - Test connection button
    - Status display
 
-**Deliverable**: Can connect Meta account and verify it works.
+**Deliverable**: ✅ Can connect Meta account and verify it works.
 
-### Phase 2: Composer & Publishing (Priority: HIGH)
+### Phase 2: Composer & Publishing (Priority: HIGH) ✅ DONE
 **Estimated: 2–3 sessions**
 
-1. **Frontend**: Post Composer UI
+1. ✅ **Frontend**: Post Composer UI
    - Vehicle/photo selector (reuse existing consignaciones data)
    - Caption editor with character count
    - Platform selector (IG, FB, both)
-   - Post type selector (feed, carousel, reel, story)
+   - Post type selector (feed, carousel, reel, story) ← NEW
    - Phone preview mockup
-2. **Backend**: Publishing pipeline
+2. ✅ **Backend**: Publishing pipeline
    - Upload selected photos to Supabase `social-media/` bucket
-   - Create post record in `social_posts`
+   - Create post record in `social_posts` ← NEW
    - Call Meta API to publish
    - Track status (polling container status)
-3. **Integration with Instagram Overlay Pro**: "Publish" button in overlay editor that pre-fills composer with overlay image + vehicle data
+3. ⬜ **Integration with Instagram Overlay Pro**: "Publish" button in overlay editor that pre-fills composer with overlay image + vehicle data
 
-**Deliverable**: Can compose and publish posts to IG + FB from CRM.
+**Deliverable**: ✅ Can compose and publish posts to IG + FB from CRM.
 
-### Phase 3: Calendar & Scheduling (Priority: MEDIUM)
+### Phase 3: Calendar & Scheduling (Priority: MEDIUM) ✅ DONE
 **Estimated: 1–2 sessions**
 
-1. **Frontend**: Calendar view (month/week/list)
+1. ✅ **Frontend**: Calendar view (month grid)
    - Render posts by `scheduled_at` date
-   - Color-code by status
-   - Click to view/edit
-   - Drag-and-drop to reschedule
-2. **Backend**: Scheduler worker
-   - `execution/social_scheduler.py` — checks for due posts every minute
-   - APScheduler integration in Flask (or background thread)
-   - Retry logic with exponential backoff
-3. **Facebook scheduled posts**: Use native `scheduled_publish_time` parameter
-4. **Instagram scheduled posts**: Store in DB, our scheduler publishes at time
+   - Color-code by status (published/scheduled/failed/draft)
+   - Click to view details
+   - ⬜ Drag-and-drop to reschedule (backend ready, frontend UX pending)
+2. ✅ **Backend**: Scheduler worker
+   - `POST /api/social/check-scheduled` — checks for due posts
+   - Retry logic with retry_count tracking
+   - ⬜ Auto-polling (APScheduler/cron not yet configured — manual trigger for now)
+3. ✅ **Facebook scheduled posts**: Use native `scheduled_publish_time` parameter
+4. ✅ **Instagram scheduled posts**: Store in DB, scheduler publishes at time
 
-**Deliverable**: Can schedule posts for future dates, auto-publishes on time.
+**Deliverable**: ✅ Can schedule posts for future dates. Auto-publish via `/check-scheduled`.
 
-### Phase 4: Analytics & Insights (Priority: MEDIUM)
+### Phase 4: Analytics & Insights (Priority: MEDIUM) ⚠️ PARTIAL
 **Estimated: 1–2 sessions**
 
-1. **Backend**: Insights fetching
-   - `execution/social_insights.py` — fetches from Meta API
-   - Periodic refresh (every 6 hours via background job)
+1. ✅ **Backend**: Insights fetching
+   - `POST /api/social/insights/refresh` — force refresh from Meta API ← NEW
+   - `GET /api/social/insights/best-times` — engagement analysis ← NEW
    - Store metrics in `social_posts` table
-   - Account-level metrics cached in memory/DB
-2. **Frontend**: Analytics dashboard
-   - Summary cards (impressions, reach, engagement, rate)
-   - Line chart (engagement over time) — use Chart.js CDN
-   - Best posting times heatmap
-   - Top posts list
-   - Per-post metrics in post detail view
+   - Account-level metrics via `/api/social/insights/account`
+2. ⚠️ **Frontend**: Analytics dashboard (partial)
+   - ✅ Summary cards (followers, media count, impressions, reach)
+   - ✅ Recent post performance list
+   - ⬜ Line chart (engagement over time) — needs Chart.js CDN
+   - ⬜ Best posting times heatmap — backend ready, frontend pending
+   - ⬜ Top posts ranking view
 
-**Deliverable**: Full analytics dashboard with real data.
+**Deliverable**: ⚠️ Basic analytics dashboard. Charts and heatmap still needed.
 
-### Phase 5: AI Enhancements (Priority: LOW)
+### Phase 5: AI Enhancements (Priority: LOW) ⚠️ PARTIAL
 **Estimated: 1 session**
 
-1. **AI Caption Generator**: Use OpenAI to generate engaging captions based on vehicle specs
-2. **AI Hashtag Suggestions**: Analyze top-performing hashtags from past posts
-3. **AI Scheduling**: Recommend best times based on historical engagement data
-4. **AI Post Ideas**: Suggest content themes (e.g., "Feature Friday", "New Arrival", etc.)
+1. ✅ **AI Caption Generator**: Template-based generation from vehicle specs
+2. ⬜ **AI Hashtag Suggestions**: Analyze top-performing hashtags from past posts
+3. ⬜ **AI Scheduling**: Recommend best times based on historical engagement data
+4. ⬜ **AI Post Ideas**: Suggest content themes (e.g., "Feature Friday", "New Arrival", etc.)
 
-**Deliverable**: AI-powered content assistant.
+**Deliverable**: ⚠️ Basic caption generation. Full AI assistant pending.
 
 ---
 
