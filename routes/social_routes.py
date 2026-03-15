@@ -498,7 +498,7 @@ def webhook_verify():
     Return the challenge if token matches.
 
     In Meta dashboard set:
-      Callback URL: https://autodirectocrm-production.up.railway.app/api/social/webhook
+      Callback URL: https://autodirectocrm.vercel.app/api/social/webhook
       Verify token: autodirecto_social_2026
     """
     mode = request.args.get('hub.mode', '')
