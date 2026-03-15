@@ -213,6 +213,15 @@
                 <span class="font-medium">Compradores</span>
             </a>
 
+            <a href="#" @click.prevent="currentView='instagram'; loadInstagram()"
+                :class="currentView==='instagram' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                class="flex items-center px-4 py-3 rounded-lg group transition-colors">
+                <i class="ph ph-instagram-logo text-xl mr-3"
+                    :class="currentView==='instagram' ? 'text-pink-400' : ''"></i>
+                <span class="font-medium">Instagram</span>
+                <span class="ml-auto bg-pink-500/20 text-pink-400 text-xs px-2 py-0.5 rounded-full font-semibold">Overlay</span>
+            </a>
+
             <a href="#" @click.prevent="currentView='whatsapp'; loadWhatsapp()"
                 :class="currentView==='whatsapp' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
                 class="flex items-center px-4 py-3 rounded-lg group transition-colors">
@@ -4634,6 +4643,254 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════════════
+         INSTAGRAM OVERLAY PRO VIEW
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="currentView==='instagram'" class="flex-1 flex overflow-hidden h-full min-h-0" style="display:none;">
+
+        <!-- LEFT: Car list -->
+        <div class="w-72 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/60">
+
+            <!-- Header -->
+            <div class="flex-shrink-0 px-4 py-3 border-b border-slate-800 bg-pink-900/10">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 via-red-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                        <i class="ph ph-instagram-logo"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white">Overlay Pro</p>
+                        <p class="text-xs text-slate-500">Marketing · Instagram</p>
+                    </div>
+                </div>
+                <!-- Logo config + Settings -->
+                <div class="flex gap-2">
+                    <button @click="igShowLogoSetup = true"
+                        class="flex-1 text-xs px-2 py-1.5 rounded-lg border transition-colors flex items-center justify-center gap-1"
+                        :class="igLogo ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' : 'border-red-500/30 bg-red-500/10 text-red-400'">
+                        <i class="ph" :class="igLogo ? 'ph-check-circle' : 'ph-warning'"></i>
+                        <span x-text="igLogo ? 'Logo ✓' : 'Logo ⚠'"></span>
+                    </button>
+                    <button @click="igShowSettings = !igShowSettings"
+                        class="flex-1 text-xs px-2 py-1.5 rounded-lg border transition-colors flex items-center justify-center gap-1"
+                        :class="igShowSettings ? 'border-blue-500 bg-blue-500/15 text-blue-400' : 'border-slate-700 text-slate-400 hover:text-white'">
+                        <i class="ph ph-sliders-horizontal"></i> Ajustes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Settings panel -->
+            <div x-show="igShowSettings" class="flex-shrink-0 px-3 py-3 border-b border-slate-800 bg-slate-900/40 space-y-3 text-xs text-slate-400" style="display:none;">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="igSettings.showPrice" class="accent-pink-500"> Mostrar precio
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="igSettings.showKm" class="accent-pink-500"> Mostrar kilómetros
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="igSettings.showYear" class="accent-pink-500"> Mostrar año
+                </label>
+                <div class="flex items-center gap-2">
+                    <span>Color gradiente</span>
+                    <input type="color" x-model="igSettings.gradientColor" class="w-7 h-6 rounded border-0 cursor-pointer bg-transparent">
+                </div>
+                <div class="flex flex-col gap-1">
+                    <span>Posición logo</span>
+                    <div class="grid grid-cols-2 gap-1">
+                        <template x-for="pos in ['top-left','top-right','bottom-left','bottom-right']" :key="pos">
+                            <button @click="igSettings.logoPosition = pos"
+                                class="text-[11px] px-1.5 py-1 rounded border transition-colors"
+                                :class="igSettings.logoPosition === pos ? 'border-pink-500 bg-pink-500/20 text-pink-400' : 'border-slate-700 text-slate-500 hover:text-white'">
+                                <span x-text="pos === 'top-left' ? '↖ Arr Izq' : pos === 'top-right' ? '↗ Arr Der' : pos === 'bottom-left' ? '↙ Abj Izq' : '↘ Abj Der'"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span>Texto</span>
+                    <select x-model="igSettings.textPosition" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none">
+                        <option value="bottom">Abajo</option>
+                        <option value="top">Arriba</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span>Logo tamaño</span>
+                    <input type="range" min="8" max="35" x-model="igSettings.logoScalePct" class="flex-1 accent-pink-500">
+                    <span x-text="igSettings.logoScalePct + '%'" class="w-8 text-right text-slate-500"></span>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="flex-shrink-0 px-3 py-2 border-b border-slate-800 flex gap-2">
+                <div class="flex-1 bg-slate-800/50 rounded-lg p-2 text-center">
+                    <div class="text-base font-bold text-blue-400" x-text="igListings.length"></div>
+                    <div class="text-[10px] text-slate-500 uppercase">Vehículos</div>
+                </div>
+                <div class="flex-1 bg-slate-800/50 rounded-lg p-2 text-center">
+                    <div class="text-base font-bold text-pink-400" x-text="igSocialPhotos.length"></div>
+                    <div class="text-[10px] text-slate-500 uppercase">Fotos Social</div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="flex-shrink-0 px-3 py-2 border-b border-slate-800">
+                <div class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                    <input type="text" placeholder="Buscar vehículo…" x-model="igSearch"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-white text-xs focus:outline-none focus:border-pink-500">
+                </div>
+            </div>
+
+            <!-- Car list -->
+            <div class="flex-1 overflow-y-auto">
+                <div x-show="igLoading" class="p-4 text-center text-slate-500 text-sm">Cargando inventario…</div>
+                <template x-if="!igLoading">
+                    <div>
+                        <div x-show="igFilteredListings.length === 0" class="p-6 text-center text-slate-600 text-sm">Sin vehículos disponibles</div>
+                        <template x-for="l in igFilteredListings" :key="l.id">
+                            <button @click="igSelectListing(l)"
+                                class="w-full text-left px-3 py-2.5 border-b border-slate-800/50 transition-colors flex items-center gap-3"
+                                :class="igSelectedListing?.id === l.id ? 'bg-pink-900/20 border-l-2 border-l-pink-500' : 'hover:bg-slate-800/40 border-l-2 border-l-transparent'">
+                                <!-- Thumb -->
+                                <div class="w-12 h-9 rounded-md overflow-hidden flex-shrink-0 bg-slate-800">
+                                    <img :src="(l.image_urls||[])[0]" class="w-full h-full object-cover" x-show="(l.image_urls||[]).length > 0">
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-semibold text-white truncate" x-text="l.brand + ' ' + l.model"></div>
+                                    <div class="text-xs text-slate-500 flex gap-1">
+                                        <span x-text="l.year"></span>
+                                        <span>·</span>
+                                        <span x-text="Number(l.mileage_km||0).toLocaleString('es-CL') + ' km'"></span>
+                                    </div>
+                                </div>
+                                <div class="text-xs font-bold text-blue-400 flex-shrink-0" x-text="'$' + Number(l.price||0).toLocaleString('es-CL')"></div>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- MAIN: Photo picker or canvas editor -->
+        <div class="flex-1 flex flex-col overflow-hidden min-h-0">
+
+            <!-- Empty state — no car selected -->
+            <div x-show="!igSelectedListing" class="flex-1 flex flex-col items-center justify-center gap-3 text-slate-600">
+                <div class="text-5xl">📸</div>
+                <p class="text-lg font-semibold text-slate-500">Overlay Pro</p>
+                <p class="text-sm text-center max-w-xs leading-relaxed">Selecciona un vehículo para ver sus fotos verticales y crear overlays para Instagram.</p>
+                <div class="mt-2 px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-xl text-xs text-pink-400 flex items-center gap-2">
+                    <i class="ph ph-info"></i> Las fotos verticales se etiquetan automáticamente como "social"
+                </div>
+            </div>
+
+            <!-- Photo picker — car selected, not editing -->
+            <div x-show="igSelectedListing && !igEditing" class="flex-1 flex flex-col overflow-hidden min-h-0">
+                <!-- Header bar -->
+                <div class="flex-shrink-0 h-14 px-5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-7 rounded overflow-hidden bg-slate-800 flex-shrink-0">
+                            <img :src="(igSelectedListing?.image_urls||[])[0]" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-white" x-text="(igSelectedListing?.brand||'') + ' ' + (igSelectedListing?.model||'') + ' ' + (igSelectedListing?.year||'')"></p>
+                            <p class="text-xs text-slate-500"
+                                x-text="'$' + Number(igSelectedListing?.price||0).toLocaleString('es-CL') + '  ·  ' + Number(igSelectedListing?.mileage_km||0).toLocaleString('es-CL') + ' km  ·  ' + (igSelectedListing?.fuel_type||'')"></p>
+                        </div>
+                    </div>
+                    <button @click="igEditing = true; $nextTick(() => igRenderCanvas())" :disabled="!igSelectedPhoto"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
+                        :class="igSelectedPhoto ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:opacity-90 cursor-pointer' : 'bg-slate-800 text-slate-600 cursor-not-allowed'">
+                        <i class="ph ph-magic-wand"></i> Crear Overlay
+                    </button>
+                </div>
+
+                <!-- Photo grid -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div x-show="igPhotosLoading" class="text-center py-12 text-slate-500 text-sm">Cargando fotos social…</div>
+                    <div x-show="!igPhotosLoading && igSocialPhotos.length === 0" class="flex flex-col items-center justify-center py-16 gap-3 text-slate-600">
+                        <div class="text-4xl">📷</div>
+                        <p class="font-semibold text-slate-500">Sin fotos verticales (Social)</p>
+                        <p class="text-xs text-center max-w-xs leading-relaxed">Sube fotos en formato vertical desde el inventario de este vehículo. Se etiquetan automáticamente como "social".</p>
+                    </div>
+                    <div x-show="!igPhotosLoading && igSocialPhotos.length > 0"
+                        class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
+                        <template x-for="(p, idx) in igSocialPhotos" :key="p.id || idx">
+                            <button @click="igSelectedPhoto = p"
+                                class="relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer focus:outline-none"
+                                :class="igSelectedPhoto?.url === p.url ? 'border-pink-500 ring-2 ring-pink-500/30' : 'border-slate-700 hover:border-slate-500'"
+                                style="aspect-ratio:9/16;">
+                                <img :src="p.url" class="w-full h-full object-cover">
+                                <div x-show="igSelectedPhoto?.url === p.url"
+                                    class="absolute top-2 right-2 w-6 h-6 bg-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="flex-shrink-0 px-5 py-2.5 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between text-xs text-slate-500">
+                    <span>Selecciona una foto vertical → crea overlay → descarga para Instagram</span>
+                    <span x-text="igSocialPhotos.length + ' foto' + (igSocialPhotos.length !== 1 ? 's' : '') + ' social'"></span>
+                </div>
+            </div>
+
+            <!-- Canvas editor — editing -->
+            <div x-show="igEditing" class="flex-1 flex flex-col overflow-hidden min-h-0">
+                <!-- Toolbar -->
+                <div class="flex-shrink-0 h-14 px-4 border-b border-slate-800 bg-slate-900/60 flex items-center gap-3">
+                    <button @click="igEditing = false"
+                        class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition-colors">
+                        ← Volver
+                    </button>
+                    <p class="font-bold text-white text-sm flex-1" x-text="(igSelectedListing?.brand||'') + ' ' + (igSelectedListing?.model||'') + ' ' + (igSelectedListing?.year||'')"></p>
+                    <button @click="igRenderCanvas()"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white text-sm transition-colors">
+                        <i class="ph ph-arrows-clockwise"></i> Actualizar
+                    </button>
+                    <button @click="igDownloadCanvas()"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-all">
+                        <i class="ph ph-download-simple"></i> Descargar 1080×1920
+                    </button>
+                </div>
+
+                <!-- Canvas preview -->
+                <div class="flex-1 overflow-auto flex items-center justify-center p-4 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABBElEQVQ4T2NkYGD4z8BAAiMFkIGBgYGBgYEBJA8A')]"
+                    style="background-color:#0d1220; background-image: repeating-conic-gradient(#1a1f35 0% 25%, #0d1220 0% 50%); background-size: 24px 24px;">
+                    <canvas id="ig-canvas"
+                        style="max-height:100%; max-width:100%; border-radius:14px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);"
+                        x-ref="igCanvas"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Logo setup modal -->
+        <div x-show="igShowLogoSetup" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center" style="display:none;">
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96 max-w-[90vw] shadow-2xl">
+                <h3 class="text-base font-bold text-white mb-1 flex items-center gap-2"><i class="ph ph-image text-pink-400"></i> Configurar Logo</h3>
+                <p class="text-xs text-slate-500 mb-4 leading-relaxed">Sube el logo de tu empresa. Se guardará localmente y se usará en todos los overlays. Ideal: PNG transparente.</p>
+                <div class="w-28 h-28 mx-auto mb-4 border-2 border-dashed border-slate-600 rounded-xl overflow-hidden flex items-center justify-center bg-slate-800/50 cursor-pointer hover:border-pink-500 transition-colors"
+                    @click="$refs.igLogoInput.click()">
+                    <img :src="igLogoPreview || igLogo" class="w-full h-full object-contain" x-show="igLogoPreview || igLogo">
+                    <i class="ph ph-image text-3xl text-slate-600" x-show="!igLogoPreview && !igLogo"></i>
+                </div>
+                <input type="file" accept="image/*" x-ref="igLogoInput" class="hidden"
+                    @change="igHandleLogoFile($event)">
+                <div class="flex gap-2 justify-end">
+                    <button @click="igShowLogoSetup = false; igLogoPreview = null" x-show="igLogo"
+                        class="text-xs px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition-colors">Cancelar</button>
+                    <button @click="igSaveLogo()"
+                        :disabled="!igLogoPreview"
+                        class="text-xs px-4 py-2 rounded-lg font-bold transition-all"
+                        :class="igLogoPreview ? 'bg-pink-500 text-white hover:bg-pink-400' : 'bg-slate-800 text-slate-600 cursor-not-allowed'">
+                        Guardar Logo
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
          WHATSAPP AI AGENT VIEW
     ══════════════════════════════════════════════════════════ -->
     <div x-show="currentView==='whatsapp'" class="flex-1 flex overflow-hidden h-full min-h-0" style="display:none;">
@@ -4881,6 +5138,35 @@
                 activeCar: null,
                 dteLoading: false,
 
+                // ─── Instagram Overlay Pro ───
+                igListings: [],
+                igLoading: false,
+                igSearch: '',
+                igSelectedListing: null,
+                igSocialPhotos: [],
+                igPhotosLoading: false,
+                igSelectedPhoto: null,
+                igEditing: false,
+                igLogo: null,
+                igLogoPreview: null,
+                igShowLogoSetup: false,
+                igShowSettings: false,
+                igSettings: {
+                    showPrice: true, showKm: true, showYear: true,
+                    gradientColor: '#0a0e1a', logoPosition: 'top-left',
+                    textPosition: 'bottom', logoScalePct: 18,
+                },
+                get igFilteredListings() {
+                    if (!this.igSearch) return this.igListings;
+                    const s = this.igSearch.toLowerCase();
+                    return this.igListings.filter(l =>
+                        (l.brand||'').toLowerCase().includes(s) ||
+                        (l.model||'').toLowerCase().includes(s) ||
+                        String(l.year||'').includes(s) ||
+                        (l.plate||'').toLowerCase().includes(s)
+                    );
+                },
+
                 // ─── WhatsApp AI Agent ───
                 waConversations: [],
                 waMessages: [],
@@ -5053,6 +5339,203 @@
                     localStorage.removeItem('crm_token');
                     await fetch('/api/auth/logout', { method: 'POST' });
                     this.currentUser = null;
+                },
+
+                // ─── Instagram Overlay Pro ───
+                async loadInstagram() {
+                    // Load logo from localStorage (one-time setup)
+                    const saved = localStorage.getItem('ig_overlay_logo');
+                    if (saved) { this.igLogo = saved; }
+                    else { this.igShowLogoSetup = true; }
+                    // Load saved settings
+                    try {
+                        const ss = localStorage.getItem('ig_overlay_settings');
+                        if (ss) this.igSettings = { ...this.igSettings, ...JSON.parse(ss) };
+                    } catch(_) {}
+                    // Fetch all consignaciones that have social photos potential
+                    this.igLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/consignaciones');
+                        const all = await r.json();
+                        // Show vehicles that are en_venta or have an appraisal (have photos)
+                        this.igListings = (all || []).filter(c =>
+                            ['en_venta','parte2_completa','parte1_completa'].includes(c.status) || c.appraisal_supabase_id
+                        ).map(c => ({
+                            id: c.id,
+                            appraisal_id: c.appraisal_supabase_id,
+                            brand: c.brand || c.marca || '',
+                            model: c.model || c.modelo || '',
+                            year: c.year || c.ano || '',
+                            price: c.price || c.precio || '',
+                            mileage_km: c.mileage_km || c.kilometraje || '',
+                            fuel_type: c.fuel_type || c.combustible || '',
+                            transmission: c.transmission || c.transmision || '',
+                            color: c.color || '',
+                            plate: c.plate || c.patente || '',
+                            status: c.status,
+                        }));
+                    } catch(e) { console.error('[ig] loadInstagram', e); this.igListings = []; }
+                    this.igLoading = false;
+                },
+
+                igSelectListing(l) {
+                    this.igSelectedListing = l;
+                    this.igSelectedPhoto = null;
+                    this.igEditing = false;
+                    this.igLoadSocialPhotos();
+                },
+
+                async igLoadSocialPhotos() {
+                    if (!this.igSelectedListing?.id) { this.igSocialPhotos = []; return; }
+                    this.igPhotosLoading = true;
+                    try {
+                        const r = await this.authFetch('/api/consignaciones/' + this.igSelectedListing.id + '/photos');
+                        if (r.ok) {
+                            const d = await r.json();
+                            const allPhotos = d.photos || [];
+                            this.igSocialPhotos = allPhotos.filter(p => p.photo_type === 'social');
+                        } else {
+                            this.igSocialPhotos = [];
+                        }
+                    } catch(e) { console.error('[ig] igLoadSocialPhotos', e); this.igSocialPhotos = []; }
+                    this.igPhotosLoading = false;
+                },
+
+                igHandleLogoFile(e) {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => { this.igLogoPreview = ev.target.result; };
+                    reader.readAsDataURL(file);
+                },
+
+                igSaveLogo() {
+                    if (!this.igLogoPreview) return;
+                    localStorage.setItem('ig_overlay_logo', this.igLogoPreview);
+                    this.igLogo = this.igLogoPreview;
+                    this.igLogoPreview = null;
+                    this.igShowLogoSetup = false;
+                },
+
+                igSaveSettings() {
+                    localStorage.setItem('ig_overlay_settings', JSON.stringify(this.igSettings));
+                    this.igShowSettings = false;
+                },
+
+                igDownloadCanvas(format) {
+                    this.igRenderCanvas((canvas) => {
+                        const l = this.igSelectedListing;
+                        const name = ((l?.brand||'')+'_'+(l?.model||'')+'_'+(l?.year||'')).replace(/\s+/g,'_') || 'social';
+                        const a = document.createElement('a');
+                        a.download = name + '_social.' + (format||'png');
+                        a.href = canvas.toDataURL(format === 'jpg' ? 'image/jpeg' : 'image/png', 0.95);
+                        a.click();
+                    });
+                },
+
+                igRenderCanvas(callback) {
+                    const canvas = document.getElementById('ig-canvas');
+                    if (!canvas || !this.igSelectedPhoto) return;
+                    const ctx = canvas.getContext('2d');
+                    const W = 1080, H = 1920;
+                    canvas.width = W; canvas.height = H;
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        // Draw photo full-bleed, cover-fit
+                        const scaleW = W / img.naturalWidth;
+                        const scaleH = H / img.naturalHeight;
+                        const scale = Math.max(scaleW, scaleH);
+                        const dw = img.naturalWidth * scale;
+                        const dh = img.naturalHeight * scale;
+                        const dx = (W - dw) / 2;
+                        const dy = (H - dh) / 2;
+                        ctx.drawImage(img, dx, dy, dw, dh);
+
+                        // Gradient strip
+                        const gradH = Math.round(H * 0.40);
+                        const isTop = this.igSettings.textPosition === 'top';
+                        const gradY = isTop ? 0 : H - gradH;
+                        const hex = this.igSettings.gradientColor || '#0a0e1a';
+                        const cr = parseInt(hex.slice(1,3),16)||0;
+                        const cg = parseInt(hex.slice(3,5),16)||0;
+                        const cb = parseInt(hex.slice(5,7),16)||0;
+                        const grad = ctx.createLinearGradient(0, isTop ? 0 : H, 0, isTop ? gradH : H - gradH);
+                        grad.addColorStop(0, `rgba(${cr},${cg},${cb},0.92)`);
+                        grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(0, gradY, W, gradH);
+
+                        // Text
+                        const l = this.igSelectedListing;
+                        const baseY = isTop ? 140 : H - 240;
+                        const lineH = isTop ? 64 : -64;
+                        ctx.textAlign = 'left';
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                        ctx.shadowBlur = 8;
+
+                        // Car name (brand + model)
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = '800 64px "Inter",sans-serif';
+                        ctx.fillText((l.brand||'') + ' ' + (l.model||''), 72, baseY);
+
+                        // Details line (year · km · fuel)
+                        const parts = [];
+                        if (this.igSettings.showYear && l.year) parts.push(String(l.year));
+                        if (this.igSettings.showKm && l.mileage_km) parts.push(Number(l.mileage_km).toLocaleString('es-CL') + ' km');
+                        if (l.fuel_type) parts.push(l.fuel_type);
+                        if (parts.length) {
+                            ctx.font = '400 38px "Inter",sans-serif';
+                            ctx.fillStyle = 'rgba(255,255,255,0.80)';
+                            ctx.fillText(parts.join('  ·  '), 72, baseY + lineH);
+                        }
+
+                        // Price
+                        if (this.igSettings.showPrice && l.price) {
+                            ctx.font = '800 56px "Inter",sans-serif';
+                            ctx.fillStyle = '#60a5fa';
+                            ctx.fillText('$' + Number(l.price).toLocaleString('es-CL'), 72, baseY + lineH * 2);
+                        }
+
+                        ctx.shadowBlur = 0;
+
+                        // Draw logo last (on top)
+                        const drawDone = () => { if (callback) callback(canvas); };
+                        if (this.igLogo) {
+                            const logoImg = new Image();
+                            logoImg.crossOrigin = 'anonymous';
+                            logoImg.onload = () => {
+                                const pct = (this.igSettings.logoScalePct || 18) / 100;
+                                const lw = Math.round(W * pct);
+                                const lh = Math.round((logoImg.naturalHeight / logoImg.naturalWidth) * lw);
+                                const pad = 56;
+                                let lx = pad, ly = pad;
+                                const pos = this.igSettings.logoPosition || 'top-right';
+                                if (pos === 'top-right')    { lx = W - lw - pad; ly = pad; }
+                                if (pos === 'bottom-left')  { lx = pad;          ly = H - lh - pad; }
+                                if (pos === 'bottom-right') { lx = W - lw - pad; ly = H - lh - pad; }
+                                ctx.drawImage(logoImg, lx, ly, lw, lh);
+                                drawDone();
+                            };
+                            logoImg.onerror = drawDone;
+                            logoImg.src = this.igLogo;
+                        } else {
+                            drawDone();
+                        }
+                    };
+                    img.onerror = () => console.error('[ig] Failed to load photo:', this.igSelectedPhoto?.url);
+                    img.src = this.igSelectedPhoto.url;
+                },
+
+                // Preview render — draws to #ig-canvas then copies to #ig-preview as data URL
+                igUpdatePreview() {
+                    if (!this.igSelectedPhoto || !this.igEditing) return;
+                    this.$nextTick(() => {
+                        this.igRenderCanvas((canvas) => {
+                            const preview = document.getElementById('ig-preview');
+                            if (preview) preview.src = canvas.toDataURL('image/jpeg', 0.85);
+                        });
+                    });
                 },
 
                 // ─── WhatsApp AI Agent ───
