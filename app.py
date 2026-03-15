@@ -4647,7 +4647,7 @@ def get_companies():
             try:
                 r_users = req_lib.get(
                     supabase_url + "/rest/v1/crm_users",
-                    params={"select": "id", "company_id": "eq.{}".format(c["id"]), "active": "eq.true"},
+                    params={"select": "id", "company_id": "eq.{}".format(c["id"]), "active": "eq.1"},
                     headers={**headers, "Prefer": "count=exact"},
                     timeout=5
                 )

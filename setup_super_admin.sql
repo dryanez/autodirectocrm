@@ -9,13 +9,13 @@ UPDATE crm_users
 SET role = 'super_admin'
 WHERE company_id = 'a0000000-0000-0000-0000-000000000001'
   AND role = 'admin'
-  AND active = true;
+  AND active = 1;
 
 -- 2. Verify the change
 SELECT id, name, email, role, company_id
 FROM crm_users
 WHERE company_id = 'a0000000-0000-0000-0000-000000000001'
-  AND active = true;
+  AND active = 1;
 
 -- NOTE: Only super_admin role users can:
 --   - View /api/companies (list all companies)
