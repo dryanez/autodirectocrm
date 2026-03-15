@@ -7265,10 +7265,10 @@
                     try {
                         const r = await this.authFetch(`/api/wa/conversations/${conv.id}/messages`);
                         this.waMessages = await r.json();
-                        // Scroll to bottom
+                        // Scroll to bottom — use container scrollTop, NOT scrollIntoView (which shifts the whole page)
                         this.$nextTick(() => {
-                            const el = document.getElementById('wa-msgs-end');
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            const container = this.$refs.waMessagesScroll || document.getElementById('wa-messages-scroll');
+                            if (container) container.scrollTop = container.scrollHeight;
                         });
                         // Mark as read
                         if (conv.unread_count > 0) {
@@ -7327,8 +7327,8 @@
                             });
                             this.waManualReply = '';
                             this.$nextTick(() => {
-                                const el = document.getElementById('wa-msgs-end');
-                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                const container = this.$refs.waMessagesScroll || document.getElementById('wa-messages-scroll');
+                                if (container) container.scrollTop = container.scrollHeight;
                             });
                         } else {
                             $toast('Error enviando: ' + (data.error || 'Failed'), 'error');
