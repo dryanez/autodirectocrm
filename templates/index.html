@@ -5228,10 +5228,11 @@
         <!-- Sub-tabs -->
         <div class="flex-shrink-0 px-6 pt-3 pb-0 flex gap-1 border-b border-slate-800 bg-slate-900/40">
             <template x-for="tab in [{id:'compose', icon:'ph-pencil-simple-line', label:'Componer'},
+                                      {id:'calendar', icon:'ph-calendar-dots', label:'Calendario'},
                                       {id:'recent', icon:'ph-clock-counter-clockwise', label:'Publicaciones'},
                                       {id:'analytics', icon:'ph-chart-line-up', label:'Analytics'},
                                       {id:'settings', icon:'ph-plugs-connected', label:'Conexión'}]">
-                <button @click="socialTab=tab.id; if(tab.id==='recent') loadSocialRecent(); if(tab.id==='analytics') loadSocialAnalytics();"
+                <button @click="socialTab=tab.id; if(tab.id==='calendar') loadSocialCalendar(); if(tab.id==='recent') loadSocialRecent(); if(tab.id==='analytics') loadSocialAnalytics();"
                     :class="socialTab===tab.id ? 'text-blue-400 border-blue-400 bg-blue-500/5' : 'text-slate-400 border-transparent hover:text-slate-200'"
                     class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2">
                     <i :class="tab.icon" class="text-base"></i>
@@ -5346,13 +5347,55 @@
                         </div>
                     </div>
 
-                    <!-- Publish button -->
+                    <!-- Post Type -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700" x-show="socialPublishIG">
+                        <label class="text-sm font-medium text-slate-300 mb-3 block">
+                            <i class="ph ph-image-square text-blue-400 mr-1"></i> Tipo de publicación
+                        </label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <template x-for="t in [{id:'image', icon:'ph-image', label:'Feed'}, {id:'carousel', icon:'ph-stack', label:'Carrusel'}, {id:'reel', icon:'ph-video-camera', label:'Reel'}, {id:'story', icon:'ph-circle-dashed', label:'Story'}]">
+                                <button @click="socialPostType = t.id"
+                                    :class="socialPostType === t.id ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-600 text-slate-400 hover:text-slate-200'"
+                                    class="flex flex-col items-center gap-1 py-2 rounded-lg border text-xs transition-colors">
+                                    <i :class="t.icon" class="text-lg"></i>
+                                    <span x-text="t.label"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Schedule -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-3 block">
+                            <i class="ph ph-clock text-blue-400 mr-1"></i> Programación
+                        </label>
+                        <div class="flex gap-2 mb-3">
+                            <button @click="socialScheduleMode = 'now'"
+                                :class="socialScheduleMode === 'now' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-slate-900 border-slate-600 text-slate-400'"
+                                class="flex-1 py-2 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
+                                <i class="ph ph-paper-plane-tilt"></i> Publicar ahora
+                            </button>
+                            <button @click="socialScheduleMode = 'schedule'"
+                                :class="socialScheduleMode === 'schedule' ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-slate-900 border-slate-600 text-slate-400'"
+                                class="flex-1 py-2 rounded-lg border text-xs font-medium transition-colors flex items-center justify-center gap-1">
+                                <i class="ph ph-calendar-plus"></i> Programar
+                            </button>
+                        </div>
+                        <div x-show="socialScheduleMode === 'schedule'" x-transition class="grid grid-cols-2 gap-2">
+                            <input type="date" x-model="socialScheduleDate"
+                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                            <input type="time" x-model="socialScheduleTime"
+                                class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                        </div>
+                    </div>
+
+                    <!-- Publish / Schedule button -->
                     <button @click="socialPublish()"
-                        :disabled="socialPublishing || (socialImages.length === 0 && !socialCaption.trim())"
+                        :disabled="socialPublishing || (socialImages.length === 0 && !socialCaption.trim()) || (socialScheduleMode === 'schedule' && !socialScheduleDate)"
                         class="w-full py-3 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
-                        :class="socialPublishing ? 'bg-slate-700 cursor-wait' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-blue-500/25'">
-                        <i class="ph" :class="socialPublishing ? 'ph-spinner animate-spin' : 'ph-paper-plane-tilt'"></i>
-                        <span x-text="socialPublishing ? 'Publicando...' : 'Publicar ahora'"></span>
+                        :class="socialPublishing ? 'bg-slate-700 cursor-wait' : (socialScheduleMode === 'schedule' ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-lg shadow-purple-500/25' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-blue-500/25')">
+                        <i class="ph" :class="socialPublishing ? 'ph-spinner animate-spin' : (socialScheduleMode === 'schedule' ? 'ph-calendar-check' : 'ph-paper-plane-tilt')"></i>
+                        <span x-text="socialPublishing ? 'Procesando...' : (socialScheduleMode === 'schedule' ? 'Programar publicación' : 'Publicar ahora')"></span>
                     </button>
                 </div>
 
@@ -5453,6 +5496,80 @@
                             </div>
                         </div>
                     </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TAB: CALENDARIO ────────────────────────────────── -->
+        <div x-show="socialTab==='calendar'" class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-5xl mx-auto">
+                <!-- Month navigation -->
+                <div class="flex items-center justify-between mb-4">
+                    <button @click="socialCalendarMonth--; if(socialCalendarMonth<1){socialCalendarMonth=12;socialCalendarYear--;} loadSocialCalendar();"
+                        class="p-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors">
+                        <i class="ph ph-caret-left text-lg"></i>
+                    </button>
+                    <h3 class="text-lg font-bold text-white capitalize"
+                        x-text="new Date(socialCalendarYear, socialCalendarMonth-1).toLocaleDateString('es-CL', {month:'long', year:'numeric'})"></h3>
+                    <button @click="socialCalendarMonth++; if(socialCalendarMonth>12){socialCalendarMonth=1;socialCalendarYear++;} loadSocialCalendar();"
+                        class="p-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors">
+                        <i class="ph ph-caret-right text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div x-show="socialCalendarLoading" class="flex items-center justify-center py-20">
+                    <i class="ph ph-spinner animate-spin text-3xl text-blue-400"></i>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div x-show="!socialCalendarLoading">
+                    <!-- Day headers -->
+                    <div class="grid grid-cols-7 gap-1 mb-1">
+                        <template x-for="day in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']">
+                            <div class="text-center text-xs font-semibold text-slate-400 py-2" x-text="day"></div>
+                        </template>
+                    </div>
+                    <!-- Calendar cells -->
+                    <div class="grid grid-cols-7 gap-1">
+                        <template x-for="cell in socialCalendarCells()" :key="cell.key">
+                            <div class="min-h-[100px] rounded-lg border transition-colors p-1.5"
+                                :class="cell.isCurrentMonth ? (cell.isToday ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700 bg-slate-800/30 hover:bg-slate-800/60') : 'border-slate-800 bg-slate-900/20 opacity-40'">
+                                <div class="text-xs font-medium mb-1" :class="cell.isToday ? 'text-blue-400' : 'text-slate-400'" x-text="cell.day"></div>
+                                <div class="space-y-1">
+                                    <template x-for="post in cell.posts" :key="post.id">
+                                        <div class="rounded px-1.5 py-0.5 text-[10px] truncate cursor-pointer transition-colors"
+                                            :class="{
+                                                'bg-emerald-500/20 text-emerald-400': post.status === 'published',
+                                                'bg-amber-500/20 text-amber-400': post.status === 'scheduled',
+                                                'bg-red-500/20 text-red-400': post.status === 'failed',
+                                                'bg-slate-600/30 text-slate-400': post.status === 'draft',
+                                            }"
+                                            :title="post.caption"
+                                            @click="socialCalendarClickPost(post)">
+                                            <span class="mr-0.5" x-text="post.scheduled_at ? new Date(post.scheduled_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : ''"></span>
+                                            <span x-text="(post.caption || 'Sin caption').substring(0, 25)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="flex items-center gap-4 mt-4 text-[10px]">
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Publicado</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Programado</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> Fallido</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-400"></span> Borrador</span>
+                    </div>
+
+                    <!-- Empty state -->
+                    <div x-show="socialCalendarPosts.length === 0" class="text-center py-12 text-slate-500">
+                        <i class="ph ph-calendar-blank text-5xl mb-3"></i>
+                        <p class="text-lg font-medium">Sin publicaciones este mes</p>
+                        <p class="text-sm mt-1">Programa publicaciones desde el Composer</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5731,6 +5848,19 @@
                 socialRecentLoading: false,
                 socialAnalyticsLoading: false,
                 socialAccountStats: {},
+                // Post type & scheduling
+                socialPostType: 'image',    // image, carousel, reel, story
+                socialScheduleMode: 'now',  // 'now' or 'schedule'
+                socialScheduleDate: '',
+                socialScheduleTime: '12:00',
+                // Calendar
+                socialCalendarMonth: new Date().getMonth() + 1,
+                socialCalendarYear: new Date().getFullYear(),
+                socialCalendarPosts: [],
+                socialCalendarLoading: false,
+                // Post management
+                socialPosts: [],
+                socialPostsLoading: false,
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -5855,7 +5985,11 @@
                 // Wrapper around fetch that always sends the auth token
                 authFetch(url, options = {}) {
                     const token = localStorage.getItem('crm_token');
-                    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+                    const isFormData = options.body instanceof FormData;
+                    const headers = {
+                        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+                        ...(options.headers || {}),
+                    };
                     if (token) headers['Authorization'] = 'Bearer ' + token;
                     return fetch(url, { ...options, headers });
                 },
@@ -6449,6 +6583,83 @@
                     this.socialAnalyticsLoading = false;
                 },
 
+                // ─── Calendar methods ───
+                async loadSocialCalendar() {
+                    this.socialCalendarLoading = true;
+                    try {
+                        const r = await this.authFetch(`/api/social/calendar?month=${this.socialCalendarMonth}&year=${this.socialCalendarYear}`);
+                        const data = await r.json();
+                        this.socialCalendarPosts = data.posts || [];
+                    } catch(e) {
+                        console.error('[social] loadCalendar', e);
+                        this.socialCalendarPosts = [];
+                    }
+                    this.socialCalendarLoading = false;
+                },
+
+                socialCalendarCells() {
+                    const year = this.socialCalendarYear;
+                    const month = this.socialCalendarMonth - 1; // JS months are 0-indexed
+                    const firstDay = new Date(year, month, 1);
+                    const lastDay = new Date(year, month + 1, 0);
+                    const today = new Date();
+
+                    // Start from Monday
+                    let startDow = firstDay.getDay(); // 0=Sun
+                    startDow = startDow === 0 ? 6 : startDow - 1; // Convert to Mon=0
+
+                    const cells = [];
+                    // Previous month padding
+                    const prevLast = new Date(year, month, 0).getDate();
+                    for (let i = startDow - 1; i >= 0; i--) {
+                        cells.push({
+                            key: `prev-${i}`,
+                            day: prevLast - i,
+                            isCurrentMonth: false,
+                            isToday: false,
+                            posts: [],
+                        });
+                    }
+                    // Current month
+                    for (let d = 1; d <= lastDay.getDate(); d++) {
+                        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+                        const dayPosts = this.socialCalendarPosts.filter(p => {
+                            const ts = p.scheduled_at || p.published_at || p.created_at;
+                            return ts && ts.startsWith(dateStr);
+                        });
+                        cells.push({
+                            key: dateStr,
+                            day: d,
+                            isCurrentMonth: true,
+                            isToday: isToday,
+                            posts: dayPosts,
+                        });
+                    }
+                    // Next month padding (fill to 42 cells = 6 rows)
+                    const remaining = 42 - cells.length;
+                    for (let i = 1; i <= remaining; i++) {
+                        cells.push({
+                            key: `next-${i}`,
+                            day: i,
+                            isCurrentMonth: false,
+                            isToday: false,
+                            posts: [],
+                        });
+                    }
+                    return cells;
+                },
+
+                socialCalendarClickPost(post) {
+                    const status = post.status || 'draft';
+                    const caption = (post.caption || 'Sin caption').substring(0, 100);
+                    const time = post.scheduled_at
+                        ? new Date(post.scheduled_at).toLocaleString('es-CL', {dateStyle:'medium', timeStyle:'short'})
+                        : (post.published_at ? new Date(post.published_at).toLocaleString('es-CL', {dateStyle:'medium', timeStyle:'short'}) : '');
+                    const statusLabels = { draft: '📝 Borrador', scheduled: '📅 Programado', published: '✅ Publicado', failed: '❌ Fallido', publishing: '⏳ Publicando' };
+                    $toast(`${statusLabels[status] || status} — ${time}\n${caption}`, 'info', 5000);
+                },
+
                 socialSelectVehicle() {
                     if (!this.socialSelectedVehicleId) return;
                     const v = this.socialVehicles.find(x => String(x.id) === String(this.socialSelectedVehicleId));
@@ -6518,6 +6729,48 @@
                         return;
                     }
 
+                    // If scheduling, create the post record with scheduled status
+                    if (this.socialScheduleMode === 'schedule' && this.socialScheduleDate) {
+                        this.socialPublishing = true;
+                        try {
+                            const imageUrls = [];
+                            for (const img of this.socialImages) {
+                                const url = await this.socialUploadImage(img);
+                                if (url) imageUrls.push(url);
+                            }
+                            const r = await this.authFetch('/api/social/posts', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    caption: this.socialCaption,
+                                    post_type: this.socialPostType || (imageUrls.length > 1 ? 'carousel' : 'image'),
+                                    media_urls: imageUrls,
+                                    publish_instagram: this.socialPublishIG,
+                                    publish_facebook: this.socialPublishFB,
+                                    consignacion_id: this.socialSelectedVehicleId || null,
+                                    scheduled_at: this.socialScheduleDate + 'T' + (this.socialScheduleTime || '12:00') + ':00',
+                                    status: 'scheduled',
+                                }),
+                            });
+                            const d = await r.json();
+                            if (d.ok) {
+                                $toast('📅 Publicación programada exitosamente', 'success');
+                                this.socialCaption = '';
+                                this.socialImages = [];
+                                this.socialSelectedVehicleId = '';
+                                this.socialScheduleMode = 'now';
+                                this.socialScheduleDate = '';
+                                this.socialScheduleTime = '12:00';
+                                if (this.socialTab === 'calendar') this.loadSocialCalendar();
+                            } else {
+                                $toast('Error: ' + (d.error || 'Failed'), 'error');
+                            }
+                        } catch(e) {
+                            $toast('Error: ' + e.message, 'error');
+                        }
+                        this.socialPublishing = false;
+                        return;
+                    }
+
                     this.socialPublishing = true;
                     try {
                         // 1. Upload all images that don't have URLs yet
@@ -6531,7 +6784,7 @@
 
                         // 2. Publish to Instagram
                         if (this.socialPublishIG && imageUrls.length > 0) {
-                            const postType = imageUrls.length > 1 ? 'carousel' : 'image';
+                            const postType = this.socialPostType || (imageUrls.length > 1 ? 'carousel' : 'image');
                             const r = await this.authFetch('/api/social/publish/instagram', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -6557,9 +6810,25 @@
                             results.facebook = await r.json();
                         }
 
-                        // 4. Show results
+                        // 4. Save post record to social_posts table
                         const igOk = results.instagram?.ok;
                         const fbOk = results.facebook?.ok;
+                        try {
+                            await this.authFetch('/api/social/posts', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    caption: this.socialCaption,
+                                    post_type: this.socialPostType || (imageUrls.length > 1 ? 'carousel' : 'image'),
+                                    media_urls: imageUrls,
+                                    publish_instagram: this.socialPublishIG,
+                                    publish_facebook: this.socialPublishFB,
+                                    consignacion_id: this.socialSelectedVehicleId || null,
+                                    status: (igOk || fbOk) ? 'published' : 'failed',
+                                }),
+                            });
+                        } catch(e) { console.warn('[social] could not save post record', e); }
+
+                        // 5. Show results
                         if (igOk && fbOk) {
                             $toast('✅ Publicado en Instagram y Facebook', 'success');
                         } else if (igOk) {
@@ -6571,7 +6840,7 @@
                             $toast('❌ Error publicando: ' + errs, 'error');
                         }
 
-                        // 5. Reset form on success
+                        // 6. Reset form on success
                         if (igOk || fbOk) {
                             this.socialCaption = '';
                             this.socialImages = [];
