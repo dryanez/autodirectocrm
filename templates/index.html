@@ -5279,9 +5279,32 @@
                                 <i class="ph" :class="socialGeneratingCaption ? 'ph-spinner animate-spin' : 'ph-magic-wand'"></i>
                                 <span x-text="socialGeneratingCaption ? 'Generando...' : 'Generar con IA'"></span>
                             </button>
-                            <button @click="socialCaption += '\n\n#autodirecto #autos #chile #venta'"
+                            <button @click="socialSuggestBestTime()" x-show="socialScheduleMode === 'schedule'"
+                                class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors flex items-center gap-1">
+                                <i class="ph ph-clock"></i> Mejor hora
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Hashtags (AI-powered) -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                        <label class="text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
+                            <span><i class="ph ph-hash text-blue-400 mr-1"></i> Hashtags</span>
+                            <span class="text-xs text-slate-500" x-text="(socialHashtags.match(/#/g) || []).length + '/30'"></span>
+                        </label>
+                        <textarea x-model="socialHashtags" rows="2" maxlength="500"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            placeholder="#autodirecto #autos #chile ..."></textarea>
+                        <div class="flex gap-2 mt-2">
+                            <button @click="socialGenerateHashtags()"
+                                class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors flex items-center gap-1"
+                                :disabled="socialGeneratingHashtags">
+                                <i class="ph" :class="socialGeneratingHashtags ? 'ph-spinner animate-spin' : 'ph-magic-wand'"></i>
+                                <span x-text="socialGeneratingHashtags ? 'Generando...' : 'Sugerir con IA'"></span>
+                            </button>
+                            <button @click="socialHashtags = '#autodirecto #autos #chile #ventadeautos #autosusados'"
                                 class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors">
-                                + Hashtags
+                                Básicos
                             </button>
                         </div>
                     </div>
@@ -5463,6 +5486,50 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- AI Post Ideas Panel -->
+                <div class="mt-6 bg-slate-800/30 rounded-xl border border-slate-700/50 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-lightbulb text-yellow-400"></i> Ideas de Contenido
+                        </h4>
+                        <button @click="socialGetPostIdeas()"
+                            class="text-xs px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors flex items-center gap-1"
+                            :disabled="socialLoadingIdeas">
+                            <i class="ph" :class="socialLoadingIdeas ? 'ph-spinner animate-spin' : 'ph-magic-wand'"></i>
+                            <span x-text="socialLoadingIdeas ? 'Generando...' : 'Generar ideas'"></span>
+                        </button>
+                    </div>
+                    <div x-show="socialPostIdeas.length === 0 && !socialLoadingIdeas" class="text-center py-4 text-slate-500 text-xs">
+                        <i class="ph ph-sparkle text-2xl mb-1"></i>
+                        <p>Genera ideas de contenido con IA para tu próxima publicación</p>
+                    </div>
+                    <div class="space-y-2" x-show="socialPostIdeas.length > 0">
+                        <template x-for="(idea, idx) in socialPostIdeas" :key="idx">
+                            <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-900/50 hover:bg-slate-900/80 border border-slate-700/50 transition-colors group cursor-pointer"
+                                @click="socialUseIdea(idea)">
+                                <span class="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium mt-0.5"
+                                    :class="{
+                                        'bg-emerald-500/20 text-emerald-400': idea.type === 'Destacado',
+                                        'bg-blue-500/20 text-blue-400': idea.type === 'Nuevo Ingreso',
+                                        'bg-amber-500/20 text-amber-400': idea.type === 'Tip',
+                                        'bg-purple-500/20 text-purple-400': idea.type === 'Comparativa',
+                                        'bg-pink-500/20 text-pink-400': idea.type === 'Testimonio',
+                                        'bg-red-500/20 text-red-400': idea.type === 'Promoción',
+                                        'bg-cyan-500/20 text-cyan-400': idea.type === 'Pregunta',
+                                        'bg-slate-500/20 text-slate-300': !['Destacado','Nuevo Ingreso','Tip','Comparativa','Testimonio','Promoción','Pregunta'].includes(idea.type),
+                                    }"
+                                    x-text="idea.type"></span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-white" x-text="idea.title"></p>
+                                    <p class="text-xs text-slate-400 mt-0.5" x-text="idea.description"></p>
+                                </div>
+                                <i class="ph ph-arrow-right text-slate-500 group-hover:text-blue-400 transition-colors mt-1 shrink-0"></i>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -5896,6 +5963,7 @@
                 socialFBPageName: '',
                 socialFBCategory: '',
                 socialCaption: '',
+                socialHashtags: '',
                 socialImages: [],           // [{file, preview, url}]
                 socialSelectedVehicleId: '',
                 socialVehicles: [],
@@ -5926,6 +5994,10 @@
                 socialEngagementChart: null,
                 // Calendar drag-and-drop
                 socialDragPostId: null,
+                // AI Assistant
+                socialGeneratingHashtags: false,
+                socialLoadingIdeas: false,
+                socialPostIdeas: [],
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -6942,6 +7014,9 @@
                         return;
                     }
 
+                    // Build full caption = text + hashtags
+                    const fullCaption = [this.socialCaption.trim(), this.socialHashtags.trim()].filter(Boolean).join('\n\n');
+
                     // If scheduling, create the post record with scheduled status
                     if (this.socialScheduleMode === 'schedule' && this.socialScheduleDate) {
                         this.socialPublishing = true;
@@ -6954,7 +7029,8 @@
                             const r = await this.authFetch('/api/social/posts', {
                                 method: 'POST',
                                 body: JSON.stringify({
-                                    caption: this.socialCaption,
+                                    caption: fullCaption,
+                                    hashtags: this.socialHashtags,
                                     post_type: this.socialPostType || (imageUrls.length > 1 ? 'carousel' : 'image'),
                                     media_urls: imageUrls,
                                     publish_instagram: this.socialPublishIG,
@@ -6968,6 +7044,7 @@
                             if (d.ok) {
                                 $toast('📅 Publicación programada exitosamente', 'success');
                                 this.socialCaption = '';
+                                this.socialHashtags = '';
                                 this.socialImages = [];
                                 this.socialSelectedVehicleId = '';
                                 this.socialScheduleMode = 'now';
@@ -7003,7 +7080,7 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     image_urls: imageUrls,
-                                    caption: this.socialCaption,
+                                    caption: fullCaption,
                                     post_type: postType,
                                 }),
                             });
@@ -7016,7 +7093,7 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    message: this.socialCaption,
+                                    message: fullCaption,
                                     image_urls: imageUrls,
                                 }),
                             });
@@ -7030,7 +7107,8 @@
                             await this.authFetch('/api/social/posts', {
                                 method: 'POST',
                                 body: JSON.stringify({
-                                    caption: this.socialCaption,
+                                    caption: fullCaption,
+                                    hashtags: this.socialHashtags,
                                     post_type: this.socialPostType || (imageUrls.length > 1 ? 'carousel' : 'image'),
                                     media_urls: imageUrls,
                                     publish_instagram: this.socialPublishIG,
@@ -7056,6 +7134,7 @@
                         // 6. Reset form on success
                         if (igOk || fbOk) {
                             this.socialCaption = '';
+                            this.socialHashtags = '';
                             this.socialImages = [];
                             this.socialSelectedVehicleId = '';
                             // Refresh quota
@@ -7081,26 +7160,93 @@
                     }
                     this.socialGeneratingCaption = true;
                     try {
-                        // Simple template-based generation (can be replaced with AI later)
-                        const parts = [v.brand, v.model, v.year].filter(Boolean).join(' ');
-                        const price = v.selling_price ? ('$' + Number(v.selling_price).toLocaleString('es-CL')) : '';
-                        const km = v.mileage ? (Number(v.mileage).toLocaleString('es-CL') + ' km') : '';
-                        const fuel = v.fuel_type || '';
-                        const trans = v.transmission || '';
-                        const details = [km, fuel, trans].filter(Boolean).join(' · ');
-
-                        const templates = [
-                            `🔥 ¡Llegó un ${parts}!\n\n${price ? '💰 ' + price + '\n' : ''}${details ? '📋 ' + details + '\n' : ''}\n✨ Vehículo en consignación premium\n📍 Autodirecto — Tu auto, sin complicaciones\n\n¿Interesado? Escríbenos por DM 💬\n\n#autodirecto #${(v.brand||'auto').toLowerCase()} #autos #chile #autosusados`,
-                            `🚗 ${parts} disponible ahora\n\n${price ? 'Precio: ' + price + '\n' : ''}${details ? details + '\n' : ''}\n📸 Agenda tu visita\n🤝 Financiamiento disponible\n\n#autodirecto #ventadeautos #${(v.brand||'auto').toLowerCase()} #chile`,
-                            `⭐ ${parts}\n${price ? '\n💲 ' + price : ''}\n${details ? '📊 ' + details : ''}\n\n🏷️ Consignación Premium Autodirecto\n📲 Consulta disponibilidad por WhatsApp o DM\n\n#autodirecto #autos #chile #${(v.brand||'auto').toLowerCase()} #seminuevo`,
-                        ];
-                        this.socialCaption = templates[Math.floor(Math.random() * templates.length)];
-                        $toast('Caption generado ✨');
+                        const r = await this.authFetch('/api/social/ai/caption', {
+                            method: 'POST',
+                            body: JSON.stringify({ vehicle: v }),
+                        });
+                        const data = await r.json();
+                        if (data.ok) {
+                            this.socialCaption = data.caption;
+                            $toast(data.source === 'template' ? 'Caption generado (plantilla)' : 'Caption generado con Gemini ✨', 'success');
+                        } else {
+                            $toast('Error: ' + (data.error || 'Fallo al generar'), 'error');
+                        }
                     } catch(e) {
                         console.error('[social] generateCaption', e);
                         $toast('Error generando caption', 'error');
                     }
                     this.socialGeneratingCaption = false;
+                },
+
+                async socialGenerateHashtags() {
+                    if (this.socialGeneratingHashtags) return;
+                    this.socialGeneratingHashtags = true;
+                    try {
+                        const v = this.socialVehicles.find(x => String(x.id) === String(this.socialSelectedVehicleId));
+                        const r = await this.authFetch('/api/social/ai/hashtags', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                caption: this.socialCaption,
+                                vehicle: v || {},
+                                count: 15,
+                            }),
+                        });
+                        const data = await r.json();
+                        if (data.ok) {
+                            this.socialHashtags = data.text;
+                            $toast(data.source === 'template' ? 'Hashtags sugeridos (plantilla)' : 'Hashtags generados con IA ✨', 'success');
+                        }
+                    } catch(e) {
+                        console.error('[social] generateHashtags', e);
+                        $toast('Error generando hashtags', 'error');
+                    }
+                    this.socialGeneratingHashtags = false;
+                },
+
+                async socialGetPostIdeas() {
+                    if (this.socialLoadingIdeas) return;
+                    this.socialLoadingIdeas = true;
+                    try {
+                        const vehicles = this.socialVehicles.slice(0, 5).map(v => ({
+                            brand: v.brand, model: v.model, year: v.year, selling_price: v.selling_price,
+                        }));
+                        const r = await this.authFetch('/api/social/ai/post-ideas', {
+                            method: 'POST',
+                            body: JSON.stringify({ vehicles, count: 5 }),
+                        });
+                        const data = await r.json();
+                        if (data.ok) {
+                            this.socialPostIdeas = data.ideas;
+                            $toast('Ideas generadas 💡', 'success');
+                        }
+                    } catch(e) {
+                        console.error('[social] postIdeas', e);
+                    }
+                    this.socialLoadingIdeas = false;
+                },
+
+                socialUseIdea(idea) {
+                    this.socialCaption = `${idea.title}\n\n${idea.description}`;
+                    this.socialTab = 'compose';
+                    $toast('Idea aplicada al composer ✅');
+                },
+
+                async socialSuggestBestTime() {
+                    try {
+                        const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+                        const day = days[new Date().getDay()];
+                        const r = await this.authFetch('/api/social/ai/best-time', {
+                            method: 'POST',
+                            body: JSON.stringify({ day_of_week: day }),
+                        });
+                        const data = await r.json();
+                        if (data.ok) {
+                            const h = String(data.hour).padStart(2, '0');
+                            const m = String(data.minute || 0).padStart(2, '0');
+                            this.socialScheduleTime = `${h}:${m}`;
+                            $toast(`⏰ Mejor hora sugerida: ${h}:${m} — ${data.reason || ''}`, 'success', 4000);
+                        }
+                    } catch(e) { console.error('[social] suggestBestTime', e); }
                 },
 
                 // ─── Modules (SaaS) ───

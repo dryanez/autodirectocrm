@@ -1184,7 +1184,274 @@ def webhook_receive():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 7. DEBUG
+# 7. AI ASSISTANT (Gemini Flash — low cost)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
+GEMINI_MODEL = 'gemini-2.0-flash'
+
+def _gemini_key():
+    return os.environ.get('GOOGLE_API_KEY', '').strip()
+
+def _gemini_generate(prompt, max_tokens=512, temperature=0.8):
+    """Call Gemini Flash. Returns text or None."""
+    key = _gemini_key()
+    if not key:
+        return None
+    try:
+        r = requests.post(
+            f'{GEMINI_API}/{GEMINI_MODEL}:generateContent?key={key}',
+            json={
+                'contents': [{'parts': [{'text': prompt}]}],
+                'generationConfig': {
+                    'maxOutputTokens': max_tokens,
+                    'temperature': temperature,
+                },
+            },
+            timeout=20,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            candidates = data.get('candidates', [])
+            if candidates:
+                parts = candidates[0].get('content', {}).get('parts', [])
+                return parts[0].get('text', '') if parts else None
+        print(f'[social-ai] Gemini {r.status_code}: {r.text[:200]}', flush=True)
+        return None
+    except Exception as e:
+        print(f'[social-ai] Gemini error: {e}', flush=True)
+        return None
+
+
+@social_bp.route('/ai/caption', methods=['POST'])
+def ai_generate_caption():
+    """
+    Generate an engaging Instagram/Facebook caption using Gemini Flash.
+    Body: { vehicle: { brand, model, year, mileage, fuel_type, transmission, selling_price, color }, tone?: string, language?: string }
+    """
+    data = request.json or {}
+    v = data.get('vehicle', {})
+    tone = data.get('tone', 'profesional pero cercano')
+    lang = data.get('language', 'español chileno')
+
+    parts = ' '.join(filter(None, [v.get('brand'), v.get('model'), str(v.get('year', ''))]))
+    price = f"${int(v['selling_price']):,}".replace(',', '.') if v.get('selling_price') else ''
+    km = f"{int(v['mileage']):,} km".replace(',', '.') if v.get('mileage') else ''
+
+    prompt = f"""Eres un community manager experto para Autodirecto.cl, una consignadora de autos en Chile.
+
+Genera UN caption para Instagram/Facebook para este vehículo:
+- Vehículo: {parts or 'auto en consignación'}
+- Precio: {price or 'consultar'}
+- Kilometraje: {km or 'N/A'}
+- Combustible: {v.get('fuel_type', 'N/A')}
+- Transmisión: {v.get('transmission', 'N/A')}
+- Color: {v.get('color', 'N/A')}
+
+Reglas:
+- Tono: {tone}
+- Idioma: {lang}
+- Incluye emojis relevantes (🚗💰✨ etc)
+- Máximo 280 caracteres para el texto principal
+- Agrega un call-to-action (DM, WhatsApp, etc)
+- NO incluyas hashtags (se agregan por separado)
+- NO uses markdown ni asteriscos
+- Sé creativo, no repitas la misma estructura siempre
+
+Responde SOLO con el caption, nada más."""
+
+    text = _gemini_generate(prompt, max_tokens=300, temperature=0.9)
+    if text:
+        return jsonify({'ok': True, 'caption': text.strip()})
+
+    # Fallback: template-based
+    templates = [
+        f"🔥 ¡Llegó un {parts}!\n\n{'💰 ' + price if price else ''}{'📋 ' + km if km else ''}\n\n✨ Consignación premium\n📍 Autodirecto — Tu auto, sin complicaciones\n\n¿Interesado? Escríbenos por DM 💬",
+        f"🚗 {parts} disponible ahora\n\n{'Precio: ' + price if price else ''}{'  ·  ' + km if km else ''}\n\n📸 Agenda tu visita\n🤝 Financiamiento disponible",
+        f"⭐ {parts}\n{'💲 ' + price if price else ''}\n{'📊 ' + km if km else ''}\n\n🏷️ Consignación Premium Autodirecto\n📲 Consulta por WhatsApp o DM",
+    ]
+    import random
+    return jsonify({'ok': True, 'caption': random.choice(templates), 'source': 'template'})
+
+
+@social_bp.route('/ai/hashtags', methods=['POST'])
+def ai_suggest_hashtags():
+    """
+    Suggest relevant hashtags using Gemini Flash.
+    Body: { caption: str, vehicle?: { brand, model }, count?: int }
+    """
+    data = request.json or {}
+    caption = data.get('caption', '')
+    v = data.get('vehicle', {})
+    count = min(data.get('count', 15), 30)
+    brand = (v.get('brand') or '').lower()
+
+    prompt = f"""Eres un experto en social media para una consignadora de autos en Chile (Autodirecto.cl).
+
+Genera exactamente {count} hashtags para esta publicación de Instagram:
+
+Caption: "{caption[:300]}"
+Marca: {brand or 'auto'}
+
+Reglas:
+- Mezcla hashtags populares (#autos #chile) con de nicho (#autosusados #consignacion)
+- Incluye la marca del auto como hashtag si la hay
+- Incluye #autodirecto siempre
+- Solo hashtags en español
+- Sin explicaciones, solo los hashtags separados por espacio
+- NO uses # duplicados
+
+Responde SOLO con los hashtags, nada más."""
+
+    text = _gemini_generate(prompt, max_tokens=200, temperature=0.7)
+    if text:
+        # Parse and clean hashtags
+        tags = [t.strip() for t in text.replace('\n', ' ').split() if t.strip().startswith('#')]
+        tags = list(dict.fromkeys(tags))[:count]  # deduplicate, limit
+        return jsonify({'ok': True, 'hashtags': tags, 'text': ' '.join(tags)})
+
+    # Fallback
+    base = ['#autodirecto', '#autos', '#chile', '#ventadeautos', '#autosusados',
+            '#consignacion', '#seminuevo', '#automotriz', '#autoschile']
+    if brand:
+        base.insert(1, f'#{brand}')
+    return jsonify({'ok': True, 'hashtags': base[:count], 'text': ' '.join(base[:count]), 'source': 'template'})
+
+
+@social_bp.route('/ai/best-time', methods=['POST'])
+def ai_suggest_best_time():
+    """
+    Suggest best posting time based on engagement data + Gemini analysis.
+    Body: { day_of_week?: str, posts_data?: array }
+    """
+    data = request.json or {}
+    day = data.get('day_of_week', '')
+    posts_data = data.get('posts_data', [])
+
+    # Build context from real post data if available
+    context = ''
+    if posts_data:
+        context = 'Datos de engagement de posts anteriores:\n'
+        for p in posts_data[:20]:
+            ts = p.get('published_at', p.get('scheduled_at', ''))
+            eng = p.get('ig_engagement', 0) + p.get('fb_engagement', 0)
+            context += f"  - Publicado: {ts}, Engagement: {eng}\n"
+
+    prompt = f"""Eres un experto en social media para una concesionaria de autos en Chile.
+
+{context}
+
+¿Cuál es el mejor horario para publicar en Instagram/Facebook para una concesionaria de autos en Chile{' el día ' + day if day else ''}?
+
+Responde en este formato JSON exacto (sin markdown):
+{{"hour": 10, "minute": 0, "reason": "Razón breve en español"}}
+
+Considera:
+- Horarios laborales en Chile (CLT, UTC-3/-4)
+- Comportamiento de compradores de autos
+- Engagement máximo en redes"""
+
+    text = _gemini_generate(prompt, max_tokens=150, temperature=0.3)
+    if text:
+        try:
+            # Extract JSON from response
+            import re
+            match = re.search(r'\{[^}]+\}', text)
+            if match:
+                result = json.loads(match.group())
+                return jsonify({'ok': True, **result})
+        except Exception:
+            pass
+
+    # Sensible defaults for Chilean car dealership
+    defaults = {
+        'lunes': {'hour': 10, 'minute': 0, 'reason': 'Inicio de semana, gente buscando autos'},
+        'martes': {'hour': 12, 'minute': 30, 'reason': 'Hora de almuerzo, buen scroll'},
+        'miércoles': {'hour': 11, 'minute': 0, 'reason': 'Mitad de semana, engagement alto'},
+        'jueves': {'hour': 18, 'minute': 0, 'reason': 'Fin de jornada, planificando fin de semana'},
+        'viernes': {'hour': 17, 'minute': 0, 'reason': 'Viernes, gente planificando visitas'},
+        'sábado': {'hour': 10, 'minute': 30, 'reason': 'Sábado mañana, compradores activos'},
+        'domingo': {'hour': 11, 'minute': 0, 'reason': 'Domingo relajado, buen engagement'},
+    }
+    d = defaults.get(day.lower(), {'hour': 10, 'minute': 30, 'reason': 'Horario óptimo general para Chile'})
+    return jsonify({'ok': True, **d, 'source': 'default'})
+
+
+@social_bp.route('/ai/post-ideas', methods=['POST'])
+def ai_post_ideas():
+    """
+    Generate content ideas/themes for social media posts.
+    Body: { vehicles?: array, theme?: str, count?: int }
+    """
+    data = request.json or {}
+    vehicles = data.get('vehicles', [])
+    theme = data.get('theme', '')
+    count = min(data.get('count', 5), 10)
+
+    # Build vehicle inventory context
+    inv_ctx = ''
+    if vehicles:
+        inv_ctx = 'Vehículos disponibles actualmente:\n'
+        for v in vehicles[:10]:
+            inv_ctx += f"  - {v.get('brand','')} {v.get('model','')} {v.get('year','')}, {v.get('selling_price','')}\n"
+
+    today = datetime.now()
+    day_name = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][today.weekday()]
+
+    prompt = f"""Eres el community manager de Autodirecto.cl, una consignadora de autos premium en Chile.
+
+Hoy es {day_name} {today.strftime('%d/%m/%Y')}.
+
+{inv_ctx}
+
+{f'Tema solicitado: {theme}' if theme else ''}
+
+Genera exactamente {count} ideas de contenido para Instagram/Facebook.
+
+Para cada idea, responde en este formato (una idea por línea):
+TIPO | TÍTULO | DESCRIPCIÓN BREVE
+
+Tipos válidos: Destacado, Nuevo Ingreso, Tip, Comparativa, Testimonio, Promoción, Detrás de Escena, Dato Curioso, Pregunta, Tendencia
+
+Ejemplo:
+Destacado | Feature Friday 🏆 | Destaca el auto más premium del inventario con fotos profesionales
+Nuevo Ingreso | ¡Recién llegado! 🆕 | Anuncia un nuevo vehículo con datos clave y CTA
+
+Reglas:
+- Ideas variadas y creativas
+- Relevantes para concesionaria de autos en Chile
+- Incluye emojis en los títulos
+- Responde SOLO las ideas, sin introducción ni cierre"""
+
+    text = _gemini_generate(prompt, max_tokens=500, temperature=0.9)
+    if text:
+        ideas = []
+        for line in text.strip().split('\n'):
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) >= 3:
+                ideas.append({
+                    'type': parts[0],
+                    'title': parts[1],
+                    'description': parts[2],
+                })
+            elif len(parts) == 2:
+                ideas.append({'type': 'Idea', 'title': parts[0], 'description': parts[1]})
+        if ideas:
+            return jsonify({'ok': True, 'ideas': ideas[:count]})
+
+    # Fallback ideas
+    fallback = [
+        {'type': 'Destacado', 'title': 'Feature Friday 🏆', 'description': 'Destaca el auto más premium de la semana'},
+        {'type': 'Nuevo Ingreso', 'title': '¡Recién llegado! 🆕', 'description': 'Anuncia un nuevo vehículo en consignación'},
+        {'type': 'Tip', 'title': 'Tip del día 💡', 'description': 'Consejos para comprar auto usado de forma segura'},
+        {'type': 'Comparativa', 'title': 'VS Battle ⚔️', 'description': 'Compara dos autos populares del inventario'},
+        {'type': 'Pregunta', 'title': '¿Cuál prefieres? 🤔', 'description': 'Encuesta entre dos vehículos para generar engagement'},
+    ]
+    return jsonify({'ok': True, 'ideas': fallback[:count], 'source': 'template'})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. DEBUG
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @social_bp.route('/debug/test-token', methods=['GET'])
