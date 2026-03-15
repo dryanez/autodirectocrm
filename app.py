@@ -7571,7 +7571,6 @@ def wa_webhook_verify():
 @app.route("/api/wa/webhook", methods=["POST"])
 def wa_webhook_receive():
     """Receive incoming WhatsApp messages from Meta."""
-    import threading
     import requests as _req
 
     # Always return 200 immediately so Meta doesn't retry
@@ -7709,7 +7708,7 @@ def wa_webhook_receive():
         except Exception as e:
             print(f"[wa_webhook] Processing error: {e}")
 
-    threading.Thread(target=process, args=(body,), daemon=True).start()
+    process(body)
     return "OK", 200
 
 
