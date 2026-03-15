@@ -11,6 +11,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>[x-cloak] { display: none !important; }</style>
 
     <script>
         tailwind.config = {
@@ -4731,23 +4732,20 @@
         <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
             <!-- Empty state -->
-            <template x-if="!waActiveConv">
-                <div class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-600">
-                    <i class="ph ph-chats text-5xl"></i>
-                    <div class="text-base font-semibold text-slate-500">Selecciona una conversación</div>
-                    <div class="text-sm text-slate-600 text-center max-w-xs leading-relaxed">
-                        Los mensajes de WhatsApp aparecen aquí en tiempo real, respondidos automáticamente por Gemini AI.
-                    </div>
-                    <div class="flex items-center gap-2 mt-2 px-4 py-2 bg-green-900/20 border border-green-800/40 rounded-xl text-xs text-green-400">
-                        <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-                        Webhook activo — escuchando mensajes
-                    </div>
+            <div x-show="!waActiveConv" class="flex-1 flex flex-col items-center justify-center gap-4 text-slate-600">
+                <i class="ph ph-chats text-5xl"></i>
+                <div class="text-base font-semibold text-slate-500">Selecciona una conversación</div>
+                <div class="text-sm text-slate-600 text-center max-w-xs leading-relaxed">
+                    Los mensajes de WhatsApp aparecen aquí en tiempo real, respondidos automáticamente por Gemini AI.
                 </div>
-            </template>
+                <div class="flex items-center gap-2 mt-2 px-4 py-2 bg-green-900/20 border border-green-800/40 rounded-xl text-xs text-green-400">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                    Webhook activo — escuchando mensajes
+                </div>
+            </div>
 
             <!-- Active conversation -->
-            <template x-if="waActiveConv">
-                <div class="flex-1 flex flex-col overflow-hidden min-h-0">
+            <div x-show="waActiveConv" x-cloak class="flex-1 flex flex-col overflow-hidden min-h-0">
 
                     <!-- Chat header -->
                     <div class="flex-shrink-0 h-13 px-5 py-2.5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
@@ -4805,7 +4803,7 @@
                         </span>
                     </div>
                 </div>
-            </template>
+            </div>
 
         </div>
     </div>
