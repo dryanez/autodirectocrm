@@ -11,6 +11,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Chart.js (for social analytics) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>[x-cloak] { display: none !important; }</style>
 
     <script>
@@ -5534,7 +5536,9 @@
                     <div class="grid grid-cols-7 gap-1">
                         <template x-for="cell in socialCalendarCells()" :key="cell.key">
                             <div class="min-h-[100px] rounded-lg border transition-colors p-1.5"
-                                :class="cell.isCurrentMonth ? (cell.isToday ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700 bg-slate-800/30 hover:bg-slate-800/60') : 'border-slate-800 bg-slate-900/20 opacity-40'">
+                                :class="cell.isCurrentMonth ? (cell.isToday ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700 bg-slate-800/30 hover:bg-slate-800/60') : 'border-slate-800 bg-slate-900/20 opacity-40'"
+                                @dragover.prevent="socialCalendarDragOver($event, cell)"
+                                @drop.prevent="socialCalendarDrop($event, cell)">
                                 <div class="text-xs font-medium mb-1" :class="cell.isToday ? 'text-blue-400' : 'text-slate-400'" x-text="cell.day"></div>
                                 <div class="space-y-1">
                                     <template x-for="post in cell.posts" :key="post.id">
@@ -5546,6 +5550,8 @@
                                                 'bg-slate-600/30 text-slate-400': post.status === 'draft',
                                             }"
                                             :title="post.caption"
+                                            draggable="true"
+                                            @dragstart="socialCalendarDragStart($event, post)"
                                             @click="socialCalendarClickPost(post)">
                                             <span class="mr-0.5" x-text="post.scheduled_at ? new Date(post.scheduled_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : ''"></span>
                                             <span x-text="(post.caption || 'Sin caption').substring(0, 25)"></span>
@@ -5576,11 +5582,27 @@
 
         <!-- ── TAB: ANALYTICS ─────────────────────────────────── -->
         <div x-show="socialTab==='analytics'" class="flex-1 overflow-y-auto p-6">
-            <div class="max-w-4xl mx-auto">
+            <div class="max-w-5xl mx-auto">
                 <div x-show="socialAnalyticsLoading" class="flex items-center justify-center py-20">
                     <i class="ph ph-spinner animate-spin text-3xl text-blue-400"></i>
                 </div>
                 <div x-show="!socialAnalyticsLoading" class="space-y-6">
+
+                    <!-- Top bar: Refresh + Best Times -->
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-chart-line-up text-blue-400"></i> Dashboard Analytics
+                        </h3>
+                        <div class="flex gap-2">
+                            <button @click="socialRefreshInsights()"
+                                :disabled="socialRefreshingInsights"
+                                class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors flex items-center gap-1">
+                                <i class="ph" :class="socialRefreshingInsights ? 'ph-spinner animate-spin' : 'ph-arrows-clockwise'"></i>
+                                <span x-text="socialRefreshingInsights ? 'Actualizando...' : 'Actualizar insights'"></span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Account stats cards -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
@@ -5598,6 +5620,43 @@
                         <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 text-center">
                             <p class="text-2xl font-bold text-emerald-400" x-text="socialAccountStats.reach || '—'"></p>
                             <p class="text-xs text-slate-400 mt-1">Alcance (hoy)</p>
+                        </div>
+                    </div>
+
+                    <!-- Engagement Chart -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                        <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-chart-line text-blue-400"></i> Engagement por publicación reciente
+                        </h3>
+                        <div class="relative h-64" x-show="socialRecentPosts.length > 0">
+                            <canvas id="socialEngagementChart"></canvas>
+                        </div>
+                        <div x-show="socialRecentPosts.length === 0" class="text-center py-12 text-slate-500 text-sm">
+                            Sin datos de publicaciones
+                        </div>
+                    </div>
+
+                    <!-- Best Posting Times Heatmap -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                        <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                            <i class="ph ph-clock-afternoon text-amber-400"></i> Mejores horarios para publicar
+                        </h3>
+                        <div x-show="socialBestTimes.length > 0" class="space-y-2">
+                            <template x-for="bt in socialBestTimes.slice(0, 7)" :key="bt.day + '_' + bt.hour">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs text-slate-400 w-20 text-right" x-text="bt.day"></span>
+                                    <span class="text-xs text-slate-300 w-12" x-text="String(bt.hour).padStart(2,'0') + ':00'"></span>
+                                    <div class="flex-1 h-5 bg-slate-700 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all"
+                                            :style="'width:' + Math.min(100, (bt.avg_engagement / (socialBestTimes[0]?.avg_engagement || 1)) * 100) + '%'"></div>
+                                    </div>
+                                    <span class="text-xs text-slate-400 w-16 text-right" x-text="bt.avg_engagement + ' eng'"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <div x-show="socialBestTimes.length === 0" class="text-center py-8 text-slate-500 text-sm">
+                            <p>No hay suficientes datos para analizar horarios</p>
+                            <p class="text-[10px] mt-1">Se necesitan publicaciones guardadas con insights</p>
                         </div>
                     </div>
 
@@ -5861,6 +5920,12 @@
                 // Post management
                 socialPosts: [],
                 socialPostsLoading: false,
+                // Analytics enhanced
+                socialRefreshingInsights: false,
+                socialBestTimes: [],
+                socialEngagementChart: null,
+                // Calendar drag-and-drop
+                socialDragPostId: null,
 
                 // ─── Notifications ───
                 notifCount: 0,
@@ -6579,6 +6644,10 @@
                                 });
                             }
                         } catch(e) {}
+                        // Render engagement chart from recent posts data
+                        this.$nextTick(() => this.socialRenderEngagementChart());
+                        // Load best posting times
+                        this.loadSocialBestTimes();
                     } catch(e) { console.error('[social] loadAnalytics', e); }
                     this.socialAnalyticsLoading = false;
                 },
@@ -6658,6 +6727,150 @@
                         : (post.published_at ? new Date(post.published_at).toLocaleString('es-CL', {dateStyle:'medium', timeStyle:'short'}) : '');
                     const statusLabels = { draft: '📝 Borrador', scheduled: '📅 Programado', published: '✅ Publicado', failed: '❌ Fallido', publishing: '⏳ Publicando' };
                     $toast(`${statusLabels[status] || status} — ${time}\n${caption}`, 'info', 5000);
+                },
+
+                // ─── Calendar Drag-and-Drop ───
+                socialCalendarDragStart(e, post) {
+                    if (post.status === 'published') return; // Can't move published posts
+                    this.socialDragPostId = post.id;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', post.id);
+                },
+
+                socialCalendarDragOver(e, cell) {
+                    if (!cell.isCurrentMonth || !this.socialDragPostId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                },
+
+                async socialCalendarDrop(e, cell) {
+                    e.preventDefault();
+                    if (!cell.isCurrentMonth || !this.socialDragPostId) return;
+                    const postId = this.socialDragPostId;
+                    this.socialDragPostId = null;
+
+                    // Build new scheduled_at from the cell date (keep time or default to 12:00)
+                    const post = this.socialCalendarPosts.find(p => p.id === postId);
+                    let time = '12:00:00';
+                    if (post?.scheduled_at) {
+                        try { time = new Date(post.scheduled_at).toTimeString().substring(0, 8); } catch(e) {}
+                    }
+                    const newDate = `${cell.key}T${time}`;
+
+                    try {
+                        const r = await this.authFetch(`/api/social/posts/${postId}/reschedule`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ scheduled_at: newDate }),
+                        });
+                        const d = await r.json();
+                        if (d.ok) {
+                            $toast('📅 Publicación reprogramada', 'success');
+                            await this.loadSocialCalendar();
+                        } else {
+                            $toast('Error: ' + (d.error || 'Failed'), 'error');
+                        }
+                    } catch(e) {
+                        $toast('Error: ' + e.message, 'error');
+                    }
+                },
+
+                // ─── Analytics Enhanced ───
+                async socialRefreshInsights() {
+                    this.socialRefreshingInsights = true;
+                    try {
+                        const r = await this.authFetch('/api/social/insights/refresh', { method: 'POST' });
+                        const d = await r.json();
+                        if (d.ok) {
+                            $toast(`Insights actualizados: ${d.updated}/${d.total} posts`, 'success');
+                            await this.loadSocialAnalytics();
+                        } else {
+                            $toast('Error: ' + (d.error || ''), 'error');
+                        }
+                    } catch(e) {
+                        $toast('Error: ' + e.message, 'error');
+                    }
+                    this.socialRefreshingInsights = false;
+                },
+
+                async loadSocialBestTimes() {
+                    try {
+                        const r = await this.authFetch('/api/social/insights/best-times');
+                        const d = await r.json();
+                        if (d.ok) {
+                            this.socialBestTimes = d.best_times || [];
+                        }
+                    } catch(e) {
+                        console.error('[social] loadBestTimes', e);
+                    }
+                },
+
+                socialRenderEngagementChart() {
+                    if (typeof Chart === 'undefined') return;
+                    const canvas = document.getElementById('socialEngagementChart');
+                    if (!canvas) return;
+
+                    // Destroy existing chart
+                    if (this.socialEngagementChart) {
+                        this.socialEngagementChart.destroy();
+                        this.socialEngagementChart = null;
+                    }
+
+                    const posts = this.socialRecentPosts.slice(0, 15).reverse();
+                    if (posts.length === 0) return;
+
+                    const labels = posts.map(p => {
+                        try { return new Date(p.timestamp).toLocaleDateString('es-CL', {day:'numeric', month:'short'}); }
+                        catch(e) { return ''; }
+                    });
+
+                    this.socialEngagementChart = new Chart(canvas.getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Likes',
+                                    data: posts.map(p => p.like_count || 0),
+                                    borderColor: '#ec4899',
+                                    backgroundColor: 'rgba(236,72,153,0.1)',
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 4,
+                                    pointBackgroundColor: '#ec4899',
+                                },
+                                {
+                                    label: 'Comentarios',
+                                    data: posts.map(p => p.comments_count || 0),
+                                    borderColor: '#3b82f6',
+                                    backgroundColor: 'rgba(59,130,246,0.1)',
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 4,
+                                    pointBackgroundColor: '#3b82f6',
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    labels: { color: '#94a3b8', font: { size: 11 } },
+                                },
+                            },
+                            scales: {
+                                x: {
+                                    ticks: { color: '#64748b', font: { size: 10 } },
+                                    grid: { color: 'rgba(51,65,85,0.3)' },
+                                },
+                                y: {
+                                    ticks: { color: '#64748b', font: { size: 10 } },
+                                    grid: { color: 'rgba(51,65,85,0.3)' },
+                                    beginAtZero: true,
+                                },
+                            },
+                        },
+                    });
                 },
 
                 socialSelectVehicle() {
