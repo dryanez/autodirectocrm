@@ -2761,6 +2761,16 @@
                                 class="insp-input">
                         </div>
                         <div>
+                            <label class="block text-xs text-slate-400 mb-1">Nº de Motor</label>
+                            <input type="text" x-model="insp.numeroMotor" placeholder="Número de serie del motor"
+                                class="insp-input border-purple-500/30 focus:border-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Chasis / VIN</label>
+                            <input type="text" x-model="insp.vin" placeholder="Número de chasis o VIN"
+                                class="insp-input border-purple-500/30 focus:border-purple-500">
+                        </div>
+                        <div>
                             <label class="block text-xs text-slate-400 mb-1">Transmisión</label>
                             <select x-model="insp.vehicleTransmision" class="insp-input">
                                 <option>Manual</option>
@@ -10698,6 +10708,8 @@
                         vehicleKm: c?.mileage || 0,
                         vehicleColor: c?.color || '',
                         vehicleMotor: '',
+                        numeroMotor: c?.numero_motor || '',
+                        vin: c?.vin || '',
                         vehicleTransmision: 'Manual',
                         vehicleCombustible: 'Bencina',
                         vehicleBodyType: '',
@@ -10778,6 +10790,8 @@
                             vehicle_km: this.insp.vehicleKm,
                             vehicle_color: this.insp.vehicleColor || null,
                             vehicle_motor: this.insp.vehicleMotor || null,
+                            numero_motor: this.insp.numeroMotor || null,
+                            vin: this.insp.vin || null,
                             vehicle_transmision: this.insp.vehicleTransmision,
                             vehicle_combustible: this.insp.vehicleCombustible,
                             vehicle_body_type: this.insp.vehicleBodyType || null,

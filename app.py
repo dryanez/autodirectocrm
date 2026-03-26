@@ -1397,6 +1397,8 @@ def create_inspeccion():
     ai_instant_buy_price = data.pop("ai_instant_buy_price", None)
     owner_price = data.pop("owner_price", None)            # Precio Cliente (what owner receives)
     selling_price = data.pop("precio_publicado", None)     # Precio Publicación
+    vin = data.pop("vin", None)                            # Chasis / VIN
+    numero_motor = data.pop("numero_motor", None)          # Nº de Motor
     # Auto-calculate Precio Publicación = Precio Cliente × 1.04641 (3.9% + IVA)
     if owner_price and not selling_price:
         try:
@@ -1492,6 +1494,12 @@ def create_inspeccion():
             if selling_price is not None:
                 updates.append("selling_price=?")
                 params.append(int(selling_price))
+            if vin is not None:
+                updates.append("vin=?")
+                params.append(str(vin))
+            if numero_motor is not None:
+                updates.append("numero_motor=?")
+                params.append(str(numero_motor))
             params.append(consignacion_id)
             with get_db() as conn:
                 conn.execute(
@@ -5330,7 +5338,7 @@ def _build_contract_pdf(consig, appraisal=None):
     a = appraisal or {}
     combustible = a.get("vehicle_combustible","Gasolina")
     transmision = a.get("vehicle_transmision","")
-    motor_num   = a.get("vehicle_motor","")
+    motor_num   = c.get("numero_motor","")
     num_duenos  = a.get("num_dueños", "")
     rev_tecnica = "Al día" if a.get("revision_tecnica") else "Pendiente"
     permiso     = "Pagado" if a.get("permiso_circulacion") else "Pendiente"
