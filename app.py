@@ -3345,16 +3345,16 @@ def download_consignacion_photos_zip(cid):
     
     with get_db() as conn:
         row = conn.execute(
-            "SELECT appraisal_supabase_id, brand, model, year, plate FROM consignaciones WHERE id=?", (cid,)
+            "SELECT appraisal_supabase_id, car_make, car_model, car_year, plate FROM consignaciones WHERE id=?", (cid,)
         ).fetchone()
         
     if not row or not row.get("appraisal_supabase_id"):
         return jsonify({"error": "No hay fotos vinculadas o no existe la consignación"}), 404
         
     appraisal_id = row.get("appraisal_supabase_id")
-    brand = str(row.get("brand") or "Vehiculo").replace(" ", "_").replace("/", "-")
-    model = str(row.get("model") or "").replace(" ", "_").replace("/", "-")
-    year = str(row.get("year") or "")
+    brand = str(row.get("car_make") or "Vehiculo").replace(" ", "_").replace("/", "-")
+    model = str(row.get("car_model") or "").replace(" ", "_").replace("/", "-")
+    year = str(row.get("car_year") or "")
     plate = str(row.get("plate") or "SinPatente").replace(" ", "_").upper()
     
     # Construct filename parts
@@ -4236,14 +4236,14 @@ def publicar_en_catalogo(cid):
     year   = c.get("car_year") or appraisal.get("vehicle_año")
     color  = (c.get("color") or appraisal.get("vehicle_color") or "").strip()
     km     = c.get("mileage") or appraisal.get("vehicle_km")
-    plate  = (appraisal.get("vehicle_patente") or c.get("plate") or "").upper()
+    plate  = (c.get("plate") or appraisal.get("vehicle_patente") or "").upper()
     # Price: prefer selling_price from consignacion (set in Inventario), then inspection fields
     price  = c.get("selling_price") or appraisal.get("precio_publicado") or appraisal.get("tasacion")
-    fuel   = appraisal.get("vehicle_combustible") or c.get("fuel_type") or "Bencina"
-    trans  = appraisal.get("vehicle_transmision") or c.get("transmission") or "Manual"
-    motor  = appraisal.get("vehicle_motor") or c.get("motor") or ""
-    body_type = appraisal.get("vehicle_body_type") or c.get("body_type") or ""
-    doors  = appraisal.get("vehicle_doors") or c.get("doors")
+    fuel   = c.get("fuel_type") or appraisal.get("vehicle_combustible") or "Bencina"
+    trans  = c.get("transmission") or appraisal.get("vehicle_transmision") or "Manual"
+    motor  = c.get("motor") or appraisal.get("vehicle_motor") or ""
+    body_type = c.get("body_type") or appraisal.get("vehicle_body_type") or ""
+    doors  = c.get("doors") or appraisal.get("vehicle_doors")
     obs    = appraisal.get("observaciones") or appraisal.get("observations") or ""
     features = appraisal.get("features") or {}
 
