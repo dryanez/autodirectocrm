@@ -5477,8 +5477,8 @@ def _build_contract_pdf(consig, appraisal=None):
     price_data = [
         ["PRECIO CLIENTE", fmt_clp(precio_cli), "PRECIO PUBLICACIÓN", fmt_clp(precio_pub)],
     ]
-    if comision_calc or tasacion:
-        price_data.append(["COMISIÓN (3,9%+IVA)", fmt_clp(comision_calc), "TASACIÓN FISCAL", fmt_clp(tasacion) if tasacion else "—"])
+    if tasacion:
+        price_data.append(["", "", "TASACIÓN FISCAL", fmt_clp(tasacion)])
     pt = Table(price_data, colWidths=[110, 110, 120, 120])
     pt.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
