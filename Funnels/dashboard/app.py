@@ -27,7 +27,7 @@ app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TMP_DIR = BASE_DIR / ".tmp"
-FB_APP_DIR = BASE_DIR.parent / "fb app"
+FB_APP_DIR = BASE_DIR.parent.parent / "fb app"
 EXECUTION_DIR = BASE_DIR / "execution"
 SCRAPE_LIVE_SCRIPT = EXECUTION_DIR / "scrape_fb_live.py"
 LEADS_CSV = FB_APP_DIR / "facebook_graphql_vehicles.csv"

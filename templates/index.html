@@ -626,6 +626,7 @@
                     class="text-blue-300 hover:text-white text-xs px-2 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 transition-colors flex items-center gap-1">
                     <i class="ph ph-arrow-square-out"></i> Web
                 </a>
+
                 <!-- ChileAutos status -->
                 <button x-show="invDetail?.listing_id && !invDetail?.chileautos_id"
                     @click="publishToChileAutos(invDetail.id)"
@@ -866,6 +867,12 @@
                 <!-- Add Photos Bar — Exterior row -->
                 <div class="flex items-center gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-700/50">
                     <span class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-auto">� Fotos exterior</span>
+                    <!-- Download Fotos Zip -->
+                    <button @click="window.open('/api/consignaciones/' + invDetail.id + '/photos/download', '_blank')"
+                        class="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors shadow-sm"
+                        title="Descargar ZIP de todas las fotos">
+                        <i class="ph ph-file-zip text-sm"></i> Download ZIP
+                    </button>
                     <!-- Camera Pro (CameraCarApp) — module-gated -->
                     <button x-show="hasModule('camera_pro')"
                         @click="openCameraPro(invDetail.id, invDetail.appraisal_supabase_id, invDetail.car_make + ' ' + invDetail.car_model + ' ' + invDetail.car_year)"
@@ -6911,11 +6918,23 @@
                 </h3>
 
                 <div class="flex items-center gap-4 flex-wrap">
-                    <button @click="fbpStartPosting()"
+                    <button @click="fbpStartPosting('marketplace')"
                             :disabled="fbpPosting || !fbpSelectedCar?._images?.length"
                             class="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                         <span x-show="!fbpPosting">
-                            🚀 Publicar Marketplace + <span x-text="fbpEnabledCount"></span> Grupos
+                            🏪 Publicar solo en Marketplace
+                        </span>
+                        <span x-show="fbpPosting" class="flex items-center gap-2">
+                            <span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                            Publicando...
+                        </span>
+                    </button>
+
+                    <button @click="fbpStartPosting('groups')"
+                            :disabled="fbpPosting || !fbpSelectedCar?._images?.length || fbpEnabledCount === 0"
+                            class="bg-gradient-to-r from-teal-600 to-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg shadow-teal-500/20 hover:shadow-teal-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <span x-show="!fbpPosting">
+                            🚀 Publicar nativo en <span x-text="fbpEnabledCount"></span> Grupos
                         </span>
                         <span x-show="fbpPosting" class="flex items-center gap-2">
                             <span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
@@ -8872,13 +8891,13 @@
                     this.fbpSelectedGroups = [];
                 },
 
-                async fbpStartPosting() {
+                async fbpStartPosting(mode = 'legacy') {
                     if (this.fbpPosting || !this.fbpSelectedCar) return;
                     this.fbpPosting = true;
                     this.fbpJobLog = [];
                     this.fbpJobResult = null;
 
-                    const selectedGroupsList = this.fbpSelectedGroups.map(i => this.fbpGroups[i]).filter(Boolean);
+                    const selectedGroupsList = mode === 'marketplace' ? [] : this.fbpSelectedGroups.map(i => this.fbpGroups[i]).filter(Boolean);
                     const car = this.fbpSelectedCar;
                     const carTitle = `${car.car_make || ''} ${car.car_model || ''} ${car.car_year || ''}`.trim();
 
@@ -8891,6 +8910,7 @@
                                 car_title: carTitle,
                                 caption: this.fbpCaption,
                                 groups: selectedGroupsList,
+                                mode: mode
                             }),
                         });
                         const jobD = await jobR.json();
@@ -8918,6 +8938,7 @@
                                     groups: selectedGroupsList.map(g => ({name: g.name, url: g.url})),
                                     location: this.fbpLocation,
                                     crm_api: window.location.origin,
+                                    mode: mode
                                 }),
                             });
                             const workerD = await workerR.json();

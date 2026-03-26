@@ -187,12 +187,14 @@ def get_cars():
     """Get consignaciones en_venta with their images for posting."""
     cid = _company_id()
     try:
+        # Match vehicles where en_venta boolean is true OR status is 'en_venta'
+        # This covers both the boolean flag and the workflow status
         cars = _supa_get("consignaciones", {
             "select": "id,car_make,car_model,car_year,plate,color,mileage,km_verified,"
                       "version,selling_price,owner_price,fuel_type,transmission,"
                       "appraisal_supabase_id,listing_id,status,en_venta",
             "company_id": f"eq.{cid}",
-            "en_venta": "eq.true",
+            "or": "(en_venta.eq.true,status.in.(en_venta,parte2_completa,inspeccionado,parte1_completa,fotos_pendientes))",
             "order": "updated_at.desc",
         })
 

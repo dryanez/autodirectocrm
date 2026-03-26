@@ -17,8 +17,9 @@ from playwright.async_api import async_playwright
 
 # ─── Config ─────────────────────────────────────────────────────────────────────
 TARGET_URL = (
-    "https://www.facebook.com/marketplace/106647439372422/search/"
-    "?minPrice=4000000&query=Vehicles&exact=false&radius=20"
+    "https://www.facebook.com/marketplace/106647439372422/search"
+    "?minPrice=4000000&daysSinceListed=7&sortBy=distance_ascend"
+    "&query=Vehicles&exact=false&radius=20"
 )
 MAX_SCROLLS  = 150
 TARGET_LEADS = 200
@@ -34,6 +35,18 @@ V_REGION_COMMUNES = {
     "casablanca", "quillota", "la cruz", "puchuncaví", "puchuncavi",
     "calera", "nogales", "hijuelas", "algarrobo",
     "el quisco", "el tabo", "san antonio", "cartagena", "santo domingo",
+}
+
+# ─── Seller Blocklist (Competitors) ─────────────────────────────────────────────
+SELLER_BLOCKLIST = {
+    "javier vera", "hernán casella", "hernan casella", "ayr automotriz",
+    "seminuevos v aspillaga hornauer", "esteban andres morales", "esteban andrés morales",
+    "automotora ramos", "daniela pavez pedregal", "richard meneses chávez",
+    "richard meneses chavez", "benjamin matias", "benjamín matías", "leonardo alvear acuña",
+    "leonardo alvear acuna", "roberto hm", "karl jose vasquez guevara",
+    "karl josé vasquez guevara", "fabian esteban carrasco yuric", "fabián esteban carrasco yuric",
+    "francisco cárcamo", "francisco carcamo", "automotora colon", "automotora colón",
+    "manuel martínez", "manuel martinez"
 }
 
 vehicles: dict[str, dict] = {}
@@ -71,6 +84,12 @@ def parse_feed_units(data: dict):
                 km_list = listing.get("custom_sub_titles_with_rendering_flags") or []
                 km = km_list[0].get("subtitle", "") if km_list else ""
                 seller = (listing.get("marketplace_listing_seller") or {}).get("name", "")
+
+                # --- Skip competitors ---
+                if seller and any(b in seller.lower() for b in SELLER_BLOCKLIST):
+                    print(f"  🛑 comp [{len(vehicles):>4}] {title[:45]:<45} | BLOCKED: {seller}", flush=True)
+                    continue
+
                 listing_url = f"https://www.facebook.com/marketplace/item/{lid}/"
 
                 # Extract photo URL from GraphQL data

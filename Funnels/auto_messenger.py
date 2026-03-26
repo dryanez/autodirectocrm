@@ -7,10 +7,11 @@ import random
 import requests
 import shutil
 import tempfile
+import os
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-DASHBOARD_URL = "http://localhost:5001"
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:5001")
 CHROME_USER_DATA_SRC = Path.home() / "Library/Application Support/Google/Chrome"
 
 # ─── API Helpers ─────────────────────────────────────────────────────────────

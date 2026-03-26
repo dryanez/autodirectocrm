@@ -968,6 +968,9 @@ if FUNNELS_DIR.exists():
             cmd = [sys.executable, str(messenger_script), "--limit", str(limit)]
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
+            
+            port = os.environ.get("PORT", "8080")
+            env["DASHBOARD_URL"] = f"http://127.0.0.1:{port}/funnels"
 
             import subprocess as _sp
             proc = _sp.Popen(
@@ -2910,8 +2913,8 @@ def create_consignacion():
                         first_name, last_name, full_name, rut, phone, country_code, email,
                         region, commune, address, plate, car_make, car_model, car_year,
                         mileage, version, appointment_date, appointment_time,
-                        stage, source, supabase_id, created_at, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        stage, source, supabase_id, created_at, updated_at, company_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     first_name, last_name, full_name,
                     g("rut"), g("phone"), g("countryCode", "country_code") or "+56", g("email"),
@@ -2919,7 +2922,7 @@ def create_consignacion():
                     plate, car_make_val, car_model_val, car_year_val,
                     mileage_val, g("version"),
                     appointment_date, appointment_time,
-                    "agendado", source_label, supa_id, now, now
+                    "agendado", source_label, supa_id, now, now, cid
                 ))
                 crm.commit()
                 print("[consignacion] created new crm_lead (source={})".format(source_label))
@@ -3126,12 +3129,12 @@ def create_quick_consignacion():
                     INSERT INTO crm_leads (
                         full_name, first_name, last_name, phone, rut, email, plate,
                         car_make, car_model, car_year, mileage,
-                        stage, source, created_at, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        stage, source, created_at, updated_at, company_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     owner_name, first, last, owner_phone, owner_rut, owner_email, plate,
                     car_make, car_model, car_year, mileage,
-                    "fotografiado", "camera", now, now
+                    "fotografiado", "camera", now, now, cid
                 ))
                 lead_id = crm.execute("SELECT last_insert_rowid()").fetchone()[0]
                 crm.execute(
@@ -3323,6 +3326,85 @@ def get_consignacion_photos(cid):
         return jsonify({"photos": photos})
     except Exception as e:
         return jsonify({"photos": [], "error": str(e)})
+
+
+@app.route("/api/consignaciones/<int:cid>/photos/download", methods=["GET"])
+def download_consignacion_photos_zip(cid):
+    """Downloads all photos for a consignation and returns them as a single ZIP file."""
+    import requests as req_lib
+    import io
+    import zipfile
+    
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT appraisal_supabase_id, brand, model, year, plate FROM consignaciones WHERE id=?", (cid,)
+        ).fetchone()
+        
+    if not row or not row.get("appraisal_supabase_id"):
+        return jsonify({"error": "No hay fotos vinculadas o no existe la consignación"}), 404
+        
+    appraisal_id = row.get("appraisal_supabase_id")
+    brand = str(row.get("brand") or "Vehiculo").replace(" ", "_").replace("/", "-")
+    model = str(row.get("model") or "").replace(" ", "_").replace("/", "-")
+    year = str(row.get("year") or "")
+    plate = str(row.get("plate") or "SinPatente").replace(" ", "_").upper()
+    
+    # Construct filename parts
+    parts = [p for p in [brand, model, year, plate] if p]
+    zip_filename = f"{'-'.join(parts)}.zip"
+    
+    supabase_url, headers = _supa_headers()
+    if not supabase_url:
+        return jsonify({"error": "Falta configuración de Supabase"}), 500
+        
+    try:
+        r = req_lib.get(
+            f"{supabase_url}/rest/v1/vehicle_images",
+            params={
+                "select": "id,url,photo_type",
+                "appraisal_id": f"eq.{appraisal_id}",
+                "order": "created_at.asc"
+            },
+            headers=headers, timeout=8
+        )
+        photos = r.json() if r.status_code == 200 else []
+        if not isinstance(photos, list) or len(photos) == 0:
+            return jsonify({"error": "No se encontraron fotos"}), 404
+            
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for idx, p in enumerate(photos):
+                url = p.get("url")
+                if not url:
+                    continue
+                try:
+                    img_resp = req_lib.get(url, timeout=10)
+                    if img_resp.status_code == 200:
+                        # Guess optimal extension
+                        ext = "jpg"
+                        low_url = url.lower()
+                        if "png" in low_url: ext = "png"
+                        if "jpeg" in low_url: ext = "jpg"
+                        if "webp" in low_url: ext = "webp"
+                        
+                        photo_type = str(p.get("photo_type") or "exterior").replace(" ", "_").replace("/", "-")
+                        filename = f"{idx+1:02d}_{photo_type}.{ext}"
+                        zf.writestr(filename, img_resp.content)
+                except Exception as e:
+                    print(f"[ZIP DOWNLOAD] Failed to fetch photo {url}: {e}")
+                    
+        memory_file.seek(0)
+        return send_file(
+            memory_file,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=zip_filename
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 
 # ─── Shared Cascade-Delete Helper ────────────────────────────────────────────
@@ -3693,6 +3775,11 @@ def update_consignacion(cid):
     now = datetime.now().isoformat()
     if updates.get("status") == "parte2_completa" and not updates.get("part2_completed_at"):
         updates["part2_completed_at"] = now
+    # Keep en_venta boolean in sync with status
+    if updates.get("status") == "en_venta":
+        updates["en_venta"] = 1
+    elif updates.get("status") and updates.get("status") != "en_venta":
+        updates["en_venta"] = 0
     updates["updated_at"] = now
 
     # Pre-calculate owner_full_name if name parts change to ensure immediate UI parity
@@ -4282,11 +4369,11 @@ def publicar_en_catalogo(cid):
         if upsert_r.status_code not in (200, 201):
             return jsonify({"error": "Supabase error {}: {}".format(upsert_r.status_code, upsert_r.text)}), 502
 
-        # Mark consignacion as en_venta + store listing_id
+        # Mark consignacion as en_venta + store listing_id + set en_venta boolean
         now = datetime.now().isoformat()
         with get_db() as conn:
             conn.execute(
-                "UPDATE consignaciones SET status='en_venta', listing_id=?, updated_at=? WHERE id=?",
+                "UPDATE consignaciones SET status='en_venta', en_venta=1, listing_id=?, updated_at=? WHERE id=?",
                 (str(listing_id) if listing_id else None, now, cid)
             )
             conn.commit()
@@ -5123,7 +5210,7 @@ def promote_to_inventory(cid):
         car_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         now = datetime.now().isoformat()
         conn.execute(
-            "UPDATE consignaciones SET car_id=?, status='en_venta', updated_at=? WHERE id=?",
+            "UPDATE consignaciones SET car_id=?, status='en_venta', en_venta=1, updated_at=? WHERE id=?",
             (car_id, now, cid)
         )
         conn.commit()
@@ -6440,8 +6527,8 @@ def crm_create_lead():
                             owner_region, owner_commune, owner_address,
                             plate, car_make, car_model, car_year, mileage, version,
                             appointment_date, appointment_time,
-                            status, created_at, updated_at
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            status, created_at, updated_at, company_id
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """, (
                         first, last, record.get('full_name', ''),
                         record.get('rut'), record.get('phone'),
@@ -6451,7 +6538,7 @@ def crm_create_lead():
                         record.get('car_make', ''), record.get('car_model', ''),
                         record.get('car_year'), record.get('mileage'), record.get('version'),
                         record.get('appointment_date'), record.get('appointment_time'),
-                        'parte1_completa', now2, now2
+                        'parte1_completa', now2, now2, cid
                     ))
                     db_conn.commit()
                     print(f"[crm_create_lead] auto-created consignacion for plate={plate}")
@@ -8557,4 +8644,25 @@ ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "Public read" ON listings FOR SELECT USING (status = 'disponible');
 CREATE POLICY IF NOT EXISTS "Service write" ON listings USING (true) WITH CHECK (true);
 """)
+    import os, subprocess, sys
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        try:
+            worker_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../fb-poster'))
+            if os.path.exists(worker_dir):
+                print("⚙️  Starting FB Poster Background Worker...")
+                venv_python = os.path.join(worker_dir, "venv", "bin", "python")
+                if not os.path.exists(venv_python):
+                    venv_python = sys.executable
+                
+                env = os.environ.copy()
+                env.pop("VIRTUAL_ENV", None)
+                env.pop("WERKZEUG_SERVER_FD", None)
+                env.pop("WERKZEUG_RUN_MAIN", None)
+                
+                log_file = open(os.path.join(worker_dir, "worker.log"), "w")
+                subprocess.Popen([venv_python, 'app.py'], cwd=worker_dir, env=env, stdout=log_file, stderr=subprocess.STDOUT)
+                print("✅ FB Poster Background Worker is scheduled to run on port 5050")
+        except Exception as e:
+            print(f"❌ Failed to start FB worker: {e}")
+
     app.run(debug=True, port=8080)
