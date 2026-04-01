@@ -67,6 +67,17 @@
         .insp-input:focus { border-color: #f59e0b; }
         .insp-input option { background: #1e293b; }
 
+        /* ── Mobile responsive ─────────────────────────────────── */
+        @media (max-width: 1023px) {
+            body > main, body > div[x-show] {
+                padding-top: 3rem !important; /* space for mobile header */
+                padding-bottom: 4rem !important; /* space for bottom tab bar */
+            }
+            body > main > header, body > div[x-show] > header {
+                top: 3rem;
+            }
+        }
+
         /* ── Custom Modal & Toast ───────────────────────────────── */
         .modal-backdrop {
             position: fixed; inset: 0; z-index: 9998;
@@ -137,8 +148,84 @@
     </div>
 </div>
 
-    <!-- Sidebar -->
-    <aside class="w-56 glass flex flex-col border-r border-slate-700">
+    <!-- ══ MOBILE TOP HEADER ══ -->
+    <div class="lg:hidden fixed top-0 left-0 right-0 z-50 h-12 flex items-center justify-between px-4 glass border-b border-slate-700">
+        <h1 class="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500"
+            x-text="crmSettings.company_name || 'Autodirecto CRM'">Autodirecto CRM</h1>
+        <span class="text-xs text-slate-400 capitalize" x-text="currentView"></span>
+    </div>
+
+    <!-- ══ MOBILE BOTTOM TAB BAR ══ -->
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-slate-700" style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+        <div class="flex items-stretch justify-around h-14">
+            <a href="#" @click.prevent="currentView='dashboard'; mobileMenuOpen=false"
+               :class="currentView==='dashboard' ? 'text-blue-400' : 'text-slate-500'"
+               class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors">
+                <i class="ph ph-squares-four text-lg"></i>
+                <span class="text-[10px] font-medium">Panel</span>
+            </a>
+            <a href="#" @click.prevent="currentView='inventario'; loadInventario(); mobileMenuOpen=false"
+               :class="currentView==='inventario' ? 'text-cyan-400' : 'text-slate-500'"
+               class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors">
+                <i class="ph ph-car text-lg"></i>
+                <span class="text-[10px] font-medium">Autos</span>
+            </a>
+            <a href="#" @click.prevent="currentView='funnels'; mobileMenuOpen=false"
+               :class="currentView==='funnels' ? 'text-green-400' : 'text-slate-500'"
+               class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors">
+                <i class="ph ph-funnel text-lg"></i>
+                <span class="text-[10px] font-medium">Funnels</span>
+            </a>
+            <a href="#" @click.prevent="currentView='crm'; loadCRM(); mobileMenuOpen=false"
+               :class="currentView==='crm' ? 'text-purple-400' : 'text-slate-500'"
+               class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors">
+                <i class="ph ph-address-book text-lg"></i>
+                <span class="text-[10px] font-medium">CRM</span>
+            </a>
+            <a href="#" @click.prevent="mobileMenuOpen = !mobileMenuOpen"
+               :class="mobileMenuOpen ? 'text-white' : 'text-slate-500'"
+               class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors">
+                <i class="ph ph-dots-three-outline text-lg"></i>
+                <span class="text-[10px] font-medium">Más</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- ══ MOBILE "MORE" MENU OVERLAY ══ -->
+    <div x-show="mobileMenuOpen" x-cloak @click.self="mobileMenuOpen=false"
+         class="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-end justify-center"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+        <div class="w-full max-w-md bg-slate-900 border-t border-slate-700 rounded-t-2xl p-4 pb-20"
+             @click.stop
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full">
+            <div class="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4"></div>
+            <div class="grid grid-cols-4 gap-3">
+                <template x-for="item in [
+                    {view:'consignaciones', icon:'ph-clipboard-text', label:'Consig.', color:'text-amber-400', load:'loadConsignaciones()'},
+                    {view:'compradores', icon:'ph-shopping-cart', label:'Comprad.', color:'text-emerald-400', load:'loadCompradores()'},
+                    {view:'calendar', icon:'ph-calendar-dots', label:'Calendar', color:'text-cyan-400', load:'loadCalendar()'},
+                    {view:'whatsapp', icon:'ph-whatsapp-logo', label:'WhatsApp', color:'text-green-400', load:'loadWhatsapp()'},
+                    {view:'social', icon:'ph-share-network', label:'Social', color:'text-blue-400', load:'loadSocialStatus(); loadFBPoster()'},
+                    {view:'modulos', icon:'ph-puzzle-piece', label:'Módulos', color:'text-pink-400', load:'loadModules()'},
+                ]" :key="item.view">
+                    <a href="#" @click.prevent="currentView=item.view; eval(item.load); mobileMenuOpen=false"
+                       class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-800/50 active:bg-slate-700 transition-colors">
+                        <i :class="'ph ' + item.icon + ' text-2xl ' + item.color"></i>
+                        <span class="text-[10px] font-medium text-slate-300" x-text="item.label"></span>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar (desktop only) -->
+    <aside class="hidden lg:flex w-56 glass flex-col border-r border-slate-700">
         <div class="h-12 flex items-center justify-center border-b border-slate-700">
             <h1 class="text-base font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500"
                 x-text="crmSettings.company_name || 'Autodirecto CRM'">
@@ -636,6 +723,16 @@
                 <span x-show="invDetail?.chileautos_id"
                     class="text-xs px-2 py-1 rounded-full bg-orange-500/20 text-orange-400 font-medium flex items-center gap-1">
                     🚗 En ChileAutos
+                </span>
+                <!-- Yapo.cl status -->
+                <button x-show="invDetail?.listing_id && !invDetail?.yapo_id"
+                    @click="publishToYapo(invDetail.id)"
+                    class="text-purple-300 hover:text-white text-xs px-2 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/40 transition-colors flex items-center gap-1">
+                    📋 Yapo.cl
+                </button>
+                <span x-show="invDetail?.yapo_id"
+                    class="text-xs px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 font-medium flex items-center gap-1">
+                    📋 En Yapo.cl
                 </span>
                 <!-- Save flash -->
                 <span x-show="invSaveFlash" x-transition
@@ -3838,7 +3935,8 @@
                                 <template x-for="buyer in compradores.filter(b => b.status === stage)" :key="buyer.id">
                                     <div class="bg-slate-800 rounded-lg p-3 border cursor-pointer hover:border-emerald-500/50 transition-all"
                                         :class="[compradorDetail?.id === buyer.id ? 'border-emerald-400 ring-1 ring-emerald-400/30' : 'border-slate-700',
-                                                 buyer.source === 'chileautos' || buyer.source === 'chileautos_whatsapp' ? 'ring-1 ring-orange-400/30 border-orange-500/50' : '']"
+                                                 buyer.source === 'chileautos' || buyer.source === 'chileautos_whatsapp' ? 'ring-1 ring-orange-400/30 border-orange-500/50' : '',
+                                                 buyer.source === 'yapo' ? 'ring-1 ring-purple-400/30 border-purple-500/50' : '']"
                                         @click="openComprador(buyer.id)">
                                         <div class="flex items-center gap-2 mb-2">
                                             <span class="text-xs font-mono text-slate-500">#<span
@@ -3849,6 +3947,10 @@
                                             <span x-show="buyer.source === 'chileautos' || buyer.source === 'chileautos_whatsapp'"
                                                 class="ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-orange-500/20 text-orange-400 flex items-center gap-0.5">
                                                 🚗 ChileAutos
+                                            </span>
+                                            <span x-show="buyer.source === 'yapo'"
+                                                class="ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-400 flex items-center gap-0.5">
+                                                📋 Yapo.cl
                                             </span>
                                         </div>
                                         <div x-show="buyer.car_description"
@@ -3899,6 +4001,10 @@
                                 <span x-show="compradorDetail.source === 'chileautos' || compradorDetail.source === 'chileautos_whatsapp'"
                                     class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-500/20 text-orange-400 inline-flex items-center gap-1 mt-1">
                                     🚗 Viene de ChileAutos
+                                </span>
+                                <span x-show="compradorDetail.source === 'yapo'"
+                                    class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-400 inline-flex items-center gap-1 mt-1">
+                                    📋 Viene de Yapo.cl
                                 </span>
                             </div>
                             <button @click="compradorDetail=null" class="text-slate-400 hover:text-white">
@@ -4489,6 +4595,7 @@
                 {id:'meta', label:'Meta / Social', icon:'ph-meta-logo'},
                 {id:'email', label:'Email / AI', icon:'ph-envelope-simple'},
                 {id:'chileautos', label:'ChileAutos', icon:'ph-car-simple'},
+                {id:'yapo', label:'Yapo.cl', icon:'ph-megaphone-simple'},
             ]" :key="tab.id">
                 <button @click="settingsTab = tab.id"
                     :class="settingsTab === tab.id ? 'text-orange-400 border-orange-400' : 'text-slate-500 border-transparent hover:text-slate-300'"
@@ -4743,6 +4850,135 @@
                         <div>
                             <p class="text-xs text-blue-300 font-medium">¿Cómo obtener credenciales de producción?</p>
                             <p class="text-xs text-slate-400 mt-1">Contactar a <a href="mailto:soporte@chileautos.cl" class="text-blue-400 hover:underline font-mono">soporte@chileautos.cl</a></p>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ═══ TAB: YAPO.CL ═══ -->
+            <template x-if="settingsTab === 'yapo'">
+                <div class="space-y-6">
+                    <!-- cnImport API (Publishing) -->
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                                <span class="text-lg">📋</span> Publicación de Avisos (cnImport API)
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <button @click="testYapoConnection()"
+                                    class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors">
+                                    <i class="ph ph-plugs-connected mr-1"></i> Verificar
+                                </button>
+                                <span x-show="yapoStatus?.cnimport_configured" class="text-xs text-green-400 flex items-center gap-1">
+                                    <i class="ph ph-check-circle"></i> Configurado
+                                </span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-400 mb-1">X-Cnimport-Key (Token de autenticación)</label>
+                                <input type="password" x-model="crmSettings.yapo_cnimport_key"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                                    placeholder="Token proporcionado por Yapo.cl">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Email de Contacto</label>
+                                <input type="email" x-model="crmSettings.yapo_email"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Teléfono (9 dígitos)</label>
+                                <input type="text" x-model="crmSettings.yapo_phone" placeholder="912345678"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Región</label>
+                                <select x-model="crmSettings.yapo_region"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                                    <option value="Arica y Parinacota">XV - Arica y Parinacota</option>
+                                    <option value="Tarapacá">I - Tarapacá</option>
+                                    <option value="Antofagasta">II - Antofagasta</option>
+                                    <option value="Atacama">III - Atacama</option>
+                                    <option value="Coquimbo">IV - Coquimbo</option>
+                                    <option value="Valparaíso">V - Valparaíso</option>
+                                    <option value="Metropolitana">RM - Metropolitana</option>
+                                    <option value="O'Higgins">VI - O'Higgins</option>
+                                    <option value="Maule">VII - Maule</option>
+                                    <option value="Ñuble">XVI - Ñuble</option>
+                                    <option value="Biobío">VIII - Biobío</option>
+                                    <option value="Araucanía">IX - Araucanía</option>
+                                    <option value="Los Ríos">XIV - Los Ríos</option>
+                                    <option value="Los Lagos">X - Los Lagos</option>
+                                    <option value="Aysén">XI - Aysén</option>
+                                    <option value="Magallanes">XII - Magallanes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Ciudad</label>
+                                <input type="text" x-model="crmSettings.yapo_city" placeholder="Viña del Mar"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Nombre del Anunciante</label>
+                                <input type="text" x-model="crmSettings.yapo_name" placeholder="Autodirecto"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- CRM / Leads / Stats API -->
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                                <i class="ph ph-chart-line text-purple-400 text-lg"></i> Leads y Estadísticas (CRM API)
+                            </h3>
+                            <span x-show="yapoStatus?.crm_api_configured" class="text-xs text-green-400 flex items-center gap-1">
+                                <i class="ph ph-check-circle"></i> Configurado
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">x-api-key (CRM API Key)</label>
+                                <input type="password" x-model="crmSettings.yapo_crm_api_key"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                                    placeholder="Ej: 6675ra5c7uda3">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Company Slug</label>
+                                <input type="text" x-model="crmSettings.yapo_company_slug"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                                    placeholder="nombre-empresa">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">User ID (para link mapper)</label>
+                                <input type="text" x-model="crmSettings.yapo_user_id"
+                                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                                    placeholder="ID de usuario en Yapo">
+                            </div>
+                        </div>
+                        <div class="mt-3 flex gap-2">
+                            <button @click="syncYapoLeads()"
+                                class="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors">
+                                <i class="ph ph-download-simple mr-1"></i> Sincronizar Leads
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Webhook Leads -->
+                    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                            <i class="ph ph-webhooks-logo text-purple-400 text-lg"></i> Webhook de Leads (Yapo.cl)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-2">Configura este endpoint para recibir leads de Yapo.cl automáticamente.</p>
+                        <div class="bg-slate-900 rounded-lg p-3 font-mono text-xs text-cyan-400 flex items-center justify-between">
+                            <span x-text="window.location.origin + '/api/webhooks/yapo-lead'"></span>
+                            <button @click="navigator.clipboard.writeText(window.location.origin + '/api/webhooks/yapo-lead').then(() => $toast('URL copiada', 'success', 2000))"
+                                class="text-slate-400 hover:text-white ml-3 flex-shrink-0"><i class="ph ph-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                        <i class="ph ph-info text-blue-400 text-lg mt-0.5 flex-shrink-0"></i>
+                        <div>
+                            <p class="text-xs text-blue-300 font-medium">¿Cómo obtener credenciales?</p>
+                            <p class="text-xs text-slate-400 mt-1">Contactar al equipo de integraciones de Yapo.cl: <a href="https://ayuda.yapo.cl/hc/es/articles/360007190471-Integradores" target="_blank" class="text-blue-400 hover:underline">ayuda.yapo.cl</a></p>
                         </div>
                     </div>
                 </div>
@@ -6952,6 +7188,12 @@
                         </span>
                     </button>
 
+                    <button @click="fbpCancelPosting()"
+                            x-show="fbpPosting"
+                            class="bg-gradient-to-r from-red-600 to-red-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg shadow-red-500/20 hover:shadow-red-500/40 transition-all flex items-center gap-2">
+                        🛑 Detener
+                    </button>
+
                     <div class="text-[10px] text-slate-500" x-show="fbpPosting">
                         Worker: <span class="text-blue-400 font-mono" x-text="fbpWorkerUrl"></span>
                     </div>
@@ -7225,6 +7467,7 @@
         function appData() {
             return {
                 currentView: 'dashboard',
+                mobileMenuOpen: false,
                 cars: [],
                 stats: { total: 0, total_commission: 0, draft_dte: 0, total_ventas: 0 },
                 modals: { addCar: false, dte: false, crmAdd: false },
@@ -8889,7 +9132,11 @@
                     } catch(e) {
                         console.error('[fbp] buildCaption', e);
                         const c = this.fbpSelectedCar;
-                        this.fbpCaption = `🚗 ${c.car_make || ''} ${c.car_model || ''} ${c.car_year || ''}\n\n💰 Precio: ${c.selling_price ? '$' + Number(c.selling_price).toLocaleString('es-CL') : 'Consultar'}\n📍 ${this.fbpLocation}\n\n📲 Escríbenos por Messenger o WhatsApp\n🌐 autodirecto.cl`;
+                        let price = c.selling_price;
+                        if ((c.car_make || '').toLowerCase() === 'citroen' && (c.car_model || '').toLowerCase() === 'c4') {
+                            price = 8800000;
+                        }
+                        this.fbpCaption = `🚗 ${c.car_make || ''} ${c.car_model || ''} ${c.car_year || ''}\n\n💰 Precio: ${price ? '$' + Number(price).toLocaleString('es-CL') : 'Consultar'}\n📍 ${this.fbpLocation}\n\n📲 Contáctanos al +56940441470\n🌐 autodirecto.cl`;
                     }
                 },
 
@@ -8899,6 +9146,19 @@
 
                 fbpDeselectAllGroups() {
                     this.fbpSelectedGroups = [];
+                },
+
+                async fbpCancelPosting() {
+                    if (!this.fbpCurrentJobId) return;
+                    try {
+                        await fetch(`${this.fbpWorkerUrl}/api/job/${this.fbpCurrentJobId}/cancel`, {
+                            method: 'POST'
+                        });
+                        this.fbpJobLog.push(`[${new Date().toLocaleTimeString()}] 🛑 Deteniendo el worker...`);
+                    } catch(e) {
+                         this.fbpJobLog.push(`❌ Error al detener worker: ${e}`);
+                    }
+                    this.fbpPosting = false;
                 },
 
                 async fbpStartPosting(mode = 'legacy') {
@@ -10033,6 +10293,16 @@
                     chileautos_client_secret: '',
                     chileautos_seller_id: '',
                     chileautos_env: 'staging',
+                    // Yapo.cl credentials
+                    yapo_cnimport_key: '',
+                    yapo_crm_api_key: '',
+                    yapo_company_slug: '',
+                    yapo_user_id: '',
+                    yapo_email: '',
+                    yapo_phone: '',
+                    yapo_region: 'Valparaíso',
+                    yapo_city: 'Viña del Mar',
+                    yapo_name: 'Autodirecto',
                     // Integration credentials (per-company)
                     whatsapp_access_token: '',
                     whatsapp_phone_number_id: '',
@@ -10053,6 +10323,8 @@
                 settingsTab: 'general',
                 chileautosStatus: null,
                 chileautosPublishing: false,
+                yapoStatus: null,
+                yapoPublishing: false,
 
                 // ─── Empresas (Super Admin) State ─────────────────────────
                 empresas: [],
@@ -10136,6 +10408,55 @@
                         this.chileautosStatus = await r.json();
                     } catch (e) {
                         this.chileautosStatus = { connected: false, error: e.message };
+                    }
+                },
+
+                async testYapoConnection() {
+                    this.yapoStatus = null;
+                    try {
+                        const r = await this.authFetch('/api/yapo/status');
+                        this.yapoStatus = await r.json();
+                    } catch (e) {
+                        this.yapoStatus = { connected: false, error: e.message };
+                    }
+                },
+
+                async publishToYapo(id) {
+                    if (!await $modal({icon:'📋',title:'Publicar en Yapo.cl',msg:'¿Publicar este vehículo en Yapo.cl?\n\nSe enviarán las fotos y datos del vehículo via la API cnImport de yapo.cl.',type:'confirm',confirmLabel:'Sí, publicar',confirmClass:'modal-btn-success'})) return;
+                    this.yapoPublishing = true;
+                    try {
+                        const res = await this.authFetch(`/api/consignaciones/${id}/publicar-yapo`, { method: 'POST' });
+                        const data = await res.json();
+                        if (data.ok) {
+                            if (this.invDetail) {
+                                this.invDetail.yapo_id = data.yapo_id;
+                            }
+                            $toast('Publicado en Yapo.cl (sourceid: ' + data.yapo_id + ')', 'success', 4000);
+                        } else {
+                            $toast('Error: ' + (data.error || 'Error desconocido'), 'error', 5000);
+                        }
+                    } catch (e) {
+                        $toast('Error de conexión: ' + e.message, 'error', 5000);
+                    }
+                    this.yapoPublishing = false;
+                },
+
+                async syncYapoLeads() {
+                    try {
+                        const res = await this.authFetch('/api/yapo/sync-leads', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({}),
+                        });
+                        const data = await res.json();
+                        if (data.ok) {
+                            $toast(`Yapo leads: ${data.created} nuevos, ${data.skipped} ya existentes`, 'success', 4000);
+                            if (data.created > 0) this.loadCompradores();
+                        } else {
+                            $toast('Error: ' + (data.error || 'Error'), 'error', 5000);
+                        }
+                    } catch (e) {
+                        $toast('Error: ' + e.message, 'error', 5000);
                     }
                 },
 
@@ -11072,6 +11393,14 @@
                                 const wantCA = await $modal({icon:'🚗',title:'Publicar en ChileAutos',msg:'¿Publicar también en ChileAutos?\n\nSe publicará automáticamente en www.chileautos.cl para mayor exposición.',type:'confirm',confirmLabel:'Sí, publicar',confirmClass:'modal-btn-success'});
                                 if (wantCA) {
                                     await this.publishToChileAutos(id);
+                                }
+                            }
+                            // Ask to publish on Yapo.cl too
+                            const alreadyOnYapo = this.invDetail?.yapo_id;
+                            if (!alreadyOnYapo) {
+                                const wantYapo = await $modal({icon:'📋',title:'Publicar en Yapo.cl',msg:'¿Publicar también en Yapo.cl?\n\nSe publicará automáticamente en yapo.cl para mayor exposición.',type:'confirm',confirmLabel:'Sí, publicar',confirmClass:'modal-btn-success'});
+                                if (wantYapo) {
+                                    await this.publishToYapo(id);
                                 }
                             }
                         } else {
