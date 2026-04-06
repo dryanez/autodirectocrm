@@ -3897,6 +3897,7 @@ def update_consignacion(cid):
                             "X-Cnimport-Key": _token,
                             "Content-Type": "application/json",
                             "Cookie": "countrylang=chile-es",
+                            "User-Agent": "AutoDirecto/1.0 cnImport",
                         },
                         timeout=15,
                     )
@@ -8110,6 +8111,8 @@ def _yapo_cnimport_headers():
         "X-Cnimport-Key": token,
         "Content-Type": "application/xml",
         "Cookie": "countrylang=chile-es",
+        "User-Agent": "AutoDirecto/1.0 cnImport",
+        "Accept": "application/xml, text/xml, */*",
     }
 
 
@@ -8343,6 +8346,7 @@ def despublicar_de_yapo(cid):
                 "X-Cnimport-Key": token,
                 "Content-Type": "application/json",
                 "Cookie": "countrylang=chile-es",
+                "User-Agent": "AutoDirecto/1.0 cnImport",
             },
             timeout=15,
         )
