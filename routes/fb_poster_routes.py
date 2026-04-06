@@ -360,6 +360,10 @@ def build_caption():
     color = (data.get("color") or "").strip()
     price = data.get("selling_price") or data.get("owner_price") or 0
 
+    # Hardcode price rule for Citroen C4
+    if brand.lower() == "citroen" and model.lower() == "c4":
+        price = 8800000
+
     # Get location from config
     cid = _company_id()
     location = "Bosques de Miramar, Viña del Mar"
@@ -384,10 +388,12 @@ def build_caption():
     if version:
         lines.append(f"⚙️ Versión: {version}")
     lines.append("")
+    
     if price:
         lines.append(f"💰 Precio: ${price:,} CLP".replace(",", "."))
     else:
         lines.append("💰 Precio: Consultar")
+        
     lines.extend([
         "",
         f"📍 {location}",
@@ -396,7 +402,7 @@ def build_caption():
         "✅ Documentación al día",
         "✅ Financiamiento disponible",
         "",
-        "📲 Escríbenos por Messenger o WhatsApp",
+        "📲 Contáctanos al +56940441470",
         "🌐 autodirecto.cl",
         "",
         "#AutoDirecto #AutosUsados #ViñaDelMar #QuintaRegión #AutosEnVenta",

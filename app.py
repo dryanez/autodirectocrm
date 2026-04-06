@@ -39,6 +39,24 @@ from execution.consignment_logic import calculate_commission
 from execution.validate_dte_schema import validate as validate_schema
 
 
+def _call_claude_cli(prompt, timeout=60):
+    """
+    Call the local Claude CLI (`claude -p`) as a subprocess for AI generation.
+    Uses the user's Claude Pro/Max subscription (no API key needed).
+    Returns the generated text string, or raises on failure.
+    """
+    import subprocess
+    result = subprocess.run(
+        ["claude", "-p", prompt, "--allowedTools", ""],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Claude CLI error: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout.strip()
+
+
 def _parse_car_from_title(title):
     """Parse car_make, car_model, car_year from a FB Marketplace title like '2025 Hyundai Creta'."""
     import re as _re
@@ -179,17 +197,26 @@ if FUNNELS_DIR.exists():
                             or os.environ.get("SUPABASE_ANON_KEY", ""))
                 if supa_url and supa_key:
                     _h = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
-                    r = _req_lib.get(
-                        f"{supa_url}/rest/v1/funnel_listings",
-                        params={"order": "scraped_at.desc", "limit": "5000"},
-                        headers=_h, timeout=15
-                    )
-                    if r.status_code == 200:
-                        leads = r.json() or []
+                    leads = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        r = _req_lib.get(
+                            f"{supa_url}/rest/v1/funnel_listings",
+                            params={"order": "scraped_at.desc", "limit": str(page_size), "offset": str(offset)},
+                            headers=_h, timeout=15
+                        )
+                        if r.status_code not in (200, 206):
+                            print(f"[funnels] Supabase funnel_listings error {r.status_code}: {r.text[:200]}")
+                            break
+                        page = r.json() or []
+                        leads.extend(page)
+                        if len(page) < page_size:
+                            break
+                        offset += page_size
+                    if leads:
                         funnels_module._cached_listings = leads
                         print(f"[funnels] Loaded {len(leads)} leads from Supabase REST")
-                    else:
-                        print(f"[funnels] Supabase funnel_listings error {r.status_code}: {r.text[:200]}")
             except Exception as e:
                 print(f"[funnels] leads load error: {e}")
             # If still empty after Supabase attempt, return empty array (never crash the UI)
@@ -1310,6 +1337,7 @@ def patch_company_settings_api():
         "resend_api_key", "resend_from_email", "google_api_key",
         "chileautos_client_id", "chileautos_client_secret", "chileautos_seller_id",
         "company_name", "company_logo_url", "company_website",
+        "use_claude_cli",
     }
     updates = {k: v for k, v in data.items() if k in ALLOWED}
     if not updates:
@@ -3772,7 +3800,7 @@ def update_consignacion(cid):
         "commission_pct","condition_notes","km_verified","inspection_photos",
         "appointment_date","appointment_time","assigned_user_id","status","notes",
         "part1_completed_at","part2_completed_at","appraisal_supabase_id",
-        "contract_signed_at","contract_pdf","chileautos_id",
+        "contract_signed_at","contract_pdf","chileautos_id","yapo_id",
         "cav_obtained_at","cav_status","cav_owner_name","cav_notes"
     }
     updates = {k: v for k, v in data.items() if k in allowed}
@@ -3854,6 +3882,27 @@ def update_consignacion(cid):
                 print(f"[chileautos] Auto-unpublished {ca_id} (status→{new_status})", flush=True)
             except Exception as e_ca:
                 print(f"[chileautos] Auto-unpublish error: {e_ca}", flush=True)
+
+        # Auto-unpublish from Yapo.cl
+        yapo_ext_id = result.get("yapo_id")
+        if yapo_ext_id:
+            try:
+                import requests as _req
+                _token = _get_setting("yapo_cnimport_key", "")
+                if _token:
+                    _req.delete(
+                        YAPO_CNIMPORT_URL,
+                        json=[{"sourceid": int(yapo_ext_id) if str(yapo_ext_id).isdigit() else yapo_ext_id}],
+                        headers={
+                            "X-Cnimport-Key": _token,
+                            "Content-Type": "application/json",
+                            "Cookie": "countrylang=chile-es",
+                        },
+                        timeout=15,
+                    )
+                    print(f"[yapo] Auto-unpublished {yapo_ext_id} (status→{new_status})", flush=True)
+            except Exception as e_yapo:
+                print(f"[yapo] Auto-unpublish error: {e_yapo}", flush=True)
 
     result["ok"] = True
     return jsonify(result)
@@ -5101,14 +5150,19 @@ def toggle_company_module(company_id, module_id):
 @app.route("/api/ai/generate-description", methods=["POST"])
 def ai_generate_description():
     """
-    Generate a short, professional car listing description using Google Gemini.
+    Generate a short, professional car listing description.
+    Uses Claude CLI (free with Pro subscription) when use_claude_cli=true in settings,
+    or falls back to Google Gemini when google_api_key is configured.
     Body: { brand, model, year, color, mileage, fuel_type, transmission, motor, features }
     """
     user = _get_current_user()
     cid = _get_company_id(user)
     cs = _get_company_settings(cid)
     api_key = cs.get("google_api_key", "")
-    if not api_key:
+    use_claude_cli = str(cs.get("use_claude_cli", "")).lower() in ("1", "true", "yes")
+    # Use Claude CLI if explicitly enabled or if no Google API key is configured
+    use_claude_cli = use_claude_cli or not api_key
+    if not use_claude_cli and not api_key:
         return jsonify({"error": "GOOGLE_API_KEY no configurada en Ajustes"}), 500
 
     data = request.json or {}
@@ -5166,13 +5220,16 @@ def ai_generate_description():
     )
 
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        description = response.text.strip()
+        if use_claude_cli:
+            description = _call_claude_cli(prompt)
+        else:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            description = response.text.strip()
         return jsonify({"ok": True, "description": description})
     except Exception as e:
         print("[ai-description] error:", e, flush=True)
@@ -7256,6 +7313,16 @@ def get_settings():
         "chileautos_client_secret": cs.get("chileautos_client_secret") or legacy.get("chileautos_client_secret", ""),
         "chileautos_seller_id": cs.get("chileautos_seller_id") or legacy.get("chileautos_seller_id", ""),
         "chileautos_env": legacy.get("chileautos_env", "staging"),
+        # Yapo.cl credentials
+        "yapo_cnimport_key": legacy.get("yapo_cnimport_key", ""),
+        "yapo_crm_api_key": legacy.get("yapo_crm_api_key", ""),
+        "yapo_company_slug": legacy.get("yapo_company_slug", ""),
+        "yapo_user_id": legacy.get("yapo_user_id", ""),
+        "yapo_email": legacy.get("yapo_email", ""),
+        "yapo_phone": legacy.get("yapo_phone", ""),
+        "yapo_region": legacy.get("yapo_region", "Valparaíso"),
+        "yapo_city": legacy.get("yapo_city", "Viña del Mar"),
+        "yapo_name": legacy.get("yapo_name", "Autodirecto"),
         # Integration credentials from company_settings (for Ajustes page)
         "whatsapp_access_token": cs.get("whatsapp_access_token", ""),
         "whatsapp_phone_number_id": cs.get("whatsapp_phone_number_id", ""),
@@ -7269,6 +7336,7 @@ def get_settings():
         "resend_api_key": cs.get("resend_api_key", ""),
         "resend_from_email": cs.get("resend_from_email", ""),
         "google_api_key": cs.get("google_api_key", ""),
+        "use_claude_cli": cs.get("use_claude_cli", ""),
         "company_name": cs.get("company_name", ""),
         "company_logo_url": cs.get("company_logo_url", ""),
         "company_website": cs.get("company_website", ""),
@@ -7292,6 +7360,9 @@ def save_settings():
     legacy_keys = {
         "whatsapp_number", "chileautos_client_id", "chileautos_client_secret",
         "chileautos_seller_id", "chileautos_env",
+        "yapo_cnimport_key", "yapo_crm_api_key", "yapo_company_slug",
+        "yapo_user_id", "yapo_email", "yapo_phone",
+        "yapo_region", "yapo_city", "yapo_name",
     }
     # Keys that go to company_settings
     company_keys = {
@@ -7301,6 +7372,7 @@ def save_settings():
         "resend_api_key", "resend_from_email", "google_api_key",
         "chileautos_client_id", "chileautos_client_secret", "chileautos_seller_id",
         "company_name", "company_logo_url", "company_website",
+        "use_claude_cli",
     }
     # Save legacy keys
     legacy_data = {k: v for k, v in data.items() if k in legacy_keys}
@@ -8009,6 +8081,545 @@ def chileautos_lead_webhook():
     return jsonify({"ok": True, "comprador_id": new_id}), 202
 
 
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  YAPO.CL INTEGRATION — cnImport XML API + Leads/Stats CRM API             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+YAPO_CNIMPORT_URL = "https://www.yapo.cl/cnImport/partial"
+YAPO_CRM_URL = "https://www.yapo.cl/api.php/v1/crm/index"
+YAPO_STATS_URL = "https://www.yapo.cl/api.php/v1/ad/stats"
+YAPO_LINK_MAPPER_URL = "https://www.yapo.cl/yapo/sourceid-link-mapper"
+
+# Yapo region IDs for Chile
+YAPO_REGION_MAP = {
+    "Arica y Parinacota": "5441", "Tarapacá": "5442", "Antofagasta": "5443",
+    "Atacama": "5444", "Coquimbo": "5445", "Valparaíso": "5485",
+    "O'Higgins": "5447", "Maule": "5448", "Ñuble": "5464",
+    "Biobío": "5449", "Araucanía": "5450", "Los Ríos": "5451",
+    "Los Lagos": "5452", "Aysén": "5453", "Magallanes": "5454",
+    "Metropolitana": "5446",
+}
+
+
+def _yapo_cnimport_headers():
+    """Return headers for the Yapo cnImport API."""
+    token = _get_setting("yapo_cnimport_key", "")
+    if not token:
+        raise ValueError("Yapo.cl cnImport key not configured (yapo_cnimport_key in Ajustes)")
+    return {
+        "X-Cnimport-Key": token,
+        "Content-Type": "application/xml",
+        "Cookie": "countrylang=chile-es",
+    }
+
+
+def _yapo_crm_headers():
+    """Return headers for the Yapo CRM/Leads/Stats API."""
+    api_key = _get_setting("yapo_crm_api_key", "")
+    if not api_key:
+        raise ValueError("Yapo.cl CRM API key not configured (yapo_crm_api_key in Ajustes)")
+    return {"x-api-key": api_key}
+
+
+def _build_yapo_xml(listing, consig=None):
+    """Build the Yapo.cl cnImport XML payload for a vehicle listing."""
+    brand = listing.get("brand", "")
+    model = listing.get("model", "")
+    year = listing.get("year") or 2020
+    km = listing.get("mileage_km") or 0
+    price = listing.get("price") or 0
+    fuel = listing.get("fuel_type", "Bencina")
+    trans = listing.get("transmission", "Manual")
+    description = listing.get("description", "")
+    color = listing.get("color", "")
+
+    title = f"{brand} {model} {year}".strip()[:50]
+
+    body_parts = []
+    if description:
+        body_parts.append(description)
+    if color:
+        body_parts.append(f"Color: {color}")
+    if km:
+        body_parts.append(f"Kilometraje: {km:,} km")
+    if fuel:
+        body_parts.append(f"Combustible: {fuel}")
+    if trans:
+        body_parts.append(f"Transmisión: {trans}")
+    body_parts.append("Publicado por Autodirecto — Consignación de vehículos")
+    body = "\n".join(body_parts)[:2000]
+
+    # Source ID = consignacion ID (Yapo uses this to create/update)
+    source_id = ""
+    if consig:
+        source_id = str(consig.get("id", ""))
+    elif listing.get("consignacion_id"):
+        source_id = str(listing["consignacion_id"])
+
+    # Contact info from settings
+    yapo_email = _get_setting("yapo_email", "")
+    yapo_phone = _get_setting("yapo_phone", "")
+    yapo_region = _get_setting("yapo_region", "Valparaíso")
+    yapo_name = _get_setting("yapo_name", "Autodirecto")
+    yapo_city = _get_setting("yapo_city", "Viña del Mar")
+
+    if consig:
+        if not yapo_phone and consig.get("owner_phone"):
+            yapo_phone = consig["owner_phone"].replace("+56", "").replace("+", "")[-9:]
+        if not yapo_email and consig.get("owner_email"):
+            yapo_email = consig["owner_email"]
+
+    region_id = YAPO_REGION_MAP.get(yapo_region, "5485")
+
+    # Collect image URLs
+    image_urls = listing.get("image_urls") or []
+    if isinstance(image_urls, str):
+        try:
+            image_urls = json.loads(image_urls)
+        except Exception:
+            image_urls = []
+    clean_urls = []
+    for url in image_urls[:10]:
+        if isinstance(url, dict):
+            url = url.get("url", "")
+        if url and url.startswith("http"):
+            clean_urls.append(url)
+
+    # Build XML
+    def cdata(val):
+        return f"<![CDATA[{val}]]>"
+
+    picture_xml = "\n".join(f"        <picture>{cdata(u)}</picture>" for u in clean_urls)
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<import>
+  <settings>
+    <language>{cdata("es")}</language>
+  </settings>
+  <items>
+    <item>
+      <required>
+        <ad>
+          <sourceid>{cdata(source_id)}</sourceid>
+          <countryid>{cdata("5247")}</countryid>
+          <type>{cdata("vehicle")}</type>
+          <categoryid>{cdata("2020")}</categoryid>
+          <regionid>{cdata(region_id)}</regionid>
+          <title>{cdata(title)}</title>
+          <currency>{cdata("CLP")}</currency>
+          <price>{cdata(str(int(price)))}</price>
+          <email>{cdata(yapo_email)}</email>
+          <advertiser>{cdata("Agente")}</advertiser>
+        </ad>
+        <contact>
+          <email>{cdata(yapo_email)}</email>
+          <phone>{cdata(yapo_phone)}</phone>
+          <contact>{cdata(yapo_name)}</contact>
+          <city>{cdata(yapo_city)}</city>
+        </contact>
+      </required>
+      <optional>
+        <ad>
+          <maintenance>{cdata(str(int(km)))}</maintenance>
+          <descr>{cdata(body)}</descr>
+        </ad>
+{picture_xml}
+      </optional>
+    </item>
+  </items>
+</import>"""
+
+    return source_id, xml
+
+
+@app.route("/api/consignaciones/<int:cid>/publicar-yapo", methods=["POST"])
+def publicar_en_yapo(cid):
+    """Publish a listing to Yapo.cl via their cnImport XML API."""
+    import requests as req_lib
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "Consignación no encontrada"}), 404
+    c = row_to_dict(c)
+
+    listing_id = c.get("listing_id")
+    if not listing_id:
+        return jsonify({"error": "El vehículo debe estar publicado en autodirecto.cl primero"}), 400
+
+    # Fetch the listing from Supabase
+    supabase_url, headers = _supa_headers()
+    try:
+        r = req_lib.get(
+            supabase_url + "/rest/v1/listings",
+            params={"select": "*", "id": "eq.{}".format(listing_id)},
+            headers=headers, timeout=10,
+        )
+        if r.status_code != 200 or not r.json():
+            return jsonify({"error": "Listing no encontrada en Supabase"}), 404
+        listing = r.json()[0]
+    except Exception as e:
+        return jsonify({"error": f"Error fetching listing: {e}"}), 500
+
+    # Build XML payload (images are included as URLs in the XML)
+    try:
+        source_id, xml_payload = _build_yapo_xml(listing, consig=c)
+    except Exception as e:
+        return jsonify({"error": f"Error building payload: {e}"}), 500
+
+    # PUT to Yapo cnImport
+    try:
+        yapo_headers = _yapo_cnimport_headers()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    try:
+        resp = req_lib.put(
+            YAPO_CNIMPORT_URL,
+            data=xml_payload.encode("utf-8"),
+            headers=yapo_headers,
+            timeout=30,
+        )
+        print(f"[yapo] PUT cnImport status={resp.status_code} body={resp.text[:500]}", flush=True)
+    except Exception as e:
+        return jsonify({"error": f"Error de conexión Yapo.cl: {e}"}), 500
+
+    if resp.status_code not in (200, 201, 202):
+        return jsonify({
+            "error": f"Yapo.cl respondió HTTP {resp.status_code}",
+            "detail": resp.text[:1000],
+        }), 502
+
+    # Save yapo_id (= source_id) in the listing
+    try:
+        req_lib.patch(
+            supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+            json={"yapo_id": source_id, "yapo_status": "published"},
+            headers={**headers, "Prefer": "return=representation"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[yapo] Warning: could not save yapo_id to listing: {e}", flush=True)
+
+    # Also store in consignacion
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE consignaciones SET yapo_id=?, updated_at=? WHERE id=?",
+                         (source_id, datetime.now().isoformat(), cid))
+            conn.commit()
+    except Exception as e:
+        print(f"[yapo] Warning: could not save yapo_id to consignacion: {e}", flush=True)
+
+    return jsonify({"ok": True, "yapo_id": source_id})
+
+
+@app.route("/api/consignaciones/<int:cid>/despublicar-yapo", methods=["POST"])
+def despublicar_de_yapo(cid):
+    """Remove a listing from Yapo.cl via cnImport DELETE."""
+    import requests as req_lib
+
+    with get_db() as conn:
+        c = conn.execute("SELECT * FROM consignaciones WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return jsonify({"error": "No encontrada"}), 404
+    c = row_to_dict(c)
+
+    yapo_id = c.get("yapo_id")
+    if not yapo_id:
+        return jsonify({"error": "No está publicado en Yapo.cl"}), 400
+
+    try:
+        token = _get_setting("yapo_cnimport_key", "")
+        if not token:
+            raise ValueError("yapo_cnimport_key not configured")
+    except Exception as e:
+        return jsonify({"error": f"Auth error: {e}"}), 500
+
+    try:
+        resp = req_lib.delete(
+            YAPO_CNIMPORT_URL,
+            json=[{"sourceid": int(yapo_id) if yapo_id.isdigit() else yapo_id}],
+            headers={
+                "X-Cnimport-Key": token,
+                "Content-Type": "application/json",
+                "Cookie": "countrylang=chile-es",
+            },
+            timeout=15,
+        )
+        print(f"[yapo] DELETE cnImport status={resp.status_code} body={resp.text[:500]}", flush=True)
+    except Exception as e:
+        return jsonify({"error": f"Error de conexión: {e}"}), 500
+
+    # Update listing status
+    supabase_url, headers = _supa_headers()
+    listing_id = c.get("listing_id")
+    if listing_id:
+        try:
+            req_lib.patch(
+                supabase_url + "/rest/v1/listings?id=eq.{}".format(listing_id),
+                json={"yapo_status": "removed"},
+                headers={**headers, "Prefer": "return=representation"},
+                timeout=10,
+            )
+        except Exception:
+            pass
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/yapo/status", methods=["GET"])
+def yapo_status():
+    """Check Yapo.cl connection by verifying credentials are set."""
+    cnimport_key = _get_setting("yapo_cnimport_key", "")
+    crm_api_key = _get_setting("yapo_crm_api_key", "")
+    return jsonify({
+        "connected": bool(cnimport_key),
+        "cnimport_configured": bool(cnimport_key),
+        "crm_api_configured": bool(crm_api_key),
+    })
+
+
+@app.route("/api/yapo/leads", methods=["GET"])
+def yapo_leads():
+    """Fetch leads from Yapo.cl CRM API. Query params: sourceid, fromdate, todate, limit."""
+    import requests as req_lib
+    try:
+        yapo_headers = _yapo_crm_headers()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    slug = _get_setting("yapo_company_slug", "")
+    if not slug:
+        return jsonify({"error": "yapo_company_slug not configured in Ajustes"}), 400
+
+    params = {"slug": slug}
+    for key in ("sourceid", "adid", "agent", "fromdate", "todate", "limit", "fromid"):
+        val = request.args.get(key)
+        if val:
+            params[key] = val
+
+    try:
+        resp = req_lib.get(YAPO_CRM_URL, params=params, headers=yapo_headers, timeout=15)
+        if resp.status_code != 200:
+            return jsonify({"error": f"Yapo CRM API HTTP {resp.status_code}", "detail": resp.text[:500]}), 502
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/yapo/stats", methods=["GET"])
+def yapo_stats():
+    """Fetch ad stats from Yapo.cl Stats API. Requires: from, to (YYYY-MM-DD)."""
+    import requests as req_lib
+    try:
+        yapo_headers = _yapo_crm_headers()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    slug = _get_setting("yapo_company_slug", "")
+    if not slug:
+        return jsonify({"error": "yapo_company_slug not configured in Ajustes"}), 400
+
+    from_date = request.args.get("from")
+    to_date = request.args.get("to")
+    if not from_date or not to_date:
+        return jsonify({"error": "Parámetros 'from' y 'to' requeridos (YYYY-MM-DD)"}), 400
+
+    try:
+        resp = req_lib.get(
+            YAPO_STATS_URL,
+            params={"slug": slug, "from": from_date, "to": to_date},
+            headers=yapo_headers,
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"Yapo Stats API HTTP {resp.status_code}", "detail": resp.text[:500]}), 502
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/yapo/link", methods=["GET"])
+def yapo_link():
+    """Get the Yapo.cl public URL for a listing by sourceid."""
+    import requests as req_lib
+    user_id = _get_setting("yapo_user_id", "")
+    source_id = request.args.get("source_id", "")
+    if not user_id or not source_id:
+        return jsonify({"error": "yapo_user_id and source_id required"}), 400
+
+    try:
+        resp = req_lib.get(
+            YAPO_LINK_MAPPER_URL,
+            params={"user_id": user_id, "source_id": source_id},
+            headers={"Cookie": "countrylang=chile-es"},
+            timeout=10,
+        )
+        return jsonify({"status": resp.status_code, "data": resp.text[:2000]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/yapo/sync-leads", methods=["POST"])
+def yapo_sync_leads():
+    """Pull recent leads from Yapo CRM API and create Compradores."""
+    import requests as req_lib
+    try:
+        yapo_headers = _yapo_crm_headers()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    slug = _get_setting("yapo_company_slug", "")
+    if not slug:
+        return jsonify({"error": "yapo_company_slug not configured"}), 400
+
+    params = {"slug": slug, "limit": "50"}
+    fromdate = request.json.get("fromdate") if request.json else None
+    if fromdate:
+        params["fromdate"] = fromdate
+
+    try:
+        resp = req_lib.get(YAPO_CRM_URL, params=params, headers=yapo_headers, timeout=15)
+        if resp.status_code != 200:
+            return jsonify({"error": f"Yapo API HTTP {resp.status_code}"}), 502
+        leads_data = resp.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Handle both simple and paginated responses
+    leads = leads_data if isinstance(leads_data, list) else leads_data.get("data", [])
+
+    created = 0
+    skipped = 0
+    for lead in leads:
+        contact = lead.get("contact") or {}
+        full_name = contact.get("name", "")
+        phone = contact.get("phone", "")
+        email = contact.get("email", "")
+        message = lead.get("message") or lead.get("preview", "")
+        source_id = lead.get("sourceid", "")
+
+        if not full_name and not phone and not email:
+            skipped += 1
+            continue
+
+        # Check if already imported (by yapo lead id)
+        yapo_lead_id = str(lead.get("id", ""))
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM compradores WHERE notes LIKE ?",
+                (f"%yapo_lead_id:{yapo_lead_id}%",)
+            ).fetchone()
+        if existing:
+            skipped += 1
+            continue
+
+        parts = full_name.split(" ", 1)
+        first_name = parts[0] if parts else ""
+        last_name = parts[1] if len(parts) > 1 else ""
+
+        # Match consignacion by sourceid
+        consig_id = None
+        car_description = ""
+        car_plate = ""
+        car_price = None
+        if source_id:
+            try:
+                with get_db() as conn:
+                    row = conn.execute("SELECT * FROM consignaciones WHERE yapo_id=? OR id=?",
+                                       (str(source_id), str(source_id))).fetchone()
+                    if row:
+                        consig = row_to_dict(row)
+                        consig_id = consig["id"]
+                        car_description = f"{consig.get('car_make', '')} {consig.get('car_model', '')} {consig.get('car_year', '')}".strip()
+                        car_plate = consig.get("plate", "")
+                        car_price = consig.get("selling_price")
+            except Exception:
+                pass
+
+        now = datetime.now().isoformat()
+        try:
+            with get_db() as conn:
+                conn.execute(
+                    """INSERT INTO compradores
+                       (first_name, last_name, full_name, phone, email,
+                        car_description, car_plate, car_price, consignacion_id,
+                        status, source, notes, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (first_name, last_name, full_name, phone, email,
+                     car_description, car_plate, car_price, consig_id,
+                     "interesado", "yapo",
+                     f"Lead Yapo.cl (yapo_lead_id:{yapo_lead_id}): {message}",
+                     now, now)
+                )
+                conn.commit()
+            created += 1
+        except Exception as e:
+            print(f"[yapo_sync] Error creating comprador: {e}", flush=True)
+
+    return jsonify({"ok": True, "created": created, "skipped": skipped})
+
+
+@app.route("/api/webhooks/yapo-lead", methods=["POST"])
+def yapo_lead_webhook():
+    """Receive leads from Yapo.cl webhook. Auto-creates a Comprador."""
+    data = request.json or {}
+    print(f"[yapo_lead] Received lead: {json.dumps(data)[:500]}", flush=True)
+
+    full_name = data.get("name", "")
+    phone = data.get("phone", "")
+    email = data.get("email", "")
+    comments = data.get("message", "")
+    source_id = data.get("sourceid", "") or data.get("external_ad_id", "")
+
+    parts = full_name.split(" ", 1)
+    first_name = parts[0] if parts else ""
+    last_name = parts[1] if len(parts) > 1 else ""
+
+    # Match consignacion by sourceid
+    consig_id = None
+    car_description = ""
+    car_plate = ""
+    car_price = None
+    if source_id:
+        try:
+            with get_db() as conn:
+                row = conn.execute("SELECT * FROM consignaciones WHERE yapo_id=? OR id=?",
+                                   (str(source_id), str(source_id))).fetchone()
+                if row:
+                    consig = row_to_dict(row)
+                    consig_id = consig["id"]
+                    car_description = f"{consig.get('car_make', '')} {consig.get('car_model', '')} {consig.get('car_year', '')}".strip()
+                    car_plate = consig.get("plate", "")
+                    car_price = consig.get("selling_price")
+        except Exception as e:
+            print(f"[yapo_lead] Match error: {e}", flush=True)
+
+    now = datetime.now().isoformat()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO compradores
+                   (first_name, last_name, full_name, phone, email,
+                    car_description, car_plate, car_price, consignacion_id,
+                    status, source, notes, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (first_name, last_name, full_name, phone, email,
+                 car_description, car_plate, car_price, consig_id,
+                 "interesado", "yapo",
+                 f"Lead Yapo.cl: {comments}",
+                 now, now)
+            )
+            conn.commit()
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        print(f"[yapo_lead] Created comprador #{new_id} (source=yapo, consig={consig_id})", flush=True)
+    except Exception as e:
+        print(f"[yapo_lead] Error creating comprador: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, "comprador_id": new_id}), 202
+
+
 # ─── API: Notifications ──────────────────────────────────────────────────────
 @app.route("/api/notifications/unread-count", methods=["GET"])
 def notifications_unread_count():
@@ -8646,7 +9257,9 @@ if __name__ == "__main__":
   status TEXT DEFAULT 'disponible',
   featured BOOLEAN DEFAULT FALSE,
   chileautos_id TEXT,
-  chileautos_status TEXT DEFAULT NULL
+  chileautos_status TEXT DEFAULT NULL,
+  yapo_id TEXT,
+  yapo_status TEXT DEFAULT NULL
 );
 ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "Public read" ON listings FOR SELECT USING (status = 'disponible');
