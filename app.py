@@ -3897,7 +3897,7 @@ def update_consignacion(cid):
                             "X-Cnimport-Key": _token,
                             "Content-Type": "application/json",
                             "Cookie": "countrylang=chile-es",
-                            "User-Agent": "AutoDirecto/1.0 cnImport",
+                            "User-Agent": "Mozilla/5.0 (compatible; AutoDirecto/1.0)",
                         },
                         timeout=15,
                     )
@@ -8109,10 +8109,11 @@ def _yapo_cnimport_headers():
         raise ValueError("Yapo.cl cnImport key not configured (yapo_cnimport_key in Ajustes)")
     return {
         "X-Cnimport-Key": token,
-        "Content-Type": "application/xml",
+        "Content-Type": "application/xml; charset=UTF-8",
         "Cookie": "countrylang=chile-es",
-        "User-Agent": "AutoDirecto/1.0 cnImport",
+        "User-Agent": "Mozilla/5.0 (compatible; AutoDirecto/1.0)",
         "Accept": "application/xml, text/xml, */*",
+        "Accept-Language": "es-CL,es;q=0.9",
     }
 
 
@@ -8346,7 +8347,7 @@ def despublicar_de_yapo(cid):
                 "X-Cnimport-Key": token,
                 "Content-Type": "application/json",
                 "Cookie": "countrylang=chile-es",
-                "User-Agent": "AutoDirecto/1.0 cnImport",
+                "User-Agent": "Mozilla/5.0 (compatible; AutoDirecto/1.0)",
             },
             timeout=15,
         )
